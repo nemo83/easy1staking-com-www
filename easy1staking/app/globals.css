@@ -1,27 +1,23 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #040717; /* Darker colors for the gradient */
+  margin: 0;
+  padding: 0;
+  color: white;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+.home-hero {
+  background-image: url("./assets/Group\ 20\ \(1\).png");
+  background-position: top;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+.WhyStakeWithUs {
+  background-image: url("./assets/Stake.png");
+  background-position: center ; /* Start image from the bottom center */
+  background-repeat: no-repeat;
+  background-size: cover;
+  margin: 0; /* Remove margin if not needed */
 }
