@@ -2,22 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 body {
-  background: #040717; /* Darker colors for the gradient */
   margin: 0;
   padding: 0;
   color: white;
+  background: #040717; /* Darker colors for the gradient */
+}
+.home-bg {
+  background: black; /* Darker colors for the gradient */
 }
 
 .home-hero {
-  background-image: url("./assets/Group\ 20\ \(1\).png");
+  background-image: url("./assets/hero-bg.png");
   background-position: top;
   background-repeat: no-repeat;
   background-size: cover;
 }
 .WhyStakeWithUs {
   background-image: url("./assets/Stake.png");
-  background-position: center ; /* Start image from the bottom center */
+  background-position: center; /* Start image from the bottom center */
   background-repeat: no-repeat;
   background-size: cover;
   margin: 0; /* Remove margin if not needed */
+}
+.WhatWeOffer {
+  background-image: url("./assets/WhatWeOffer-bg.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+.Distribution {
+  background-image: url("./assets/Distribution.png");
+  background-position: bottom;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+.raffles {
+  background-image: url("./assets/Glow.png");
+  background-position: top;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+.wallet-not-connected {
+  background-image: url("./assets/wallet-not-connected.png");
+  background-position: top;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-color: black;
+}
+
+/* Hide scrollbar for Chrome, Safari, and Opera */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge, and Firefox */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }

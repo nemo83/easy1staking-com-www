@@ -4,20 +4,36 @@ import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Toolbar from "@mui/material/Toolbar";
 import IconButton from "@mui/material/IconButton";
-import Typography from "@mui/material/Typography";
 import Menu from "@mui/material/Menu";
 import MenuIcon from "@mui/icons-material/Menu";
 import Container from "@mui/material/Container";
-import Button from "@mui/material/Button";
 import MenuItem from "@mui/material/MenuItem";
-import AdbIcon from "@mui/icons-material/Adb";
 import Image from "next/image";
+import Link from "next/link";
 import Logo from "../assets/Logo.png";
+import ConnectWalletModal from "./ConnectWalletModal";
 
-const pages = ["Home", "Raffles", "NFT Raffles"];
-
-function Navbar() {
+function Navbar({ wallet }) {
+  const pages = [
+    !wallet && {
+      name: "Home",
+      href: "/",
+    },
+    {
+      name: "Raffles",
+      href: "/raffles",
+    },
+    {
+      name: "NFT Raffles",
+      href: "/nft-raffles",
+    },
+  ].filter(Boolean);
   const [anchorElNav, setAnchorElNav] = React.useState(null);
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  const closeWallet = () => {
+    setIsOpen(false);
+  };
 
   const handleOpenNavMenu = (event) => {
     setAnchorElNav(event.currentTarget);
@@ -34,7 +50,7 @@ function Navbar() {
         background: "none",
         boxShadow: "none",
       }}
-      className="md:px-20 mt-4"
+      className="md:px-20 py-5"
     >
       <Container maxWidth="xl">
         <Toolbar disableGutters>
@@ -52,26 +68,47 @@ function Navbar() {
           {/* Desktop Menu Items */}
           <Box
             sx={{
-              flexGrow: 1,
+              flexGrow: wallet ? 1 : 1,
               display: { xs: "none", md: "flex" },
-              justifyContent: "center",
+              justifyContent: wallet ? "flex-start" : "center",
+              marginLeft: wallet ? 2 : 0,
             }}
           >
             {pages.map((page) => (
-              <button
-                key={page}
+              <Link
+                key={page.href}
                 onClick={handleCloseNavMenu}
+                href={page.href}
                 className="font-semibold mx-2"
               >
-                {page}
-              </button>
+                {page.name}
+              </Link>
             ))}
           </Box>
 
           {/* Connect Wallet Button */}
-          <Box sx={{ flexGrow: 0, display: "flex", alignItems: "center" }}>
-            <button className="font-semibold text-[12px] md:text-[16px] p-2 md:p-3 border-white border-2 rounded-full mx-2">
-              Connect Wallet
+          <Box
+            sx={{
+              flexGrow: 0,
+              display: "flex",
+              alignItems: "center",
+              marginLeft: "auto",
+            }}
+          >
+            <button
+              className="font-semibold text-[12px] md:text-[16px] py-2 px-4 md:py-3 border-white border-2 rounded-full mx-2"
+              onClick={() => setIsOpen(true)}
+            >
+              {!wallet
+                ? "Connect Wallet"
+                : "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16".slice(
+                    0,
+                    6
+                  ) +
+                  "..." +
+                  "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16".slice(
+                    -3
+                  )}
             </button>
 
             {/* Mobile Menu Icon */}
@@ -103,16 +140,19 @@ function Navbar() {
             }}
             open={Boolean(anchorElNav)}
             onClose={handleCloseNavMenu}
-            sx={{ display: { xs: "block", md: "none" }  }}
+            sx={{ display: { xs: "block", md: "none" } }}
           >
             {pages.map((page) => (
-              <MenuItem key={page} onClick={handleCloseNavMenu}>
-                <Typography sx={{ textAlign: "center" }}   className="font-semibold ">{page}</Typography>
+              <MenuItem key={page.href} onClick={handleCloseNavMenu}>
+                <Link className="font-semibold" href={page.href}>
+                  {page.name}
+                </Link>
               </MenuItem>
             ))}
           </Menu>
         </Toolbar>
       </Container>
+      <ConnectWalletModal isOpen={isOpen} onClose={closeWallet} />
     </AppBar>
   );
 }
