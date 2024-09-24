@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@blaze-cardano/sdk": "^0.1.1",
     "@emotion/cache": "^11.13.1",
     "@emotion/react": "^11.13.3",
     "@emotion/styled": "^11.13.0",
@@ -16,13 +17,14 @@
     "@mui/icons-material": "^6.1.0",
     "@mui/material": "^6.1.0",
     "@mui/material-nextjs": "^6.1.0",
-    "next": "14.2.11",
+    "next": "^14.2.13",
     "react": "^18",
     "react-dom": "^18",
     "react-icons": "^5.3.0",
     "react-swipeable": "^7.0.1"
   },
   "devDependencies": {
+    "@types/node": "22.6.1",
     "eslint": "^8",
     "eslint-config-next": "14.2.11",
     "postcss": "^8",
