@@ -1,24 +1,46 @@
 'use client';
 import { createContext, useContext, useState, FC, ReactNode } from "react";
-import { CIP30Interface } from "@blaze-cardano/sdk"
+import { CIP30Interface, Wallet } from "@blaze-cardano/sdk"
 
-export interface WalletContext {
+export interface WalletInfo {
     connected: boolean,
     walletHandle: CIP30Interface | undefined,
-    baseAddress: string,
-    stakingAddress: string | undefined
+    baseAddress: string | undefined,
+    stakingAddress: string | undefined,
 }
 
-const Context = createContext({});
+export interface WalletContextType {
+    walletInfo: WalletInfo | undefined,
+    setWallet: (info: WalletInfo) => void
+}
+
+export const noWallet = {
+    connected: false,
+    walletHandle: undefined,
+    baseAddress: undefined,
+    stakingAddress: undefined
+}
+
+const WalletContext = createContext<WalletContextType | null>({
+    walletInfo: noWallet,
+    setWallet: (info: WalletInfo) => { },
+});
 
 interface MyProps {
     children?: ReactNode;
 }
 
 const WalletProvider: FC<MyProps> = (props) => {
-    const [walletHandle, setWalletHandle] = useState(null);
+    const [walletInfo, setWalletInfo] = useState(null);
+
+    const setWallet = (info: WalletInfo) => {
+        setWalletInfo(info)
+    }
+
     return (
-        <Context.Provider value={[walletHandle, setWalletHandle]}>{props.children}</Context.Provider>
+        <WalletContext.Provider value={{ walletInfo, setWallet }}>
+            {props.children}
+        </WalletContext.Provider>
     );
 }
 
@@ -26,5 +48,5 @@ const WalletProvider: FC<MyProps> = (props) => {
 export default WalletProvider;
 
 export function useWalletContext() {
-    return useContext(Context);
+    return useContext(WalletContext);
 }
