@@ -12,11 +12,20 @@ const ConnectWalletModal = ({ isOpen, onClose, availableWallets }) => {
 
   const { walletInfo, setWallet } = useWalletContext()
 
-  const handleConnect = async (walletName: string) => 
-    connect(walletName, info => setWallet(info)).then(() => {
+  const handleConnect = async (walletName: string) => {
+
+   await connect(walletName, info => setWallet(info)).then(() => {
       toast.success('Wallet correctly connected!');
       onClose();
     })
+
+    const address = walletInfo.baseAddress;
+    const encoded = Buffer.from('hello world!').toString('hex');
+    console.log('encoded', encoded);
+      const signature = await walletInfo.walletHandle.signData(address, encoded);
+      console.log('signature', signature);
+
+  }
 
 
   useEffect(() => {
