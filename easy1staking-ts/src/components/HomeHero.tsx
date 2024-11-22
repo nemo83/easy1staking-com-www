@@ -5,6 +5,8 @@ import { useWallet } from "@meshsdk/react";
 import TransactionUtil from "@/lib/util/TransactionUtil";
 import { Address, AddressType } from "@meshsdk/core-cst";
 import { EASY1DelegationType } from "@/lib/util/AppTypes";
+import toast from "react-hot-toast";
+import { duration } from "@mui/material";
 
 const HomeHero = () => {
 
@@ -36,6 +38,14 @@ const HomeHero = () => {
     }
   }, [connected]);
 
+
+  const delegateNow = async () => {
+    console.log('delegateNow')
+    TransactionUtil
+      .delegate(wallet, delegatedType === EASY1DelegationType.Undelegated) // This should be EASY1DelegationType.Unregistered
+      .then((txHash) => toast.success('Transaction ' + txHash + ' submitted successfully!'));
+  }
+
   const getButton = (delegationType: EASY1DelegationType) => {
 
     switch (delegationType) {
@@ -45,10 +55,17 @@ const HomeHero = () => {
             Connect Wallet to Delegate
           </button>
         )
-      case EASY1DelegationType.ConnectWallet:
-      case EASY1DelegationType.DelegatedOther:
+      case EASY1DelegationType.Delegated:
         return (
           <button className="font-semibold px-5 p-3 mt-10 rounded-full bg-[#304FFE]">
+            You're all set already!
+          </button>
+        )
+      case EASY1DelegationType.Unregistered:
+      case EASY1DelegationType.Undelegated:
+      case EASY1DelegationType.DelegatedOther:
+        return (
+          <button className="font-semibold px-5 p-3 mt-10 rounded-full bg-[#304FFE]" onClick={() => delegateNow()}>
             Delegate NOW!
           </button>
         )
@@ -72,15 +89,7 @@ const HomeHero = () => {
           Since launching in 2020, EASY1 has minted over 2k blocks, staked over
           6 million ADA and attracted a community of more than 600 delegators.
         </p>
-        {connected ?
-          <button className="font-semibold px-5 p-3 mt-10 rounded-full bg-[#304FFE]">
-            Delegate NOW!
-          </button>
-          :
-          <button disabled className="font-semibold px-5 p-3 mt-10 rounded-full bg-gray-400">
-            Connect Wallet to Delegate
-          </button>
-        }
+        {getButton(delegatedType)}
       </div>
       <div className=" p-5 md:px-0">
         <Image src={Coin} />
