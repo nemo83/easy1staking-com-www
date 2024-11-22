@@ -1,12 +1,12 @@
 import React from "react";
-import Image1 from "./../assets/Frame1.png";
-import Image2 from "./../assets/Frame2.png";
-import Image3 from "./../assets/Frame3.png";
-import Image4 from "./../assets/Frame4.png";
+import Image1 from "../../public/Frame1.png";
+import Image2 from "../../public/Frame2.png";
+import Image3 from "../../public/Frame3.png";
+import Image4 from "../../public/Frame4.png";
 
 import Image from "next/image";
 
-function WhyStakeWithUs() {
+export const WhyStakeWithUs = () => {
   return (
     <div className="WhyStakeWithUs min-h-[200vh] relative">
       <h1 className="text-[34px] sm:text-[54px] md:text-[64px] pt-20 font-semibold text-center">

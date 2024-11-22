@@ -11,26 +11,32 @@ import MenuItem from "@mui/material/MenuItem";
 import Image from "next/image";
 import Link from "next/link";
 import Logo from "../../public/Logo.png";
+import { useWallet } from "@meshsdk/react";
 import ConnectWalletModal from "./ConnectWalletModal";
+import { CardanoWallet } from "@meshsdk/react";
 
-const  Navbar = (props: { wallet: boolean }) => {
+const Navbar = () => {
 
-  const { wallet } = props;
+  const { wallet, connected } = useWallet();
 
   const pages = [
     {
       name: "Home",
       href: "/",
+      enabled: true,
     },
     {
       name: "Raffles",
       href: "/raffles",
+      enabled: false,
     },
     {
       name: "NFT Raffles",
       href: "/nft-raffles",
+      enabled: false,
     },
-  ];
+  ].filter((page) => page.enabled);
+
   const [anchorElNav, setAnchorElNav] = React.useState(null);
   const [isOpen, setIsOpen] = React.useState(false);
 
@@ -71,10 +77,10 @@ const  Navbar = (props: { wallet: boolean }) => {
           {/* Desktop Menu Items */}
           <Box
             sx={{
-              flexGrow: wallet ? 1 : 1,
+              flexGrow: 1,
               display: { xs: "none", md: "flex" },
-              justifyContent: wallet ? "flex-start" : "center",
-              marginLeft: wallet ? 2 : 0,
+              justifyContent: "center",
+              marginLeft: 0,
             }}
           >
             {pages.map((page) => (
@@ -98,7 +104,8 @@ const  Navbar = (props: { wallet: boolean }) => {
               marginLeft: "auto",
             }}
           >
-            <button
+            <CardanoWallet />
+            {/* <button
               className="font-semibold text-[12px] md:text-[16px] py-2 px-4 md:py-3 border-white border-2 rounded-full mx-2"
               onClick={() => setIsOpen(true)}
             >
@@ -112,7 +119,7 @@ const  Navbar = (props: { wallet: boolean }) => {
                 "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16".slice(
                   -3
                 )}
-            </button>
+            </button> */}
 
             {/* Mobile Menu Icon */}
             <IconButton
@@ -155,7 +162,7 @@ const  Navbar = (props: { wallet: boolean }) => {
           </Menu>
         </Toolbar>
       </Container>
-      <ConnectWalletModal isOpen={isOpen} onClose={closeWallet} />
+      {/* <ConnectWalletModal isOpen={isOpen} onClose={closeWallet} /> */}
     </AppBar>
   );
 }

@@ -1,0 +1,3 @@
+export const BLOCKFROST_API_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY
+
+export const EASY1_STAKE_POOL_ID = "20df8645abddf09403ba2656cda7da2cd163973a5e439c6e43dcbea9"
