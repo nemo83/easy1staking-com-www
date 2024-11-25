@@ -1,15 +1,15 @@
 import React from "react";
 import IncentiveCarousel from "./IncentiveSlider";
-import Image1 from "../assets/CardContent1.png";
-import Image2 from "../assets/CardContent2.png";
-import Image3 from "../assets/CardContent3.png";
-import Image4 from "../assets/CardContent4.png";
-import Image5 from "../assets/CardContent5.png";
-import Image6 from "../assets/CardContent6.png";
-import TagFacesRounded from "../assets/TagFacesRounded.png";
-import FlashlightonRounded from "../assets/FlashlightonRounded.png";
+import Image1 from "../../public/CardContent1.png";
+import Image2 from "../../public/CardContent2.png";
+import Image3 from "../../public/CardContent3.png";
+import Image4 from "../../public/CardContent4.png";
+import Image5 from "../../public/CardContent5.png";
+import Image6 from "../../public/CardContent6.png";
+import TagFacesRounded from "../../public/TagFacesRounded.png";
+import FlashlightonRounded from "../../public/FlashlightonRounded.png";
 
-function WhatWeOffer() {
+const WhatWeOffer = () => {
   const cards1 = [
     {
       icon: Image1, // replace with your actual icon path

@@ -1,6 +1,6 @@
 import { Box, Card, CardContent, Typography } from "@mui/material";
 
-export default function PoolDetails() {
+const PoolDetails = () => {
   return (
     <Box className="my-20 mt-40">
       <Box className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-5xl">
@@ -99,3 +99,5 @@ export default function PoolDetails() {
     </Box>
   );
 }
+
+export default PoolDetails;

@@ -4,6 +4,8 @@ import Navbar from "@/components/Navbar";
 import HomeHero from "@/components/HomeHero";
 import WhyStakeWithUs from "@/components/WhyStakeWithUs";
 import { ToastBar, Toaster } from "react-hot-toast";
+import WhatWeOffer from "@/components/WhatWeOffer";
+import Distribution from "@/components/Distribution";
 
 export default function Home() {
   return (
@@ -14,8 +16,8 @@ export default function Home() {
         <HomeHero />
       </div>
       <WhyStakeWithUs />
-      {/* <WhatWeOffer />
-      <Distribution /> */}
+      <WhatWeOffer />
+      <Distribution />
     </div>
   );
 }
