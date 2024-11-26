@@ -50,7 +50,7 @@ const Navbar = () => {
     setIsOpen(false);
   };
 
-  const handleOpenNavMenu = (event) => {
+  const handleOpenNavMenu = (event: any) => {
     setAnchorElNav(event.currentTarget);
   };
 

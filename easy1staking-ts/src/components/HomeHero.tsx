@@ -58,7 +58,7 @@ const HomeHero = () => {
       case EASY1DelegationType.Delegated:
         return (
           <button className="font-semibold px-5 p-3 mt-10 rounded-full bg-[#304FFE]">
-            You're all set already!
+            You&apos;re all set already!
           </button>
         )
       case EASY1DelegationType.Unregistered:
@@ -92,7 +92,7 @@ const HomeHero = () => {
         {getButton(delegatedType)}
       </div>
       <div className=" p-5 md:px-0">
-        <Image src={Coin} />
+        <Image src={Coin} alt="Cardano Coin"/>
       </div>
     </div>
   );
