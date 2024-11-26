@@ -117,7 +117,7 @@ const WmtConversionPage = () => {
                 /> : null}
             </FormGroup>
             <Button variant="contained"
-              disabled={!connected || !acceptFee || !acceptRisk}
+              disabled={!connected || !acceptFee || !acceptRisk || parseInt(wmtBalance) == 0}
               onClick={() => wmtToWtmx()}>
               Convert {parseInt(wmtBalance) / 1_000_000} WMT to WTMx
             </Button>
