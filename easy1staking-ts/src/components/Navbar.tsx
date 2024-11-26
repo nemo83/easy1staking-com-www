@@ -14,6 +14,7 @@ import Logo from "../../public/Logo.png";
 import { useWallet } from "@meshsdk/react";
 import ConnectWalletModal from "./ConnectWalletModal";
 import { CardanoWallet } from "@meshsdk/react";
+import { Toaster } from "react-hot-toast";
 
 const Navbar = () => {
 
@@ -23,6 +24,11 @@ const Navbar = () => {
     {
       name: "Home",
       href: "/",
+      enabled: true,
+    },
+    {
+      name: "WMTx Conversion",
+      href: "/wmtx-conversion",
       enabled: true,
     },
     {
@@ -61,6 +67,7 @@ const Navbar = () => {
       }}
       className="md:px-20 py-5"
     >
+      <Toaster />
       <Container maxWidth="xl">
         <Toolbar disableGutters>
           {/* Logo */}
