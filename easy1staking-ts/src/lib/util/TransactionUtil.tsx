@@ -88,24 +88,13 @@ export default class TransactionUtil {
         return wallet.submitTx(signedTx);
     }
 
-    public static async convertWMTtoWTMx(wallet: BrowserWallet, wmtBalance: string): Promise<string> {
+    public static async convertWMTtoWTMx(wallet: BrowserWallet, wmtBalance: string, processingFee: string): Promise<string> {
 
         const collateral = await wallet.getCollateral();
         const walletUtxos = await wallet.getUtxos();
         const walletAddress = (await wallet.getUsedAddress()).toBech32().toString();
         
         txBuilder.reset();
-
-        const wmtAmount = parseInt(wmtBalance) / 1_000_000;
-        
-        let fee = '1000000';
-        if (wmtAmount > 1_000_000) {
-            fee = '50000000';
-        } else if (wmtAmount > 100_000) {
-            fee = '10000000';
-        } else if (wmtAmount > 10_000) {
-            fee = '5000000';
-        }
 
         await txBuilder
             .mintPlutusScriptV2()
@@ -126,7 +115,7 @@ export default class TransactionUtil {
             ]).txOut("addr1q8ratxgn92xkwgfhwx054lxyy7eel3maq6zj0xhe8hk6mf2rgt6vrx8paps567pa8qtj9wzah2gpfhme6933fq2vfmnsp7taxn", [
                 {
                     unit: "lovelace",
-                    quantity: fee
+                    quantity: processingFee
                 }
             ])
             .selectUtxosFrom(walletUtxos)

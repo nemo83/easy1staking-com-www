@@ -16,8 +16,10 @@ const WmtConversionPage = () => {
   const [wmtBalance, setWmtBalance] = useState<string>("0");
 
   const [acceptRisk, setAcceptRisk] = useState<boolean>(false);
+
   const [acceptFee, setAcceptFee] = useState<boolean>(false);
 
+  const [processingFee, setProcessingFee] = useState<string>("1000000");
 
   useEffect(() => {
 
@@ -38,13 +40,20 @@ const WmtConversionPage = () => {
   }, [connected]);
 
   useEffect(() => {
-    console.log(connected, acceptRisk, acceptFee);
-    const foo = !connected || !acceptRisk || !acceptFee;
-    console.log('foo: ' + foo);
-  }, [connected, acceptRisk, acceptFee]);
+    const wmtAmount = parseInt(wmtBalance) / 1_000_000;
+    let fee = '1000000';
+    if (wmtAmount > 1_000_000) {
+      fee = '50000000';
+    } else if (wmtAmount > 100_000) {
+      fee = '10000000';
+    } else if (wmtAmount > 10_000) {
+      fee = '5000000';
+    }
+    setProcessingFee(fee);
+  }, [wmtBalance])
 
   const wmtToWtmx = async () => {
-    const unsignedTx = await TransactionUtil.convertWMTtoWTMx(wallet, wmtBalance);
+    const unsignedTx = await TransactionUtil.convertWMTtoWTMx(wallet, wmtBalance, processingFee);
     wallet
       .signTx(unsignedTx)
       .then((signedTx) => wallet.submitTx(signedTx))
@@ -72,7 +81,7 @@ const WmtConversionPage = () => {
                 value={acceptRisk}
                 onChange={() => setAcceptRisk(!acceptRisk)}
               />
-              <FormControlLabel required control={<Checkbox />} label="I accept to pay conversion fees along with transaction fees"
+              <FormControlLabel required control={<Checkbox />} label={`I accept to pay (${parseInt(processingFee) / 1_000_000} ada) conversion fees along with transaction fees`}
                 value={acceptFee}
                 onChange={() => setAcceptFee(!acceptFee)}
               />
