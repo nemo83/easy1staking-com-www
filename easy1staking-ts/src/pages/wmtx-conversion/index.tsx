@@ -122,8 +122,8 @@ const WmtConversionPage = () => {
               Convert {parseInt(wmtBalance) / 1_000_000} WMT to WTMx
             </Button>
             <Alert severity="warning">Use this tool at your own risk! No responsibility are taken if the tool is use improperly
-              or if funds while using this conversion tool</Alert>
-            <Alert severity="info">Please note that it is possible to convert WMT to WTMx only on Cardano Network.</Alert>
+              or if funds are lost while using this conversion tool</Alert>
+            <Alert severity="info">Please note that it is possible to convert WMT to WTMx only on the Cardano Network.</Alert>
             <Alert severity="info">A small fee is charged for every transaction depending on the amount of WMT converted.</Alert>
           </Stack>
         </Box>
