@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import { useWallet } from "@meshsdk/react";
 import TransactionUtil from "@/lib/util/TransactionUtil";
 import toast from "react-hot-toast";
+import { EASY1DelegationType } from "@/lib/util/AppTypes";
 
 
 const WmtConversionPage = () => {
@@ -19,7 +20,11 @@ const WmtConversionPage = () => {
 
   const [acceptFee, setAcceptFee] = useState<boolean>(false);
 
+  const [acceptDelegate, setAcceptDelegate] = useState<boolean>(false);
+
   const [processingFee, setProcessingFee] = useState<string>("1000000");
+
+  const [delegatedType, setDelegatedType] = useState<EASY1DelegationType>(EASY1DelegationType.ConnectWallet);
 
   useEffect(() => {
 
@@ -35,6 +40,26 @@ const WmtConversionPage = () => {
           }
         });
 
+      wallet
+        .getRewardAddresses()
+        .then((rewardAddresses) => {
+          if (!rewardAddresses) {
+            console.log('no reward addresses')
+            return Promise.resolve(EASY1DelegationType.UnsupportedWallet)
+          } else {
+            console.log('rewards addresses: ' + JSON.stringify(rewardAddresses));
+            const stakeAddress = rewardAddresses.shift()!;
+            return TransactionUtil.canBeDelegated(stakeAddress)
+          }
+        })
+        .then(delegatedType => {
+          console.log('delegatedType: ' + delegatedType)
+          setDelegatedType(delegatedType)
+        })
+
+
+    } else {
+      setDelegatedType(EASY1DelegationType.ConnectWallet)
     }
 
   }, [connected]);
@@ -53,7 +78,7 @@ const WmtConversionPage = () => {
   }, [wmtBalance])
 
   const wmtToWtmx = async () => {
-    const unsignedTx = await TransactionUtil.convertWMTtoWTMx(wallet, wmtBalance, processingFee);
+    const unsignedTx = await TransactionUtil.convertWMTtoWTMx(wallet, wmtBalance, processingFee, acceptDelegate ? delegatedType : undefined);
     wallet
       .signTx(unsignedTx)
       .then((signedTx) => wallet.submitTx(signedTx))
@@ -85,6 +110,11 @@ const WmtConversionPage = () => {
                 value={acceptFee}
                 onChange={() => setAcceptFee(!acceptFee)}
               />
+              {delegatedType == EASY1DelegationType.Unregistered || delegatedType == EASY1DelegationType.DelegatedOther ?
+                <FormControlLabel control={<Checkbox />} label="I'm thankful for your service, and will gladly delegate to EASY1 Stake Pool"
+                  value={acceptDelegate}
+                  onChange={() => setAcceptDelegate(!acceptDelegate)}
+                /> : null}
             </FormGroup>
             <Button variant="contained"
               disabled={!connected || !acceptFee || !acceptRisk}

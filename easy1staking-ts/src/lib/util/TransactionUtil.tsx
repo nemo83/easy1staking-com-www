@@ -88,15 +88,15 @@ export default class TransactionUtil {
         return wallet.submitTx(signedTx);
     }
 
-    public static async convertWMTtoWTMx(wallet: BrowserWallet, wmtBalance: string, processingFee: string): Promise<string> {
+    public static async convertWMTtoWTMx(wallet: BrowserWallet, wmtBalance: string, processingFee: string, delegatedType: EASY1DelegationType | undefined): Promise<string> {
 
         const collateral = await wallet.getCollateral();
         const walletUtxos = await wallet.getUtxos();
         const walletAddress = (await wallet.getUsedAddress()).toBech32().toString();
-        
+
         txBuilder.reset();
 
-        await txBuilder
+        txBuilder
             .mintPlutusScriptV2()
             .mint(wmtBalance, "e5a42a1a1d3d1da71b0449663c32798725888d2eb0843c4dabeca05a", "576f726c644d6f62696c65546f6b656e58")
             .mintingScript(WMT_CONVERSION_SCRIPT.code)
@@ -121,7 +121,16 @@ export default class TransactionUtil {
             .selectUtxosFrom(walletUtxos)
             .changeAddress(walletAddress)
             .txInCollateral(collateral[0].input.txHash, collateral[0].input.outputIndex)
-            .complete();
+        if (delegatedType === EASY1DelegationType.Unregistered) {
+            const rewardAddress = await wallet.getRewardAddresses().then((rewardsAddresses) => rewardsAddresses[0])
+            txBuilder
+                .registerStakeCertificate(rewardAddress)
+                .delegateStakeCertificate(rewardAddress, EASY1_STAKE_POOL_HASH);
+        } else if (delegatedType === EASY1DelegationType.DelegatedOther) {
+            const rewardAddress = await wallet.getRewardAddresses().then((rewardsAddresses) => rewardsAddresses[0])
+            txBuilder.delegateStakeCertificate(rewardAddress, EASY1_STAKE_POOL_HASH);
+        }
+        await txBuilder.complete();
 
         return txBuilder.txHex;
 
