@@ -91,8 +91,13 @@ export default class TransactionUtil {
     public static async convertWMTtoWTMx(wallet: BrowserWallet, wmtBalance: string, processingFee: string, delegatedType: EASY1DelegationType | undefined): Promise<string> {
 
         const collateral = await wallet.getCollateral();
+        console.log('collateral: ' + JSON.stringify(collateral));
+
         const walletUtxos = await wallet.getUtxos();
+        console.log('walletUtxos: ' + JSON.stringify(walletUtxos));
+
         const walletAddress = (await wallet.getUsedAddress()).toBech32().toString();
+        console.log('walletAddress: ' + JSON.stringify(walletAddress));
 
         txBuilder.reset();
 
@@ -120,7 +125,7 @@ export default class TransactionUtil {
             ])
             .selectUtxosFrom(walletUtxos)
             .changeAddress(walletAddress)
-            .txInCollateral(collateral[0].input.txHash, collateral[0].input.outputIndex)
+            .txInCollateral(walletUtxos[0].input.txHash, walletUtxos[0].input.outputIndex)
         if (delegatedType === EASY1DelegationType.Unregistered) {
             const rewardAddress = await wallet.getRewardAddresses().then((rewardsAddresses) => rewardsAddresses[0])
             txBuilder
