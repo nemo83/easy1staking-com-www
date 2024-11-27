@@ -91,7 +91,7 @@ const WmtConversionPage = () => {
       <Navbar />
       <div className="h-full flex flex-col justify-center items-center">
         <h1 className="text-[34px] sm:text-[54px] md:text-[64px] py-16 font-semibold text-center">
-          WTMx Conversion
+          WMT Conversion
         </h1>
 
         <Box component={"section"} display="flex" width={"500px"} maxWidth={"60%"} justifyContent={"center"} bgcolor={"lightgray"}
@@ -119,11 +119,11 @@ const WmtConversionPage = () => {
             <Button variant="contained"
               disabled={!connected || !acceptFee || !acceptRisk || parseInt(wmtBalance) == 0}
               onClick={() => wmtToWtmx()}>
-              Convert {parseInt(wmtBalance) / 1_000_000} WMT to WTMx
+              Convert {parseInt(wmtBalance) / 1_000_000} WMT to WMTx
             </Button>
             <Alert severity="warning">Use this tool at your own risk! No responsibility are taken if the tool is use improperly
               or if funds are lost while using this conversion tool</Alert>
-            <Alert severity="info">Please note that it is possible to convert WMT to WTMx only on the Cardano Network.</Alert>
+            <Alert severity="info">Please note that it is possible to convert WMT to WMTx only on the Cardano Network.</Alert>
             <Alert severity="info">A small fee is charged for every transaction depending on the amount of WMT converted.</Alert>
           </Stack>
         </Box>
