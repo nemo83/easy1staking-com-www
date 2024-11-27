@@ -129,6 +129,7 @@ const WmtConversionPage = () => {
             </Button>
             <Alert severity="warning">Use this tool at your own risk! No responsibility are taken if the tool is use improperly
               or if funds are lost while using this conversion tool</Alert>
+            <Alert severity="info">If you've just setup a new wallet for this conversion (which is the way to go anyway), please set up some collateral or send additioanl 5 ada to this wallet.</Alert>
             <Alert severity="info">Please note that it is possible to convert WMT to WMTx only on the Cardano Network.</Alert>
             <Alert severity="info">A small fee is charged for every transaction depending on the amount of WMT converted.</Alert>
           </Stack>
