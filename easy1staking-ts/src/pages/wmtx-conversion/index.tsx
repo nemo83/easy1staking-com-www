@@ -132,7 +132,7 @@ const WmtConversionPage = () => {
             <Alert severity="info">If you&apos;ve just setup a new wallet, please set up some collateral or send additional 5 ada to this wallet&apos;s receiving address.</Alert>
             <Alert severity="info">Please note that it is possible to convert WMT to WMTx only on the Cardano Network.</Alert>
             <Alert severity="info">A small fee is charged for every transaction depending on the amount of WMT converted.</Alert>
-            <Alert severity="info">If you get a "Utxo Already Spent", wait a couple of minutes and refresh the page.</Alert>
+            <Alert severity="info">If you get a &quot;Utxo Already Spent&quot;, wait a couple of minutes and refresh the page.</Alert>
           </Stack>
         </Box>
 
