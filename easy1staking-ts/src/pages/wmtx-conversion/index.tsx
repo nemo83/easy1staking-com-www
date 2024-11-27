@@ -68,11 +68,11 @@ const WmtConversionPage = () => {
   useEffect(() => {
     const wmtAmount = parseInt(wmtBalance) / 1_000_000;
     let fee = '1000000';
-    if (wmtAmount > 1_000_000) {
+    if (wmtAmount >= 1_000_000) {
       fee = '50000000';
-    } else if (wmtAmount > 100_000) {
+    } else if (wmtAmount >= 100_000) {
       fee = '10000000';
-    } else if (wmtAmount > 10_000) {
+    } else if (wmtAmount >= 10_000) {
       fee = '5000000';
     }
     setProcessingFee(fee);
