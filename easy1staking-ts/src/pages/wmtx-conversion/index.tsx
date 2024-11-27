@@ -60,6 +60,7 @@ const WmtConversionPage = () => {
 
     } else {
       setDelegatedType(EASY1DelegationType.ConnectWallet)
+      setWmtBalance("0");
     }
 
   }, [connected]);
