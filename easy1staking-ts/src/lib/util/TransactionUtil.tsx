@@ -90,14 +90,26 @@ export default class TransactionUtil {
 
     public static async convertWMTtoWTMx(wallet: BrowserWallet, wmtBalance: string, processingFee: string, delegatedType: EASY1DelegationType | undefined): Promise<string> {
 
-        const collateral = await wallet.getCollateral();
-        console.log('collateral: ' + JSON.stringify(collateral));
-
         const walletUtxos = await wallet.getUtxos();
         console.log('walletUtxos: ' + JSON.stringify(walletUtxos));
 
         const walletAddress = (await wallet.getUsedAddress()).toBech32().toString();
         console.log('walletAddress: ' + JSON.stringify(walletAddress));
+
+        const balance = await wallet.getBalance();
+        console.log('balance: ' + JSON.stringify(balance));
+
+        const adaBalance = parseInt(balance.filter((asset) => asset.unit === "lovelace")[0].quantity);
+        if (adaBalance < parseInt(processingFee) + 5_000_000) {
+            const minAdaBalance = parseInt(processingFee) + 5_000_000;
+            return Promise.reject(`Insufficient balance, please ensure the wallet contains at least ${minAdaBalance / 1_000_000} ada`);
+        }
+
+        const collateral = walletUtxos.filter((utxo) => utxo.output.amount.length == 1);
+
+        if (collateral.length == 0) {
+            return Promise.reject('Wallet has no available collateral, please set it in the wallet, or send additional 5 ada to the current wallet address');
+        }
 
         txBuilder.reset();
 
@@ -125,7 +137,7 @@ export default class TransactionUtil {
             ])
             .selectUtxosFrom(walletUtxos)
             .changeAddress(walletAddress)
-            .txInCollateral(walletUtxos[0].input.txHash, walletUtxos[0].input.outputIndex)
+            .txInCollateral(collateral[0].input.txHash, collateral[0].input.outputIndex)
         if (delegatedType === EASY1DelegationType.Unregistered) {
             const rewardAddress = await wallet.getRewardAddresses().then((rewardsAddresses) => rewardsAddresses[0])
             txBuilder

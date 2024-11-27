@@ -78,12 +78,17 @@ const WmtConversionPage = () => {
   }, [wmtBalance])
 
   const wmtToWtmx = async () => {
-    const unsignedTx = await TransactionUtil.convertWMTtoWTMx(wallet, wmtBalance, processingFee, acceptDelegate ? delegatedType : undefined);
-    wallet
-      .signTx(unsignedTx)
-      .then((signedTx) => wallet.submitTx(signedTx))
-      .then((txHash) => toast.success("Transaction submitted: " + txHash.substring(0, 10) + "..." + txHash.substring(txHash.length - 10), { duration: 5000 }))
-      .catch((err) => toast.error(err.message, { duration: 5000 }));
+    TransactionUtil
+      .convertWMTtoWTMx(wallet, wmtBalance, processingFee, acceptDelegate ? delegatedType : undefined)
+      .then((unsignedTx) => {
+        return wallet
+          .signTx(unsignedTx)
+          .then((signedTx) => wallet.submitTx(signedTx))
+          .then((txHash) => toast.success("Transaction submitted: " + txHash.substring(0, 10) + "..." + txHash.substring(txHash.length - 10), { duration: 5000 }))
+          .catch((err) => toast.error(err.message, { duration: 5000 }));
+      })
+      .catch((err) => toast.error(err, { duration: 5000 }));
+
   }
 
   return (
