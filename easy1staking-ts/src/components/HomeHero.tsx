@@ -4,9 +4,9 @@ import Image from "next/image";
 import { useWallet } from "@meshsdk/react";
 import TransactionUtil from "@/lib/util/TransactionUtil";
 import { Address, AddressType } from "@meshsdk/core-cst";
-import { EASY1DelegationType } from "@/lib/util/AppTypes";
 import toast from "react-hot-toast";
 import { duration } from "@mui/material";
+import { EASY1DelegationType } from "@/lib/interfaces/AppTypes";
 
 const HomeHero = () => {
 
