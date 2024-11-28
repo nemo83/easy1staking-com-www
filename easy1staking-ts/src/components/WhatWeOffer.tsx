@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import IncentiveCarousel from "./IncentiveSlider";
 import Image1 from "../../public/CardContent1.png";
 import Image2 from "../../public/CardContent2.png";
@@ -8,8 +8,25 @@ import Image5 from "../../public/CardContent5.png";
 import Image6 from "../../public/CardContent6.png";
 import TagFacesRounded from "../../public/TagFacesRounded.png";
 import FlashlightonRounded from "../../public/FlashlightonRounded.png";
+import { EASY1STAKING_API } from "@/lib/util/Constants";
+import { Distribution } from "@/lib/interfaces/AppTypes";
 
 const WhatWeOffer = () => {
+
+  const [distributions, setDistributions] = useState<Distribution[]>([])
+
+  useEffect(() => {
+    fetch(EASY1STAKING_API + '/token_distributions?meme_last=true')
+      .then((res) => res.json())
+      .then((data: Distribution[]) => {
+        console.log('data: ' + JSON.stringify(data))
+        setDistributions(data)
+        // const groupedData = Array.from({ length: 2 }, () => data.splice(0, 2))
+        // setDistributionGroups(groupedData)
+      })
+  }, [])
+
+
   const cards1 = [
     {
       icon: Image1, // replace with your actual icon path

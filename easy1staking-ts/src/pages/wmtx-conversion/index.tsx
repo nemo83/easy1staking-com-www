@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { Box, Card, CardContent, Typography, Stack, Alert, Button, FormGroup, FormControlLabel, Checkbox } from "@mui/material";
+import { Box, Card, CardContent, Typography, Stack, Alert, Button, FormGroup, FormControlLabel, Checkbox, TableContainer, Paper, Table, TableHead, TableRow, TableCell, TableBody } from "@mui/material";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useWallet } from "@meshsdk/react";
 import TransactionUtil from "@/lib/util/TransactionUtil";
 import toast from "react-hot-toast";
-import { EASY1DelegationType } from "@/lib/util/AppTypes";
-
+import { EASY1STAKING_API } from "@/lib/util/Constants";
+import { EASY1DelegationType, WmtConversionStats, WmtConversion } from "@/lib/interfaces/AppTypes";
+import Link from "next/link";
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 const WmtConversionPage = () => {
 
@@ -25,6 +27,13 @@ const WmtConversionPage = () => {
   const [processingFee, setProcessingFee] = useState<string>("1000000");
 
   const [delegatedType, setDelegatedType] = useState<EASY1DelegationType>(EASY1DelegationType.ConnectWallet);
+
+  const [wmtConversions, setWmtConversions] = useState<WmtConversion[]>([]);
+
+  const [wmtConversionStats, setWmtConversionStats] = useState<WmtConversionStats>({
+    num_conversions_total: 0,
+    amount_wmt_converted_total: 0
+  });
 
   useEffect(() => {
 
@@ -78,6 +87,24 @@ const WmtConversionPage = () => {
     setProcessingFee(fee);
   }, [wmtBalance])
 
+  useEffect(() => {
+    fetch(EASY1STAKING_API + '/wmt_conversions/stats')
+      .then(response => response.json())
+      .then((data: WmtConversionStats) => {
+        console.log('data: ' + JSON.stringify(data));
+        setWmtConversionStats(data);
+      })
+  }, [])
+
+  useEffect(() => {
+    fetch(EASY1STAKING_API + '/wmt_conversions')
+      .then(response => response.json())
+      .then((data: WmtConversion[]) => {
+        console.log('data: ' + JSON.stringify(data));
+        setWmtConversions(data);
+      })
+  }, [])
+
   const wmtToWtmx = async () => {
     TransactionUtil
       .convertWMTtoWTMx(wallet, wmtBalance, processingFee, acceptDelegate ? delegatedType : undefined)
@@ -96,9 +123,13 @@ const WmtConversionPage = () => {
     <div className="wallet-not-connected min-h-[100vh]">
       <Navbar />
       <div className="h-full flex flex-col justify-center items-center">
-        <h1 className="text-[34px] sm:text-[54px] md:text-[64px] py-16 font-semibold text-center">
+        <Typography variant="h2" fontWeight={"bold"}
+          sx={{
+            paddingY: 16
+          }}
+        >
           WMT Conversion
-        </h1>
+        </Typography>
 
         <Box component={"section"} display="flex" width={"500px"} maxWidth={"60%"} justifyContent={"center"} bgcolor={"lightgray"}
           sx={{
@@ -135,6 +166,51 @@ const WmtConversionPage = () => {
             <Alert severity="info">If you get a &quot;Utxo Already Spent&quot;, wait a couple of minutes and refresh the page.</Alert>
           </Stack>
         </Box>
+
+        <div className="h-full flex flex-col justify-center items-center">
+          <Typography variant="h2" fontWeight={"bold"}
+            sx={{
+              paddingY: 16
+            }}
+          >
+            Recent Transactions
+          </Typography>
+          <div
+            className="relative w-full rounded-lg p-6 border-2 border-[#999999] text-white"
+            style={{
+              borderWidth: "1px",
+              background: "none",
+            }}
+          >
+            <TableContainer component={Paper}>
+              <Table aria-label="simple table">
+                <TableHead>
+                  <TableRow>
+                    <TableCell component={"th"}>Tx Hash</TableCell>
+                    <TableCell component={"th"} align="right">Amt WMT Converted</TableCell>
+                    <TableCell component={"th"} align="right">Tx Time</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {wmtConversions.map((row) => (
+                    <TableRow
+                      key={row.tx_hash}
+                      sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                    >
+                      <TableCell>
+                        <Link href={"https://cardanoscan.io/transaction/" + row.tx_hash}>
+                          {row.tx_hash.substring(0, 10) + "..." + row.tx_hash.substring(row.tx_hash.length - 10)} <OpenInNewIcon />
+                        </Link>
+                      </TableCell>
+                      <TableCell align="right">{row.amount_wmt_converted / 1_000_000}</TableCell>
+                      <TableCell align="right">{row.tx_time}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </div>
+        </div>
 
       </div>
       <div className="mt-20">

@@ -6,7 +6,7 @@ import {
 } from "@meshsdk/core";
 import { BLOCKFROST_API_KEY, EASY1_STAKE_POOL_HASH, EASY1_STAKE_POOL_ID, WMT_CONVERSION_SCRIPT } from "./Constants";
 import { BlockfrostProvider } from "@meshsdk/core";
-import { EASY1DelegationType } from "./AppTypes";
+import { EASY1DelegationType } from "../interfaces/AppTypes";
 
 class BlockfrostProviderSingleton {
 

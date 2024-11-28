@@ -7,7 +7,7 @@ export const WMT_CONVERSION_SCRIPT: PlutusScript = {
     version: 'V2'
 }
 
-
+export const EASY1STAKING_API = process.env.NEXT_PUBLIC_EASY1STAKING_API
 
 export const EASY1_STAKE_POOL_HASH = "20df8645abddf09403ba2656cda7da2cd163973a5e439c6e43dcbea9"
 export const EASY1_STAKE_POOL_ID = "pool1yr0cv3dtmhcfgqa6yetvmf769ngk89e6tepecmjrmjl2jzcw2lm"
