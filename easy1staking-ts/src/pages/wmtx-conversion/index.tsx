@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Box, Card, CardContent, Typography, Stack, Alert, Button, FormGroup, FormControlLabel, Checkbox, TableContainer, Paper, Table, TableHead, TableRow, TableCell, TableBody } from "@mui/material";
+import { Box, Card, CardContent, Typography, Stack, Alert, Button, FormGroup, FormControlLabel, Checkbox, TableContainer, Paper, Table, TableHead, TableRow, TableCell, TableBody, CardHeader, Avatar, Grid, Grid2 } from "@mui/material";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useWallet } from "@meshsdk/react";
@@ -9,6 +9,8 @@ import { EASY1STAKING_API } from "@/lib/util/Constants";
 import { EASY1DelegationType, WmtConversionStats, WmtConversion } from "@/lib/interfaces/AppTypes";
 import Link from "next/link";
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import SwapVertIcon from '@mui/icons-material/SwapVert';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 
 const WmtConversionPage = () => {
 
@@ -125,11 +127,41 @@ const WmtConversionPage = () => {
       <div className="h-full flex flex-col justify-center items-center">
         <Typography variant="h2" fontWeight={"bold"}
           sx={{
-            paddingY: 16
+            paddingTop: 12,
+            paddingBottom: 4
           }}
         >
           WMT Conversion
         </Typography>
+
+        <Grid2 container spacing={2} justifyContent={"space-between"} paddingBottom={4} width={"500px"} maxWidth={"60%"}>
+          <Grid2 >
+            <Box sx={{ border: 2, borderColor: "#999999", borderRadius: "20px" }}>
+              <Card sx={{ background: "none" }}>
+                <CardHeader
+                  avatar={<Avatar><SwapVertIcon /></Avatar>}
+                  title={wmtConversionStats.num_conversions_total}
+                  subheader="Num Conversions"
+                  classes={{ title: "text-white", subheader: "text-white" }}
+                >
+                </CardHeader>
+              </Card>
+            </Box>
+          </Grid2>
+          <Grid2>
+            <Box sx={{ border: 2, borderColor: "#999999", borderRadius: "20px" }}>
+              <Card sx={{ background: "none" }}>
+                <CardHeader
+                  avatar={<Avatar><AttachMoneyIcon /></Avatar>}
+                  title={wmtConversionStats.amount_wmt_converted_total / 1_000_000}
+                  subheader="WMT Converted"
+                  classes={{ title: "text-white", avatar: "text-white", subheader: "text-white" }}
+                >
+                </CardHeader>
+              </Card>
+            </Box>
+          </Grid2>
+        </Grid2>
 
         <Box component={"section"} display="flex" width={"500px"} maxWidth={"60%"} justifyContent={"center"} bgcolor={"lightgray"}
           sx={{
@@ -216,7 +248,7 @@ const WmtConversionPage = () => {
       <div className="mt-20">
         <Footer />
       </div>
-    </div>
+    </div >
   );
 }
 
