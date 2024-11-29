@@ -141,8 +141,9 @@ const WmtConversionPage = () => {
                 <CardHeader
                   avatar={<Avatar><SwapVertIcon /></Avatar>}
                   title={wmtConversionStats.num_conversions_total}
+                  titleTypographyProps={{ color: "white" }}
                   subheader="Num Conversions"
-                  classes={{ title: "text-white", subheader: "text-white" }}
+                  subheaderTypographyProps={{ color: "white" }}
                 >
                 </CardHeader>
               </Card>
@@ -154,8 +155,9 @@ const WmtConversionPage = () => {
                 <CardHeader
                   avatar={<Avatar><AttachMoneyIcon /></Avatar>}
                   title={wmtConversionStats.amount_wmt_converted_total / 1_000_000}
+                  titleTypographyProps={{ color: "white" }}
                   subheader="WMT Converted"
-                  classes={{ title: "text-white", avatar: "text-white", subheader: "text-white" }}
+                  subheaderTypographyProps={{ color: "white" }}
                 >
                 </CardHeader>
               </Card>
