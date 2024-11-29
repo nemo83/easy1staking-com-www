@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Box, Card, CardContent, Typography, Stack, Alert, Button, FormGroup, FormControlLabel, Checkbox, TableContainer, Paper, Table, TableHead, TableRow, TableCell, TableBody, CardHeader, Avatar, Grid, Grid2 } from "@mui/material";
+import { Box, Card, CardContent, Typography, Stack, Alert, Button, FormGroup, FormControlLabel, Checkbox, TableContainer, Paper, Table, TableHead, TableRow, TableCell, TableBody, CardHeader, Avatar, Grid, Grid2, CssBaseline } from "@mui/material";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useWallet } from "@meshsdk/react";
@@ -11,8 +11,15 @@ import Link from "next/link";
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 const WmtConversionPage = () => {
+
+  const darkTheme = createTheme({
+    palette: {
+      mode: 'dark',
+    },
+  });
 
   const WMT_UNIT = "1d7f33bd23d85e1a25d87d86fac4f199c3197a2f7afeb662a0f34e1e776f726c646d6f62696c65746f6b656e";
 
@@ -125,98 +132,98 @@ const WmtConversionPage = () => {
     <div className="wallet-not-connected min-h-[100vh]">
       <Navbar />
       <div className="h-full flex flex-col justify-center items-center">
-        <Typography variant="h2" fontWeight={"bold"}
-          sx={{
-            paddingTop: 12,
-            paddingBottom: 4
-          }}
-        >
-          WMT Conversion
-        </Typography>
+        <ThemeProvider theme={darkTheme}>
+          <CssBaseline />
 
-        <Grid2 container spacing={2} justifyContent={"space-between"} paddingBottom={4} width={"500px"} maxWidth={"60%"}>
-          <Grid2 >
-            <Box sx={{ border: 2, borderColor: "#999999", borderRadius: "20px" }}>
-              <Card sx={{ background: "none" }}>
-                <CardHeader
-                  avatar={<Avatar><SwapVertIcon /></Avatar>}
-                  title={wmtConversionStats.num_conversions_total}
-                  titleTypographyProps={{ color: "white" }}
-                  subheader="Num Conversions"
-                  subheaderTypographyProps={{ color: "white" }}
-                >
-                </CardHeader>
-              </Card>
-            </Box>
-          </Grid2>
-          <Grid2>
-            <Box sx={{ border: 2, borderColor: "#999999", borderRadius: "20px" }}>
-              <Card sx={{ background: "none" }}>
-                <CardHeader
-                  avatar={<Avatar><AttachMoneyIcon /></Avatar>}
-                  title={wmtConversionStats.amount_wmt_converted_total / 1_000_000}
-                  titleTypographyProps={{ color: "white" }}
-                  subheader="WMT Converted"
-                  subheaderTypographyProps={{ color: "white" }}
-                >
-                </CardHeader>
-              </Card>
-            </Box>
-          </Grid2>
-        </Grid2>
-
-        <Box component={"section"} display="flex" width={"500px"} maxWidth={"60%"} justifyContent={"center"} bgcolor={"lightgray"}
-          sx={{
-            borderRadius: "20px",
-            color: "black"
-          }}
-        >
-          <Stack spacing={2} margin={2} width={"70%"}>
-            <FormGroup>
-              <FormControlLabel required control={<Checkbox />} label="I accept to use this tool at my own risk"
-                value={acceptRisk}
-                onChange={() => setAcceptRisk(!acceptRisk)}
-              />
-              <FormControlLabel required control={<Checkbox />} label={`I accept to pay (${parseInt(processingFee) / 1_000_000} ada) conversion fees along with transaction fees`}
-                value={acceptFee}
-                onChange={() => setAcceptFee(!acceptFee)}
-              />
-              {delegatedType == EASY1DelegationType.Unregistered || delegatedType == EASY1DelegationType.DelegatedOther ?
-                <FormControlLabel control={<Checkbox />} label="I'm thankful for your service, and will gladly delegate to EASY1 Stake Pool"
-                  value={acceptDelegate}
-                  onChange={() => setAcceptDelegate(!acceptDelegate)}
-                /> : null}
-            </FormGroup>
-            <Button variant="contained"
-              disabled={!connected || !acceptFee || !acceptRisk || parseInt(wmtBalance) == 0}
-              onClick={() => wmtToWtmx()}>
-              Convert {parseInt(wmtBalance) / 1_000_000} WMT to WMTx
-            </Button>
-            <Alert severity="warning">Use this tool at your own risk! No responsibility are taken if the tool is use improperly
-              or if funds are lost while using this conversion tool</Alert>
-            <Alert severity="info">If you&apos;ve just setup a new wallet, please set up some collateral or send additional 5 ada to this wallet&apos;s receiving address.</Alert>
-            <Alert severity="info">Please note that it is possible to convert WMT to WMTx only on the Cardano Network.</Alert>
-            <Alert severity="info">A small fee is charged for every transaction depending on the amount of WMT converted.</Alert>
-            <Alert severity="info">If you get a &quot;Utxo Already Spent&quot;, wait a couple of minutes and refresh the page.</Alert>
-          </Stack>
-        </Box>
-
-        <div className="h-full flex flex-col justify-center items-center">
           <Typography variant="h2" fontWeight={"bold"}
             sx={{
-              paddingY: 16
+              paddingTop: 12,
+              paddingBottom: 4
             }}
           >
-            Recent Transactions
+            WMT Conversion
           </Typography>
-          <div
-            className="relative w-full rounded-lg p-6 border-2 border-[#999999] text-white"
-            style={{
-              borderWidth: "1px",
-              background: "none",
+
+          <Grid2 container spacing={2} justifyContent={"space-between"} paddingBottom={4} width={"600px"} maxWidth={"60%"} >
+            <Grid2 >
+              <Box sx={{ border: 2, borderColor: "#999999", borderRadius: "20px" }}>
+                <Card sx={{ background: "none" }}>
+                  <CardHeader
+                    avatar={<Avatar><SwapVertIcon /></Avatar>}
+                    title={wmtConversionStats.num_conversions_total}
+                    subheader="Num Conversions"
+                  >
+                  </CardHeader>
+                </Card>
+              </Box>
+            </Grid2>
+            <Grid2>
+              <Box sx={{ border: 2, borderColor: "#999999", borderRadius: "20px" }}>
+                <Card sx={{ background: "none" }}>
+                  <CardHeader
+                    avatar={<Avatar><AttachMoneyIcon /></Avatar>}
+                    title={wmtConversionStats.amount_wmt_converted_total / 1_000_000}
+                    subheader="WMT Converted"
+                  >
+                  </CardHeader>
+                </Card>
+              </Box>
+            </Grid2>
+          </Grid2>
+
+          <Box component={"section"} display="flex" width={"600px"} maxWidth={"60%"} justifyContent={"center"}
+            sx={{
+              border: "2px solid white",
+              borderRadius: "20px",
             }}
           >
-            <TableContainer component={Paper}>
+            <Stack spacing={2} margin={2} width={"70%"}>
+              <FormGroup>
+                <FormControlLabel required control={<Checkbox />} label="I accept to use this tool at my own risk"
+                  value={acceptRisk}
+                  onChange={() => setAcceptRisk(!acceptRisk)}
+                />
+                <FormControlLabel required control={<Checkbox />} label={`I accept to pay (${parseInt(processingFee) / 1_000_000} ada) conversion fees along with transaction fees`}
+                  value={acceptFee}
+                  onChange={() => setAcceptFee(!acceptFee)}
+                />
+                {delegatedType == EASY1DelegationType.Unregistered || delegatedType == EASY1DelegationType.DelegatedOther ?
+                  <FormControlLabel control={<Checkbox />} label="I'm thankful for your service, and will gladly delegate to EASY1 Stake Pool"
+                    value={acceptDelegate}
+                    onChange={() => setAcceptDelegate(!acceptDelegate)}
+                  /> : null}
+              </FormGroup>
+              <Button variant="contained"
+                disabled={!connected || !acceptFee || !acceptRisk || parseInt(wmtBalance) == 0}
+                onClick={() => wmtToWtmx()}>
+                Convert {parseInt(wmtBalance) / 1_000_000} WMT to WMTx
+              </Button>
+              <Alert severity="warning">Use this tool at your own risk! No responsibility are taken if the tool is use improperly
+                or if funds are lost while using this conversion tool</Alert>
+              <Alert severity="info">If you&apos;ve just setup a new wallet, please set up some collateral or send additional 5 ada to this wallet&apos;s receiving address.</Alert>
+              <Alert severity="info">Please note that it is possible to convert WMT to WMTx only on the Cardano Network.</Alert>
+              <Alert severity="info">A small fee is charged for every transaction depending on the amount of WMT converted.</Alert>
+              <Alert severity="info">If you get a &quot;Utxo Already Spent&quot;, wait a couple of minutes and refresh the page.</Alert>
+            </Stack>
+          </Box>
+
+          <div className="h-full flex flex-col justify-center items-center">
+            <Typography variant="h2" fontWeight={"bold"}
+              sx={{
+                paddingY: 8
+              }}
+            >
+              Recent Transactions
+            </Typography>
+          </div>
+          <Stack spacing={2}
+            width={"600px"}
+            maxWidth={"60%"}
+            alignItems={"center"}
+            border={"2px solid white"}
+            borderRadius={"20px"}
+          >
+            <TableContainer component={Paper} sx={{ width: "90%" , background: "none" }}>
               <Table aria-label="simple table">
                 <TableHead>
                   <TableRow>
@@ -243,9 +250,9 @@ const WmtConversionPage = () => {
                 </TableBody>
               </Table>
             </TableContainer>
-          </div>
-        </div>
+          </Stack>
 
+        </ThemeProvider >
       </div>
       <div className="mt-20">
         <Footer />
