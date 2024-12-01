@@ -67,7 +67,7 @@ const WhatWeOffer = () => {
     {
       icon: Image6, // replace with your actual icon path
       bgColor: "bg-[#C4DDFF]", // light blue background
-      text: "Butain Oracle Operator ",
+      text: "Butane Oracle Operator ",
       textColor: "text-black",
     },
   ];
