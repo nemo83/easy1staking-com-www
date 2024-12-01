@@ -6,6 +6,7 @@ import Image3 from "../../public/CardContent3.png";
 import Image4 from "../../public/CardContent4.png";
 import Image5 from "../../public/CardContent5.png";
 import Image6 from "../../public/CardContent6.png";
+import Image7 from "../../public/CardContent7.png";
 import TagFacesRounded from "../../public/TagFacesRounded.png";
 import FlashlightonRounded from "../../public/FlashlightonRounded.png";
 import { EASY1STAKING_API } from "@/lib/util/Constants";
@@ -53,10 +54,10 @@ const WhatWeOffer = () => {
   };
   const cards2 = [
     {
-      icon: Image4, // replace with your actual icon path
-      bgColor: "bg-[#FFCCCC]", // similar to the light red background
-      text: "Multiple Opensource projects on Github",
-      textColor: "text-black",
+      icon: Image7,
+      bgColor: "bg-black", // black background
+      text: "Midnight Node Operator",
+      textColor: "text-white",
     },
     {
       icon: Image5, // replace with your actual icon path
@@ -68,6 +69,12 @@ const WhatWeOffer = () => {
       icon: Image6, // replace with your actual icon path
       bgColor: "bg-[#C4DDFF]", // light blue background
       text: "Butane Oracle Operator ",
+      textColor: "text-black",
+    },
+    {
+      icon: Image4, // replace with your actual icon path
+      bgColor: "bg-[#FFCCCC]", // similar to the light red background
+      text: "Multiple Opensource projects on Github",
       textColor: "text-black",
     },
   ];
