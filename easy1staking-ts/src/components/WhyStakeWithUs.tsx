@@ -5,6 +5,7 @@ import Image3 from "../../public/Frame3.png";
 import Image4 from "../../public/Frame4.png";
 
 import Image from "next/image";
+import { Chip } from "@mui/material";
 
 export const WhyStakeWithUs = () => {
   return (
@@ -42,7 +43,7 @@ export const WhyStakeWithUs = () => {
         <div className="flex flex-col justify-center items-center mt-20 md:mt-40">
           <div className="w-[315px] sm:w-[464px] md:w-[364px] lg:w-[500px] h-[450px] md:h-[550px]  p-10 rounded-3xl relative bg-[#7986cb]">
             <h1 className="text-[30px] md:text-[48px] font-semibold">
-              Giveaways
+              Giveaways <Chip label="Coming Soon" color="primary" />
             </h1>
             <p className="w-[80%]">
               Buy tickets of our on chain raffles and good
@@ -55,7 +56,7 @@ export const WhyStakeWithUs = () => {
           <div className="w-[315px] sm:w-[464px] md:w-[364px] lg:w-[500px] h-[450px] md:h-[550px]  rounded-3xl relative bg-[#1a237e] mt-20">
             <div className="p-10">
               <h1 className="text-[30px] md:text-[48px] font-semibold">
-                Raffles
+                Raffles <Chip label="Coming Soon" color="secondary" />
               </h1>
               <p className="w-[80%]">
                 We run raffles every 5 days. Free to join. <br /> Forever.
