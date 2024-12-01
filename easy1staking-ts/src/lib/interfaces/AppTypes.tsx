@@ -39,3 +39,19 @@ export interface WmtConversionStats {
     amount_wmt_converted_total: number
 }
 
+// Stake Pool Details
+export interface StakePoolAssessment {
+    current_pool: StakePoolDetails | undefined;
+    easy1_stake_pool: StakePoolDetails
+}
+
+export interface StakePoolDetails {
+    ticker: string;
+    fixed_fee: number;
+    variable: number;
+    declared_pledge: number;
+    live_stake: number;
+    saturation: number;
+    retired: boolean;
+    retiring: boolean;
+}
