@@ -7,6 +7,7 @@ import Image4 from "../../public/CardContent4.png";
 import Image5 from "../../public/CardContent5.png";
 import Image6 from "../../public/CardContent6.png";
 import Image7 from "../../public/CardContent7.png";
+import Image8 from "../../public/CardContent8.png";
 import TagFacesRounded from "../../public/TagFacesRounded.png";
 import FlashlightonRounded from "../../public/FlashlightonRounded.png";
 import { EASY1STAKING_API } from "@/lib/util/Constants";
@@ -57,6 +58,12 @@ const WhatWeOffer = () => {
       icon: Image7,
       bgColor: "bg-black", // black background
       text: "Midnight Node Operator",
+      textColor: "text-white",
+    },
+    {
+      icon: Image8,
+      bgColor: "bg-black", // black background
+      text: "World Mobile Earth Node Operator",
       textColor: "text-white",
     },
     {
