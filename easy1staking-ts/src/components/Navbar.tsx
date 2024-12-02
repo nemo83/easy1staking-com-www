@@ -95,7 +95,7 @@ const Navbar = () => {
                 key={page.href}
                 onClick={handleCloseNavMenu}
                 href={page.href}
-                className="font-semibold mx-2"
+                className="font-semibold mx-3"
               >
                 {page.name}
               </Link>

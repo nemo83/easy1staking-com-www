@@ -9,7 +9,7 @@ import Distribution from "@/components/Distribution";
 export default function Home() {
   return (
     <div className="home-bg">
-      <div className="home-hero min-h-[180vh]">
+      <div className="home-hero min-h-[120vh]">
         <Navbar />
         <HomeHero />
       </div>

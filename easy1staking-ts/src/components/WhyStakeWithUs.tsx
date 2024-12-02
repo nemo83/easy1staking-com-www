@@ -10,10 +10,10 @@ import { Chip } from "@mui/material";
 export const WhyStakeWithUs = () => {
   return (
     <div className="WhyStakeWithUs min-h-[200vh] relative">
-      <h1 className="text-[34px] sm:text-[54px] md:text-[64px] pt-20 font-semibold text-center">
+      <h1 className="text-[34px] sm:text-[54px] md:text-[64px] font-semibold text-center">
         Why Stake With Us?
       </h1>
-      <div className="py-20 block md:flex justify-center gap-5 container mx-auto">
+      <div className="block md:flex justify-center gap-5 container mx-auto">
         <div className="flex flex-col justify-center items-center mt-20 md:mt-0">
           <div className="w-[315px] sm:w-[464px] md:w-[364px] lg:w-[500px] h-[450px] md:h-[550px] p-10 rounded-3xl relative bg-[#304ffe]">
             <h1 className="text-[30px] md:text-[48px] font-semibold">

@@ -91,7 +91,7 @@ const HomeHero = () => {
         </p>
         {getButton(delegatedType)}
       </div>
-      <div className=" p-5 md:px-0">
+      <div className="p-5 md:px-0">
         <Image src={Coin} alt="Cardano Coin"/>
       </div>
     </div>
