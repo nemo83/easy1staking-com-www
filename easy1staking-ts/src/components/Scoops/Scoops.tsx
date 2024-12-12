@@ -6,14 +6,14 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-
+import CheckIcon from '@mui/icons-material/Check';
 import SockJS from "sockjs-client";
 import Stomp from "stompjs";
 import { CSSTransition, TransitionGroup } from "react-transition-group";
 import { Button, Collapse } from "@mui/material";
-
+import LaunchIcon from '@mui/icons-material/Launch';
 type Scoop = {
-  slot: number;
+  timestamp: number;
   txHash: string;
   numOrders: number;
   scooperHash: string;
@@ -32,11 +32,11 @@ const Scoops = () => {
         .then((res) => res.json())
         .then((data) => {
           const foo: Scoop[] = data.map((s: any) => ({
-            slot: s.slot,
-            txHash: s.txHash,
-            numOrders: s.orders,
-            scooperHash: s.scooperPubKeyHash,
-            isMempool: s.numMempoolOrders,
+            timestamp: s.timestamp,
+            txHash: s.tx_hash,
+            numOrders: s.num_orders,
+            scooperHash: s.scooper_hash,
+            isMempool: s.is_mempool,
           }));
 
           setScoops(foo);
@@ -52,19 +52,14 @@ const Scoops = () => {
               console.log("ws: " + JSON.stringify(messageOutput.body));
               const serverScoop = JSON.parse(messageOutput.body);
               const scoop: Scoop = {
-                slot: serverScoop.slot,
-                txHash: serverScoop.txHash,
-                numOrders: serverScoop.orders,
-                scooperHash: serverScoop.scooperPubKeyHash,
-                isMempool: serverScoop.numMempoolOrders,
+                timestamp: serverScoop.timestamp,
+                txHash: serverScoop.tx_hash,
+                numOrders: serverScoop.num_orders,
+                scooperHash: serverScoop.scooper_hash,
+                isMempool: serverScoop.is_mempool,
               };
 
-              const slice = scoops.slice();
-
-              console.log("slice length: " + slice.length);
-
-              const newScoops = [scoop].concat(slice);
-              setScoops((oldScoops) => newScoops.concat(oldScoops.slice()));
+              setScoops((oldScoops) => oldScoops.slice().concat(scoop));
             });
           });
 
@@ -79,7 +74,7 @@ const Scoops = () => {
     if (scoop != null) {
       let newScoop = { ...scoop, txHash: scoop.txHash + "a" };
       const newScoops = [newScoop].concat(scoops);
-      setScoops(newScoops);
+      setScoops((oldScoops) => [newScoop].concat(oldScoops.slice()));
     }
   };
 
@@ -88,40 +83,43 @@ const Scoops = () => {
   };
 
   return (
-    <>
-      <Button onClick={() => add()}>Add</Button>
-      <TableContainer component={Paper}>
-        <Table sx={{ minWidth: 650 }} aria-label="simple table">
-          <TableHead>
-            <TableRow>
-              <TableCell>Slot Number</TableCell>
-              <TableCell align="left">Transaction Hash</TableCell>
-              <TableCell align="left">Number Orders</TableCell>
-              <TableCell align="left">Scooper Hash</TableCell>
-              <TableCell align="left">Mempool</TableCell>
-            </TableRow>
-          </TableHead>
-          <TransitionGroup component={TableBody}>
-            {scoops.map((scoop) => (
-              <CSSTransition key={scoop.txHash} timeout={500} classNames="fade">
-                <TableRow>
-                  <TableCell>{scoop.slot}</TableCell>
-                  <TableCell align="left">{trimTxHash(scoop.txHash)}</TableCell>
-                  <TableCell align="left">{scoop.numOrders}</TableCell>
-                  <TableCell align="left">
-                    {scoop.scooperHash ===
-                      "37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f6a983f67f3f"
-                      ? "EASY1"
-                      : scoop.scooperHash}
-                  </TableCell>
-                  <TableCell align="left">{scoop.isMempool}</TableCell>
-                </TableRow>
-              </CSSTransition>
-            ))}
-          </TransitionGroup>
-        </Table>
-      </TableContainer>
-    </>
+    <TableContainer component={Paper}>
+      <Table sx={{ minWidth: 650 }} aria-label="simple table">
+        <TableHead>
+          <TableRow>
+            <TableCell>Time</TableCell>
+            <TableCell align="left">Transaction Hash</TableCell>
+            <TableCell align="left">Number Orders</TableCell>
+            <TableCell align="left">Scooper Hash</TableCell>
+            <TableCell align="left">Mempool</TableCell>
+          </TableRow>
+        </TableHead>
+        <TransitionGroup component={TableBody}>
+          {scoops.map((scoop) => (
+            <CSSTransition key={scoop.txHash} timeout={500} classNames="fade">
+              <TableRow>
+                <TableCell>{new Date(scoop.timestamp * 1000).toLocaleString()}</TableCell>
+                <TableCell align="left">
+                  <Button href={"https://cardanoscan.io/transaction/" + scoop.txHash}
+                    endIcon={<LaunchIcon />}                                        >
+                    {trimTxHash(scoop.txHash)}
+                  </Button>
+                </TableCell>
+                <TableCell align="left">{scoop.numOrders}</TableCell>
+                <TableCell align="left">
+                  {scoop.scooperHash ===
+                    "37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f6a983f67f3f"
+                    ? "EASY1"
+                    : scoop.scooperHash}
+                </TableCell>
+                <TableCell align="left">{scoop.isMempool ? <CheckIcon /> : ''}</TableCell>
+              </TableRow>
+            </CSSTransition>
+          ))}
+        </TransitionGroup>
+      </Table>
+    </TableContainer>
+
   );
 };
 
