@@ -27,7 +27,7 @@ const Scoops = () => {
     (async () => {
       fetch(
         "https://scooper-api.easy1staking.com/scoops?" +
-          new URLSearchParams({ sort: "DESC", limit: "10" }).toString()
+        new URLSearchParams({ sort: "DESC", limit: "10" }).toString()
       )
         .then((res) => res.json())
         .then((data) => {
@@ -40,35 +40,39 @@ const Scoops = () => {
           }));
 
           setScoops(foo);
+          return Promise.resolve(0);
+        })
+        .then((data) => {
+
+          var socket = new SockJS("https://scooper-api.easy1staking.com/ws");
+          const stompClient = Stomp.over(socket);
+          stompClient.connect({}, function (frame: any) {
+            console.log("Connected: " + frame);
+            stompClient.subscribe("/topic/messages", function (messageOutput: any) {
+              console.log("ws: " + JSON.stringify(messageOutput.body));
+              const serverScoop = JSON.parse(messageOutput.body);
+              const scoop: Scoop = {
+                slot: serverScoop.slot,
+                txHash: serverScoop.txHash,
+                numOrders: serverScoop.orders,
+                scooperHash: serverScoop.scooperPubKeyHash,
+                isMempool: serverScoop.numMempoolOrders,
+              };
+
+              const slice = scoops.slice();
+
+              console.log("slice length: " + slice.length);
+
+              const newScoops = [scoop].concat(slice);
+              setScoops((oldScoops) => newScoops.concat(oldScoops.slice()));
+            });
+          });
+
         });
     })();
   }, []);
 
-  React.useEffect(() => {
-    var socket = new SockJS("https://scooper-api.easy1staking.com/ws");
-    const stompClient = Stomp.over(socket);
-    stompClient.connect({}, function (frame: any) {
-      console.log("Connected: " + frame);
-      stompClient.subscribe("/topic/messages", function (messageOutput: any) {
-        console.log("ws: " + JSON.stringify(messageOutput.body));
-        const serverScoop = JSON.parse(messageOutput.body);
-        const scoop: Scoop = {
-          slot: serverScoop.slot,
-          txHash: serverScoop.txHash,
-          numOrders: serverScoop.orders,
-          scooperHash: serverScoop.scooperPubKeyHash,
-          isMempool: serverScoop.numMempoolOrders,
-        };
 
-        const slice = scoops.slice();
-
-        console.log("slice length: " + slice.length);
-
-        const newScoops = [scoop].concat(slice);
-        setScoops(newScoops);
-      });
-    });
-  }, [scoops]);
 
   const add = () => {
     let scoop = scoops.at(0);
@@ -106,7 +110,7 @@ const Scoops = () => {
                   <TableCell align="left">{scoop.numOrders}</TableCell>
                   <TableCell align="left">
                     {scoop.scooperHash ===
-                    "37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f6a983f67f3f"
+                      "37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f6a983f67f3f"
                       ? "EASY1"
                       : scoop.scooperHash}
                   </TableCell>
