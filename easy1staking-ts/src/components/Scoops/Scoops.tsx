@@ -53,10 +53,10 @@ const Scoops = () => {
               const serverScoop = JSON.parse(messageOutput.body);
               const scoop: Scoop = {
                 timestamp: serverScoop.timestamp,
-                txHash: serverScoop.txHash,
-                numOrders: serverScoop.orders,
-                scooperHash: serverScoop.scooperPubKeyHash,
-                isMempool: serverScoop.numMempoolOrders > 0,
+                txHash: serverScoop.tx_hash,
+                numOrders: serverScoop.num_orders,
+                scooperHash: serverScoop.scooper_hash,
+                isMempool: serverScoop.is_mempool
               };
 
               setScoops((oldScoops) => oldScoops.slice().concat(scoop));
