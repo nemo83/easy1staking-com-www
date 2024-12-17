@@ -53,10 +53,10 @@ const Scoops = () => {
               const serverScoop = JSON.parse(messageOutput.body);
               const scoop: Scoop = {
                 timestamp: serverScoop.timestamp,
-                txHash: serverScoop.tx_hash,
-                numOrders: serverScoop.num_orders,
-                scooperHash: serverScoop.scooper_hash,
-                isMempool: serverScoop.is_mempool,
+                txHash: serverScoop.txHash,
+                numOrders: serverScoop.orders,
+                scooperHash: serverScoop.scooperPubKeyHash,
+                isMempool: serverScoop.numMempoolOrders > 0,
               };
 
               setScoops((oldScoops) => oldScoops.slice().concat(scoop));
@@ -66,17 +66,6 @@ const Scoops = () => {
         });
     })();
   }, []);
-
-
-
-  const add = () => {
-    let scoop = scoops.at(0);
-    if (scoop != null) {
-      let newScoop = { ...scoop, txHash: scoop.txHash + "a" };
-      const newScoops = [newScoop].concat(scoops);
-      setScoops((oldScoops) => [newScoop].concat(oldScoops.slice()));
-    }
-  };
 
   const trimTxHash = (hash: string) => {
     return `${hash.substring(0, 5)}...${hash.substring(hash.length - 5)}`;
