@@ -52,14 +52,14 @@ const Scoops = () => {
               console.log("ws: " + JSON.stringify(messageOutput.body));
               const serverScoop = JSON.parse(messageOutput.body);
               const scoop: Scoop = {
-                timestamp: serverScoop.timestamp,
+                timestamp: serverScoop.timestamp / 1_000,
                 txHash: serverScoop.tx_hash,
                 numOrders: serverScoop.num_orders,
                 scooperHash: serverScoop.scooper_hash,
                 isMempool: serverScoop.is_mempool
               };
 
-              setScoops((oldScoops) => oldScoops.slice().concat(scoop));
+              setScoops((oldScoops) => [scoop].concat(oldScoops.slice()));
             });
           });
 
