@@ -115,17 +115,14 @@ const WmtConversionPage = () => {
   }, [])
 
   const wmtToWtmx = async () => {
-    TransactionUtil
-      .convertWMTtoWTMx(wallet, wmtBalance, processingFee, acceptDelegate ? delegatedType : undefined)
-      .then((unsignedTx) => {
-        return wallet
-          .signTx(unsignedTx)
-          .then((signedTx) => wallet.submitTx(signedTx))
-          .then((txHash) => toast.success("Transaction submitted: " + txHash.substring(0, 10) + "..." + txHash.substring(txHash.length - 10), { duration: 5000 }))
-          .catch((err) => toast.error(err.message, { duration: 5000 }));
-      })
-      .catch((err) => toast.error(err, { duration: 5000 }));
-
+    try {
+      const unsignedTx = await TransactionUtil.convertWMTtoWTMx(wallet, wmtBalance, processingFee, acceptDelegate ? delegatedType : undefined)
+      const signedTx = await wallet.signTx(unsignedTx);
+      const txHash = await wallet.submitTx(signedTx);
+      toast.success("Transaction submitted: " + txHash.substring(0, 10) + "..." + txHash.substring(txHash.length - 10), { duration: 5000 })
+    } catch (err) {
+      toast.error('' + err, { duration: 5000 })
+    }
   }
 
   return (
@@ -223,7 +220,7 @@ const WmtConversionPage = () => {
             border={"2px solid white"}
             borderRadius={"20px"}
           >
-            <TableContainer component={Paper} sx={{ width: "90%" , background: "none" }}>
+            <TableContainer component={Paper} sx={{ width: "90%", background: "none" }}>
               <Table aria-label="simple table">
                 <TableHead>
                   <TableRow>
@@ -251,11 +248,7 @@ const WmtConversionPage = () => {
               </Table>
             </TableContainer>
           </Stack>
-
         </ThemeProvider >
-      </div>
-      <div className="mt-20">
-        <Footer />
       </div>
     </div >
   );

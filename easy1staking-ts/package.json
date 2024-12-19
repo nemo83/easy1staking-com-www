@@ -12,8 +12,8 @@
   "dependencies": {
     "@emotion/react": "^11.13.5",
     "@emotion/styled": "^11.13.5",
-    "@meshsdk/core": "^1.7.13",
-    "@meshsdk/react": "^1.7.13",
+    "@meshsdk/core": "^1.8.3",
+    "@meshsdk/react": "^1.8.3",
     "@mui/icons-material": "^6.1.8",
     "@mui/material": "^6.1.8",
     "@mui/x-charts": "^7.23.2",

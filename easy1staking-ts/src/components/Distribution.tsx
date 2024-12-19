@@ -18,9 +18,9 @@ const Distribution = () => {
 
   useEffect(() => {
     if (connected) {
-      wallet.getUsedAddress()
+      wallet.getUsedAddresses()
         .then((address) => {
-          setWalletAddress(address.toBech32().toString());
+          setWalletAddress(address[0]);
         })
     } else {
       setWalletAddress("");
@@ -76,7 +76,6 @@ const Distribution = () => {
         </div>
         {stakePoolAssessment && <PoolDetails stakePoolAssessment={stakePoolAssessment} />}
       </div>
-      <Footer />
     </div>
   );
 }

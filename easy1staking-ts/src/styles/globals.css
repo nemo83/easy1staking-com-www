@@ -7,8 +7,16 @@ body {
   color: white;
   background: #040717; /* Darker colors for the gradient */
 }
+
 .home-bg {
   background: black; /* Darker colors for the gradient */
+}
+
+.home-bg-new {
+  background-image: url("../../public/hero-bg-3.png");
+  background-position: top;
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
 .home-hero {

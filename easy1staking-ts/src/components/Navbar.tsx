@@ -27,6 +27,11 @@ const Navbar = () => {
       enabled: true,
     },
     {
+      name: "Staking Assessment",
+      href: "/staking-assessment",
+      enabled: true,
+    },
+    {
       name: "WMTx Conversion",
       href: "/wmtx-conversion",
       enabled: true,

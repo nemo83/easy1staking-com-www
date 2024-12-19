@@ -1,5 +1,5 @@
 import {
-    BrowserWallet,
+    IWallet,
     mConStr,
     MeshTxBuilder,
     Transaction,
@@ -67,7 +67,7 @@ export default class TransactionUtil {
 
     }
 
-    public static async delegate(wallet: BrowserWallet, registerStake: boolean): Promise<string> {
+    public static async delegate(wallet: IWallet, registerStake: boolean): Promise<string> {
         const unsignedTx = await wallet
             .getRewardAddresses()
             .then((rewardsAddresses) => {
@@ -85,7 +85,7 @@ export default class TransactionUtil {
         return wallet.submitTx(signedTx);
     }
 
-    public static async convertWMTtoWTMx(wallet: BrowserWallet, wmtBalance: string, processingFee: string, delegatedType: EASY1DelegationType | undefined): Promise<string> {
+    public static async convertWMTtoWTMx(wallet: IWallet, wmtBalance: string, processingFee: string, delegatedType: EASY1DelegationType | undefined): Promise<string> {
 
         let collateralUtxos = await wallet.getCollateral();
         // console.log('collateralUtxos: ' + JSON.stringify(collateralUtxos));
@@ -93,7 +93,7 @@ export default class TransactionUtil {
         const walletUtxos = await wallet.getUtxos();
         // console.log('walletUtxos: ' + JSON.stringify(walletUtxos));
 
-        const walletAddress = (await wallet.getUsedAddress()).toBech32().toString();
+        const walletAddress = (await wallet.getUsedAddresses())[0];
         // console.log('walletAddress: ' + JSON.stringify(walletAddress));
 
         const balance = await wallet.getBalance();
