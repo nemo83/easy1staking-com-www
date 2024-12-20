@@ -1,5 +1,5 @@
 import { StakePoolAssessment } from "@/lib/interfaces/AppTypes";
-import { Box, Card, CardContent, Chip, Grid2, Typography } from "@mui/material";
+import { Alert, Box, Card, CardContent, Chip, Grid2, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 
@@ -66,6 +66,23 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
 
   return (
     <Box className="my-20 mt-40">
+      {currentPoolRetiring ?
+        <Box marginBottom={4} justifyItems={"center"}>
+          <Alert severity="warning"
+            sx={{ width: "80%" }}
+          > Stake Pool {currentPoolTicker} is retiring soon! Please delegate to a new pool or you will stop receiving rewards </Alert>
+        </Box>
+        : null}
+
+      {currentPoolRetired ?
+        <Box marginBottom={4} justifyItems={"center"}>
+          <Alert severity="error"
+            sx={{ width: "80%" }}
+          > Stake Pool {currentPoolTicker} is RETIRED! Please delegate to a new pool to start receiving rewards again!</Alert>
+        </Box>
+        : null}
+
+
       <Box className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-5xl">
         {/* First Pool Card */}
         <div
