@@ -179,7 +179,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
       return (
         <Tooltip title="Extremely low pledge, operator has no skin in the game">
           <Typography color="red">
-            {pledge.toFixed(2)} Ada
+            {pledge.toLocaleString()} Ada
           </Typography>
         </Tooltip>
       );
@@ -187,7 +187,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
       return (
         <Tooltip title="Low skin in the game">
           <Typography color="orange">
-            {pledge.toFixed(2)} Ada
+            {pledge.toLocaleString()} Ada
           </Typography>
         </Tooltip>
       );
@@ -195,7 +195,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
       return (
         <Tooltip title="SPO has a good amount of skin in the game">
           <Typography color="yellow">
-            {pledge.toFixed(2)} Ada
+            {pledge.toLocaleString()} Ada
           </Typography>
         </Tooltip>
       );
@@ -203,7 +203,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
       return (
         <Tooltip title="SPO has plenty of sking in the game">
           <Typography color="red">
-            {pledge.toFixed(2)} Ada
+            {pledge.toLocaleString()} Ada
           </Typography>
         </Tooltip>
       );
@@ -320,7 +320,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
                   Pledge
                 </Typography>
                 <Tooltip title="High pledge: SPO has a lot of skin in the game">
-                  <Typography color="green">{(stakePoolAssessment.easy1_stake_pool.declared_pledge / 1_000_000).toFixed(0)} Ada</Typography>
+                  <Typography color="green">{(stakePoolAssessment.easy1_stake_pool.declared_pledge / 1_000_000).toLocaleString()} Ada</Typography>
                 </Tooltip>
               </Box>
             </Box>
