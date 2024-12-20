@@ -1,9 +1,14 @@
 import { StakePoolAssessment } from "@/lib/interfaces/AppTypes";
-import { Alert, Box, Card, CardContent, Chip, Grid2, Typography } from "@mui/material";
+import { Alert, Box, Card, CardContent, Chip, createTheme, CssBaseline, Grid2, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, ThemeProvider, Tooltip, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
-import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 
 const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
+
+  const darkTheme = createTheme({
+    palette: {
+      mode: 'dark',
+    },
+  });
 
   const { stakePoolAssessment } = props;
 
@@ -64,6 +69,148 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
     }
   }
 
+  const getCurrentPoolMargin = () => {
+    const margin = (currentPoolMargin * 100);
+    const easy1Margin = (stakePoolAssessment.easy1_stake_pool.variable * 100);
+    if (margin < easy1Margin) {
+      return (
+        <Tooltip title="Low margin">
+          <Typography color="green">
+            {margin.toFixed(2)} %
+          </Typography>
+        </Tooltip>
+      );
+    } else if (margin < 3.0) {
+      return (
+        <Tooltip title="Higher fees than EASY1. Delegate to EASY1 and increase your rewards">
+          <Typography color="yellow">
+            {margin.toFixed(2)} %
+          </Typography>
+        </Tooltip>
+      );
+    } else if (margin < 20.0) {
+      return (
+        <Tooltip title="Very high marging. Large portion of reward will be lost">
+          <Typography color="orange">
+            {margin.toFixed(2)} %
+          </Typography>
+        </Tooltip>
+      );
+    } else {
+      return (
+        <Tooltip title="Extremely high margin, majority of reward will be lost">
+          <Typography color="red">
+            {margin.toFixed(2)} %
+          </Typography>
+        </Tooltip>
+      );
+    }
+  }
+
+  const getCurrentCosts = () => {
+    const costs = (currentPoolCosts / 1_000_000);
+    if (costs <= 170) {
+      return (
+        <Tooltip title="Low costs">
+          <Typography color="green">
+            {costs} Ada
+          </Typography>
+        </Tooltip>
+      );
+    } else if (costs <= 340) {
+      return (
+        <Tooltip title="Higher costs than EASY1. Delegate to EASY1 and increase your rewards">
+          <Typography color="yellow">
+            {costs} Ada
+          </Typography>
+        </Tooltip>
+      );
+    } else {
+      return (
+        <Tooltip title="Very high fixed costs">
+          <Typography color="red">
+            {costs} Ada
+          </Typography>
+        </Tooltip>
+      );
+    }
+  }
+
+  const getCurrentSaturation = () => {
+    const saturation = (currentPoolSaturation * 100); //.toFixed(2)} %
+    if (saturation < 3.0) {
+      return (
+        <Tooltip title="Very low saturation, high chances of epochs without rewards">
+          <Typography color="orange">
+            {saturation.toFixed(2)} %
+          </Typography>
+        </Tooltip>
+      );
+    } else if (saturation < 5.0) {
+      return (
+        <Tooltip title="Low saturation, chances of epochs without rewards">
+          <Typography color="yellow">
+            {saturation.toFixed(2)} %
+          </Typography>
+        </Tooltip>
+      );
+    } else if (saturation < 85.0) {
+      return (
+        <Tooltip title="Ideal saturation">
+          <Typography color="green">
+            {saturation.toFixed(2)} %
+          </Typography>
+        </Tooltip>
+      );
+    } else {
+      return (
+        <Tooltip title="Very high saturation, chances of losing rewards">
+          <Typography color="red">
+            {saturation.toFixed(2)} %
+          </Typography>
+        </Tooltip>
+      );
+    }
+  }
+
+  const getCurrentPledge = () => {
+    const pledge = (currentPoolDeclaredPledge / 1_000_000) //.toFixed(0)} Ada
+    if (pledge < 1_000) {
+      return (
+        <Tooltip title="Extremely low pledge, operator has no skin in the game">
+          <Typography color="red">
+            {pledge.toFixed(2)} Ada
+          </Typography>
+        </Tooltip>
+      );
+    } else if (pledge < 20_000) {
+      return (
+        <Tooltip title="Low skin in the game">
+          <Typography color="orange">
+            {pledge.toFixed(2)} Ada
+          </Typography>
+        </Tooltip>
+      );
+    } else if (pledge < 100_000) {
+      return (
+        <Tooltip title="SPO has a good amount of skin in the game">
+          <Typography color="yellow">
+            {pledge.toFixed(2)} Ada
+          </Typography>
+        </Tooltip>
+      );
+    } else {
+      return (
+        <Tooltip title="SPO has plenty of sking in the game">
+          <Typography color="red">
+            {pledge.toFixed(2)} Ada
+          </Typography>
+        </Tooltip>
+      );
+    }
+  }
+
+
   return (
     <Box className="my-20 mt-40">
       {currentPoolRetiring ?
@@ -96,7 +243,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
             <Grid2 container justifyContent="space-between">
               <Grid2>
                 <h1 className="font-semibold text-[25px] text-white mb-10">
-                  Current Pool
+                  {currentPoolTicker}
                 </h1>
               </Grid2>
               {currentPoolRetiring || currentPoolRetired ? <Grid2>
@@ -107,33 +254,27 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
             <Box className="text-white">
               <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
                 <Typography variant="body1" className="font-semibold">
-                  Ticker
-                </Typography>
-                <Typography className=" text-white">{currentPoolTicker}</Typography>
-              </Box>
-              <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
-                <Typography variant="body1" className="font-semibold">
                   Margin %
                 </Typography>
-                <Typography className=" text-white">{(currentPoolMargin * 100).toFixed(2)}%</Typography>
+                <Typography className=" text-white">{getCurrentPoolMargin()}</Typography>
               </Box>
               <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
                 <Typography variant="body1" className="font-semibold">
                   Fixed Costs
                 </Typography>
-                <Typography className=" text-white">{currentPoolCosts / 1_000_000} Ada</Typography>
+                <Typography className=" text-white">{getCurrentCosts()}</Typography>
               </Box>
               <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
                 <Typography variant="body1" className="font-semibold">
                   Saturation
                 </Typography>
-                <Typography className=" text-white">{(currentPoolSaturation * 100).toFixed(2)} %</Typography>
+                <Typography className=" text-white">{getCurrentSaturation()}</Typography>
               </Box>
               <Box className="flex justify-between">
                 <Typography variant="body1" className="font-semibold">
                   Pledge
                 </Typography>
-                <Typography className=" text-white">{(currentPoolDeclaredPledge / 1_000_000).toFixed(0)} Ada</Typography>
+                <Typography className=" text-white">{getCurrentPledge()}</Typography>
               </Box>
             </Box>
           </CardContent>
@@ -152,39 +293,77 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
             <Box className="text-white">
               <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
                 <Typography variant="body1" className="font-semibold">
-                  Ticker
-                </Typography>
-                <Typography className=" text-white">{stakePoolAssessment.easy1_stake_pool.ticker}</Typography>
-              </Box>
-              <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
-                <Typography variant="body1" className="font-semibold">
                   Margin %
                 </Typography>
-                <Typography className=" text-white">{(stakePoolAssessment.easy1_stake_pool.variable * 100).toFixed(2)}%</Typography>
+                <Tooltip title="Lowest maring, to maximise your reards">
+                  <Typography color="green">{(stakePoolAssessment.easy1_stake_pool.variable * 100).toFixed(2)}%</Typography>
+                </Tooltip>
               </Box>
               <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
                 <Typography variant="body1" className="font-semibold">
                   Fixed Costs
                 </Typography>
-                <Typography className=" text-white">{stakePoolAssessment.easy1_stake_pool.fixed_fee / 1_000_000} Ada</Typography>
+                <Tooltip title="Lowest fixed costs, to maximise your reards">
+                  <Typography color="green">{stakePoolAssessment.easy1_stake_pool.fixed_fee / 1_000_000} Ada</Typography>
+                </Tooltip>
               </Box>
               <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
                 <Typography variant="body1" className="font-semibold">
                   Saturation
                 </Typography>
-                <Typography className=" text-white">{(stakePoolAssessment.easy1_stake_pool.saturation * 100).toFixed(2)} %</Typography>
+                <Tooltip title="Low saturation: no risk to lose rewards">
+                  <Typography color="green">{(stakePoolAssessment.easy1_stake_pool.saturation * 100).toFixed(2)} %</Typography>
+                </Tooltip>
               </Box>
               <Box className="flex justify-between">
                 <Typography variant="body1" className="font-semibold">
                   Pledge
                 </Typography>
-                <Typography className=" text-white">{(stakePoolAssessment.easy1_stake_pool.declared_pledge / 1_000_000).toFixed(0)} Ada</Typography>
+                <Tooltip title="High pledge: SPO has a lot of skin in the game">
+                  <Typography color="green">{(stakePoolAssessment.easy1_stake_pool.declared_pledge / 1_000_000).toFixed(0)} Ada</Typography>
+                </Tooltip>
               </Box>
             </Box>
           </CardContent>
         </div>
       </Box>
-    </Box>
+
+      {
+        false ? <ThemeProvider theme={darkTheme}>
+          <CssBaseline />
+
+          <TableContainer component={Paper}>
+            <Table sx={{ minWidth: 650 }} aria-label="simple table">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Ticker</TableCell>
+                  <TableCell align="right">Margin %</TableCell>
+                  <TableCell align="right">Fixed Costs</TableCell>
+                  <TableCell align="right">Saturation</TableCell>
+                  <TableCell align="right">Pledge</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow
+                  key="easy1"
+                  sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                >
+                  <TableCell component="th" scope="row">
+                    {stakePoolAssessment.easy1_stake_pool.ticker}
+                  </TableCell>
+                  <TableCell align="right">{(stakePoolAssessment.easy1_stake_pool.variable * 100).toFixed(2)} %</TableCell>
+                  <TableCell align="right">{stakePoolAssessment.easy1_stake_pool.fixed_fee / 1_000_000} Ada</TableCell>
+                  <TableCell align="right">{(stakePoolAssessment.easy1_stake_pool.saturation * 100).toFixed(2)} %</TableCell>
+                  <TableCell align="right">{(stakePoolAssessment.easy1_stake_pool.declared_pledge / 1_000_000).toFixed(0)} Ada</TableCell>
+                </TableRow>
+
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </ThemeProvider> : null
+      }
+
+    </Box >
   );
 }
 
