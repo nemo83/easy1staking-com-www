@@ -1,6 +1,8 @@
 import { StakePoolAssessment } from "@/lib/interfaces/AppTypes";
 import { Alert, Box, Card, CardContent, Chip, createTheme, CssBaseline, Grid2, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, ThemeProvider, Tooltip, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
+import DisabledByDefaultIcon from '@mui/icons-material/DisabledByDefault';
 
 const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
 
@@ -19,6 +21,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
   const [currentPoolDeclaredPledge, setCurrentPoolDeclaredPledge] = useState<number>(0);
   const [currentPoolRetiring, setCurrentPoolRetiring] = useState<boolean>(false);
   const [currentPoolRetired, setCurrentPoolRetired] = useState<boolean>(false);
+  const [currentPoolIsMpo, setCurrentPoolIsMpo] = useState<boolean>(false);
 
   useEffect(() => {
     console.log('PoolDetails stakePoolAssessment: ' + JSON.stringify(stakePoolAssessment));
@@ -31,6 +34,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
       setCurrentPoolDeclaredPledge(stakePoolAssessment.current_pool!.declared_pledge);
       setCurrentPoolRetired(stakePoolAssessment.current_pool!.retired);
       setCurrentPoolRetiring(stakePoolAssessment.current_pool!.retiring);
+      setCurrentPoolIsMpo(stakePoolAssessment.current_pool!.is_mpo);
     } else {
       setCurrentPoolTicker("N/A");
       setCurrentPoolMargin(0.0);
@@ -39,6 +43,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
       setCurrentPoolDeclaredPledge(0);
       setCurrentPoolRetired(false);
       setCurrentPoolRetiring(false);
+      setCurrentPoolIsMpo(false);
     }
 
   }, [stakePoolAssessment])
@@ -80,9 +85,9 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
           </Typography>
         </Tooltip>
       );
-    } else if (margin < 3.0) {
+    } else if (margin < 5.0) {
       return (
-        <Tooltip title="Higher fees than EASY1. Delegate to EASY1 and increase your rewards">
+        <Tooltip title="High margin. Delegate to EASY1 and increase your rewards">
           <Typography color="yellow">
             {margin.toFixed(2)} %
           </Typography>
@@ -90,7 +95,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
       );
     } else if (margin < 20.0) {
       return (
-        <Tooltip title="Very high marging. Large portion of reward will be lost">
+        <Tooltip title="Very high marging. Large portion of reward will be lost. Delegate to EASY1 and increase your rewards">
           <Typography color="orange">
             {margin.toFixed(2)} %
           </Typography>
@@ -98,7 +103,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
       );
     } else {
       return (
-        <Tooltip title="Extremely high margin, majority of reward will be lost">
+        <Tooltip title="Extremely high margin, majority of reward will be lost. Delegate to EASY1 and increase your rewards">
           <Typography color="red">
             {margin.toFixed(2)} %
           </Typography>
@@ -202,7 +207,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
     } else {
       return (
         <Tooltip title="SPO has plenty of sking in the game">
-          <Typography color="red">
+          <Typography color="green">
             {pledge.toLocaleString()} Ada
           </Typography>
         </Tooltip>
@@ -254,6 +259,18 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
             <Box className="text-white">
               <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
                 <Typography variant="body1" className="font-semibold">
+                  Single Pool Owner
+                </Typography>
+                <Typography className=" text-white">
+                  {stakePoolAssessment.current_pool?.is_mpo ?
+                    <Tooltip title="Delegating to Multi Pool Operators reduces decentralisation and network security">
+                      <DisabledByDefaultIcon color="error" />
+                    </Tooltip>
+                    : <CheckBoxIcon color="success" />}
+                </Typography>
+              </Box>
+              <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
+                <Typography variant="body1" className="font-semibold">
                   Margin %
                 </Typography>
                 <Typography className=" text-white">{getCurrentPoolMargin()}</Typography>
@@ -291,6 +308,14 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
               {stakePoolAssessment.easy1_stake_pool.ticker}
             </h1>
             <Box className="text-white">
+              <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
+                <Typography variant="body1" className="font-semibold">
+                  Single Pool Owner
+                </Typography>
+                <Typography className=" text-white">
+                  <CheckBoxIcon color="success" />
+                </Typography>
+              </Box>
               <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
                 <Typography variant="body1" className="font-semibold">
                   Margin %

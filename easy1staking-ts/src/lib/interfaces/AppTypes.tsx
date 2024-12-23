@@ -54,4 +54,5 @@ export interface StakePoolDetails {
     saturation: number;
     retired: boolean;
     retiring: boolean;
+    is_mpo: boolean;
 }
