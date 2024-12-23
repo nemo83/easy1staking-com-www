@@ -82,7 +82,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
   const getCurrentPoolMargin = () => {
     const margin = (currentPoolMargin * 100);
     const easy1Margin = (stakePoolAssessment.easy1_stake_pool.variable * 100);
-    if (margin < easy1Margin) {
+    if (margin <= easy1Margin) {
       return (
         <Tooltip title="Low margin">
           <Typography color="green">
