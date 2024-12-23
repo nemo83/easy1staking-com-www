@@ -249,6 +249,10 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
               <Grid2>
                 <h1 className="font-semibold text-[25px] text-white mb-10">
                   {currentPoolTicker}
+                  &nbsp;
+                  <Typography variant="subtitle1" className="inline">
+                    ( Your current pool )
+                  </Typography>
                 </h1>
               </Grid2>
               {currentPoolRetiring || currentPoolRetired ? <Grid2>
