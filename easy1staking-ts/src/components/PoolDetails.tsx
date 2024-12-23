@@ -22,6 +22,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
   const [currentPoolRetiring, setCurrentPoolRetiring] = useState<boolean>(false);
   const [currentPoolRetired, setCurrentPoolRetired] = useState<boolean>(false);
   const [currentPoolIsMpo, setCurrentPoolIsMpo] = useState<boolean>(false);
+  const [showRewardsEstimate, setShowRewardsEstimate] = useState<boolean>(false);
 
   useEffect(() => {
     console.log('PoolDetails stakePoolAssessment: ' + JSON.stringify(stakePoolAssessment));
@@ -35,6 +36,9 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
       setCurrentPoolRetired(stakePoolAssessment.current_pool!.retired);
       setCurrentPoolRetiring(stakePoolAssessment.current_pool!.retiring);
       setCurrentPoolIsMpo(stakePoolAssessment.current_pool!.is_mpo);
+      const currentPoolLovelacesPerAda = parseFloat(stakePoolAssessment.current_pool!.lovelaces_per_ada);
+      const easy1LovelacesPerAda = parseFloat(stakePoolAssessment.easy1_stake_pool.lovelaces_per_ada);
+      setShowRewardsEstimate(currentPoolLovelacesPerAda > 0 && currentPoolLovelacesPerAda < easy1LovelacesPerAda);
     } else {
       setCurrentPoolTicker("N/A");
       setCurrentPoolMargin(0.0);
@@ -44,6 +48,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
       setCurrentPoolRetired(false);
       setCurrentPoolRetiring(false);
       setCurrentPoolIsMpo(false);
+      setShowRewardsEstimate(false);
     }
 
   }, [stakePoolAssessment])
@@ -215,6 +220,20 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
     }
   }
 
+  const getCurrentPoolRewardsEstimate = () => {
+    return parseFloat(stakePoolAssessment.stake_balance) * parseFloat(stakePoolAssessment.current_pool!.lovelaces_per_ada) / 1_000_000;
+  }
+
+  const getEasy1RewardsEstimate = () => {
+    return parseFloat(stakePoolAssessment.stake_balance) * parseFloat(stakePoolAssessment.easy1_stake_pool.lovelaces_per_ada) / 1_000_000;
+  }
+
+  const getEstimateRewardsIncrease = () => {
+    const diff = getEasy1RewardsEstimate() - getCurrentPoolRewardsEstimate();
+    const increase = getCurrentPoolRewardsEstimate() / diff;
+    return increase.toFixed(2);
+  }
+
 
   return (
     <Box className="my-20 mt-40">
@@ -291,12 +310,19 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
                 </Typography>
                 <Typography className=" text-white">{getCurrentSaturation()}</Typography>
               </Box>
-              <Box className="flex justify-between">
+              <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
                 <Typography variant="body1" className="font-semibold">
                   Pledge
                 </Typography>
                 <Typography className=" text-white">{getCurrentPledge()}</Typography>
               </Box>
+              {showRewardsEstimate ?
+                <Box className="flex justify-between">
+                  <Typography variant="body1" className="font-semibold">
+                    Rewards (estimate)
+                  </Typography>
+                  <Typography>{(getCurrentPoolRewardsEstimate()).toLocaleString()} Ada</Typography>
+                </Box> : null}
             </Box>
           </CardContent>
         </div>
@@ -344,7 +370,7 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
                   <Typography color="green">{(stakePoolAssessment.easy1_stake_pool.saturation * 100).toFixed(2)} %</Typography>
                 </Tooltip>
               </Box>
-              <Box className="flex justify-between">
+              <Box className="flex justify-between mb-6 pb-1 border-b border-dotted border-[#999999]">
                 <Typography variant="body1" className="font-semibold">
                   Pledge
                 </Typography>
@@ -352,6 +378,13 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
                   <Typography color="green">{(stakePoolAssessment.easy1_stake_pool.declared_pledge / 1_000_000).toLocaleString()} Ada</Typography>
                 </Tooltip>
               </Box>
+              {showRewardsEstimate ?
+                <Box className="flex justify-between">
+                  <Typography variant="body1" className="font-semibold">
+                    Rewards (estimate)
+                  </Typography>
+                  <Typography color="green">{(getEasy1RewardsEstimate()).toLocaleString()} (+{getEstimateRewardsIncrease()}%) Ada</Typography>
+                </Box> : null}
             </Box>
           </CardContent>
         </div>

@@ -41,6 +41,7 @@ export interface WmtConversionStats {
 
 // Stake Pool Details
 export interface StakePoolAssessment {
+    stake_balance: string;
     current_pool: StakePoolDetails | undefined;
     easy1_stake_pool: StakePoolDetails
 }
@@ -55,4 +56,5 @@ export interface StakePoolDetails {
     retired: boolean;
     retiring: boolean;
     is_mpo: boolean;
+    lovelaces_per_ada: string;
 }
