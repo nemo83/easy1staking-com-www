@@ -87,7 +87,7 @@ const HomeHero = () => {
         </h1>
         <p className="text-[#DDDDDD] w-[100%] md:w-[60%]">
           Since launching in 2020, EASY1 has minted over 2k blocks, staked over
-          6 million ADA and attracted a community of more than 600 delegators.
+          12 million ADA and attracted a community of more than 800 delegators.
         </p>
         {getButton(delegatedType)}
       </div>
