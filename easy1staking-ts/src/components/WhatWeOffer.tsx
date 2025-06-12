@@ -33,13 +33,13 @@ const WhatWeOffer = () => {
     {
       icon: Image1, // replace with your actual icon path
       bgColor: "bg-[#FFCCCC]", // similar to the light red background
-      text: "300 $WMT per epoch shared within our pool",
+      text: "250 $WMT per epoch shared within our pool",
       textColor: "text-black",
     },
     {
       icon: Image2, // replace with your actual icon path
       bgColor: "bg-black", // black background
-      text: "25,000 $SNEK shared within our pool",
+      text: "60,000 $SNEK shared within our pool",
       textColor: "text-white",
     },
     {
