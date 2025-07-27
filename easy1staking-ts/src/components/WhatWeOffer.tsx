@@ -40,7 +40,7 @@ const WhatWeOffer = () => {
     {
       icon: Image2, // replace with your actual icon path
       bgColor: "bg-black", // black background
-      text: "60,000 $SNEK shared within our pool",
+      text: "25,000 $SNEK shared within our pool",
       textColor: "text-white",
     },
     {

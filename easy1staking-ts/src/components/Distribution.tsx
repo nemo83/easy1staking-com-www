@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Footer from "./Footer";
 import PoolDetails from "./PoolDetails";
+import AirdropEligibilityTable from "./AirdropEligibilityTable";
 import { useWallet } from "@meshsdk/react";
 import { StakePoolAssessment } from "@/lib/interfaces/AppTypes";
 import { EASY1STAKING_API } from "@/lib/util/Constants";
@@ -13,22 +14,64 @@ const Distribution = () => {
   const { wallet, connected } = useWallet();
 
   const [walletAddress, setWalletAddress] = useState("");
+  const [stakeAddress, setStakeAddress] = useState<string | undefined>(undefined);
   const [checkBtn, setCheckBtn] = useState(false);
   const [stakePoolAssessment, setStakePoolAssessment] = useState<StakePoolAssessment | undefined>(undefined)
 
+
+
+  // useEffect(() => {
+  //   if (connected) {
+  //     wallet
+  //       .getRewardAddresses()
+  //       .then((rewardAddresses) => {
+  //         if (!rewardAddresses) {
+  //           console.log('no reward addresses')
+  //           return Promise.resolve(EASY1DelegationType.UnsupportedWallet)
+  //         } else {
+  //           console.log('rewards addresses: ' + JSON.stringify(rewardAddresses));
+  //           const stakeAddress = rewardAddresses.shift()!;
+  //           return TransactionUtil.canBeDelegated(stakeAddress)
+  //         }
+  //       })
+  //       .then(delegatedType => {
+  //         console.log('delegatedType: ' + delegatedType)
+  //         setDelegatedType(delegatedType)
+  //       })
+
+  //   } else {
+  //     setDelegatedType(EASY1DelegationType.ConnectWallet)
+  //   }
+  // }, [connected]);
+
+
   useEffect(() => {
     if (connected) {
+    
       wallet.getUsedAddresses()
         .then((address) => {
           setWalletAddress(address[0]);
         })
+
+      wallet
+        .getRewardAddresses()
+        .then((rewardAddresses) => {
+          if (rewardAddresses) {
+            console.log('rewards addresses: ' + JSON.stringify(rewardAddresses));
+            const stakeAddress = rewardAddresses.shift()!;
+            setStakeAddress(stakeAddress);
+          }
+        })
+
     } else {
       setWalletAddress("");
+      setStakeAddress(undefined);
     }
   }, [connected]);
 
   const check = async () => {
-
+    setCheckBtn(true);
+    
     fetch(EASY1STAKING_API + '/stake_assessment/' + walletAddress)
       .then(response => {
         if (response.ok) {
@@ -37,11 +80,24 @@ const Distribution = () => {
           throw new Error('Error while fetching stake data: ' + response.status);
         }
       })
-      .then((data: StakePoolAssessment) => Promise.resolve(setStakePoolAssessment(data)))
+      .then((data: StakePoolAssessment) => {
+        setStakePoolAssessment(data);
+      })
       .catch(error => {
         toast.error('Error while calculating stake rewards', { duration: 5000 });
+        setCheckBtn(false);
       })
+  };
 
+  const clearResults = () => {
+    setStakePoolAssessment(undefined);
+    setCheckBtn(false);
+  };
+
+  // Check if user is already delegated to EASY1 stake pool
+  const isAlreadyDelegatedToEasy1 = () => {
+    if (!stakePoolAssessment?.current_pool) return false;
+    return stakePoolAssessment.current_pool.ticker === 'EASY1';
   };
 
   return (
@@ -54,13 +110,13 @@ const Distribution = () => {
           <button
             className={`!absolute right-5 z-10 select-none rounded-[20px]   ${checkBtn
               ? "bg-none text-[#304FFE] border border-[#304FFE]"
-              : walletAddress
+              : stakeAddress
                 ? "bg-[#304FFE]"
                 : "bg-[#acb9ff]"
               }
  py-3 px-6  text-center align-middle  font-sans font-semibold  shadow-md  transition-all   focus:shadow-none active:opacity-[0.85] active:shadow-none peer-placeholder-shown:pointer-events-none peer-placeholder-shown:bg-blue-gray-500 peer-placeholder-shown:opacity-50 peer-placeholder-shown:shadow-none`}
             type="button"
-            onClick={() => check()}
+            onClick={() => checkBtn ? clearResults() : check()}
           >
             {checkBtn ? " Clear" : "Check"}
           </button>
@@ -68,13 +124,27 @@ const Distribution = () => {
             type="text"
             className="peer h-full w-full rounded-3xl p-8 pr-20 font-sans text-sm font-normal transition-all  focus:border-t-transparent focus:outline-0 text-[#000000DE]"
             placeholder="Wallet Address"
-            value={walletAddress}
+            value={stakeAddress}
             onChange={(e) => {
               setWalletAddress(e.target.value);
             }}
           />
         </div>
-        {stakePoolAssessment && <PoolDetails stakePoolAssessment={stakePoolAssessment} />}
+        {stakePoolAssessment && (
+          <div className="w-full max-w-6xl mx-auto px-4">
+            <PoolDetails stakePoolAssessment={stakePoolAssessment} />
+            
+            {/* Show Airdrop Eligibility only if NOT delegated to EASY1 */}
+            {stakeAddress && !isAlreadyDelegatedToEasy1() && (
+              <div className="mt-8">
+                <AirdropEligibilityTable 
+                  stakeBalance={stakePoolAssessment.stake_balance} 
+                  walletAddress={stakeAddress}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
