@@ -118,7 +118,16 @@ const AirdropEligibilityTable: React.FC<AirdropEligibilityTableProps> = ({ stake
           Airdrop Eligibility - Delegate to EASY1 to Unlock
         </h3>
         <p className="text-white/90 text-sm mt-1">
-          Additional tokens you could earn by delegating to EASY1 stake pool
+          Additional tokens you could claim on{' '}
+          <a 
+            href="https://tosidrop.me/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-white underline hover:text-white/80 transition-colors"
+          >
+            TosiDrop
+          </a>
+          {' '}by delegating to EASY1 stake pool
         </p>
       </div>
       
