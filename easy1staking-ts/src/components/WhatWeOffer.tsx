@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import IncentiveCarousel from "./IncentiveSlider";
+import IncentiveGrid from "./IncentiveGrid";
+import InfiniteCarousel from "./InfiniteCarousel";
 import Image1 from "../../public/CardContent1.png";
 import Image2 from "../../public/CardContent2.png";
 import Image3 from "../../public/CardContent3.png";
@@ -95,9 +96,9 @@ const WhatWeOffer = () => {
         What we offer
       </h1>
       <div className="pb-20">
-        <IncentiveCarousel cards={cards1} label={label1} />
+        <IncentiveGrid cards={cards1} label={label1} />
         <div className="mt-20">
-          <IncentiveCarousel cards={cards2} label={label2} />
+          <InfiniteCarousel cards={cards2} label={label2} />
         </div>
       </div>
     </div>

@@ -1,16 +1,24 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { IoIosArrowBack, IoIosArrowForward } from "react-icons/io";
 import Image from "next/image";
 
-export default function IncentiveCarousel({ cards, label }) {
+export default function InfiniteCarousel({ cards, label, autoPlay = true, autoPlayInterval = 4000 }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [cardWidth, setCardWidth] = useState(330);
+  const [isTransitioning, setIsTransitioning] = useState(true);
+
+  // Create infinite loop by duplicating cards
+  const extendedCards = [...cards, ...cards, ...cards];
+  const totalCards = cards.length;
+  const startIndex = totalCards; // Start from the middle set
 
   useEffect(() => {
     const updateCardWidth = () => {
-      if (window.innerWidth >= 768) {
-        setCardWidth(400); // md breakpoint
+      if (window.innerWidth >= 1024) {
+        setCardWidth(400); // lg breakpoint
+      } else if (window.innerWidth >= 768) {
+        setCardWidth(350); // md breakpoint
       } else if (window.innerWidth >= 640) {
         setCardWidth(330); // sm breakpoint
       } else {
@@ -23,17 +31,59 @@ export default function IncentiveCarousel({ cards, label }) {
     return () => window.removeEventListener('resize', updateCardWidth);
   }, []);
 
-  const prevCard = () => {
-    setCurrentIndex(currentIndex === 0 ? cards.length - 1 : currentIndex - 1);
-  };
+  // Initialize position to middle set
+  useEffect(() => {
+    setCurrentIndex(startIndex);
+  }, [startIndex]);
 
-  const nextCard = () => {
-    setCurrentIndex(currentIndex === cards.length - 1 ? 0 : currentIndex + 1);
-  };
+  const nextCard = useCallback(() => {
+    setCurrentIndex(prev => prev + 1);
+  }, []);
+
+  const prevCard = useCallback(() => {
+    setCurrentIndex(prev => prev - 1);
+  }, []);
+
+  // Handle infinite loop reset
+  useEffect(() => {
+    if (currentIndex >= totalCards * 2) {
+      // Reset to beginning of middle set
+      const timer = setTimeout(() => {
+        setIsTransitioning(false);
+        setCurrentIndex(startIndex);
+        setTimeout(() => setIsTransitioning(true), 50);
+      }, 500);
+      return () => clearTimeout(timer);
+    } else if (currentIndex < totalCards) {
+      // Reset to end of middle set
+      const timer = setTimeout(() => {
+        setIsTransitioning(false);
+        setCurrentIndex(startIndex + totalCards - 1);
+        setTimeout(() => setIsTransitioning(true), 50);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [currentIndex, totalCards, startIndex]);
+
+  // Auto-play functionality
+  useEffect(() => {
+    if (!autoPlay) return;
+
+    const interval = setInterval(nextCard, autoPlayInterval);
+    return () => clearInterval(interval);
+  }, [autoPlay, autoPlayInterval, nextCard]);
 
   const getTransformValue = () => {
     const gap = 24; // space-x-6 = 24px
     return -(currentIndex * (cardWidth + gap));
+  };
+
+  const getCurrentCardIndex = () => {
+    return ((currentIndex - startIndex) % totalCards + totalCards) % totalCards;
+  };
+
+  const goToSlide = (index) => {
+    setCurrentIndex(startIndex + index);
   };
 
   return (
@@ -71,9 +121,9 @@ export default function IncentiveCarousel({ cards, label }) {
             <button
               key={index}
               className={`w-2 h-2 rounded-full transition-colors ${
-                index === currentIndex ? 'bg-white' : 'bg-white/50'
+                index === getCurrentCardIndex() ? 'bg-white' : 'bg-white/50'
               }`}
-              onClick={() => setCurrentIndex(index)}
+              onClick={() => goToSlide(index)}
               aria-label={`Go to slide ${index + 1}`}
             />
           ))}
@@ -83,23 +133,25 @@ export default function IncentiveCarousel({ cards, label }) {
       {/* Cards Container */}
       <div className="overflow-hidden pt-20">
         <div
-          className="flex space-x-6 px-4 mt-12 transition-transform duration-500 ease-in-out"
+          className={`flex space-x-6 px-4 mt-12 ${
+            isTransitioning ? 'transition-transform duration-500 ease-in-out' : ''
+          }`}
           style={{
             transform: `translateX(${getTransformValue()}px)`,
           }}
         >
-          {cards.map((card, index) => (
+          {extendedCards.map((card, index) => (
             <div
-              key={index}
-              className="w-[310px] sm:w-[330px] md:w-[400px] h-[420px] sm:h-[520px] flex-shrink-0 transition-transform duration-500 ease-in-out"
+              key={`${card.text}-${index}`}
+              className="w-[310px] sm:w-[330px] md:w-[350px] lg:w-[400px] h-[420px] sm:h-[520px] flex-shrink-0"
             >
               <Image
                 src={card.icon}
                 alt="Card icon"
                 className="h-[65%] w-full rounded-t-2xl object-cover"
               />
-              <div className="bg-white py-5 px-10 h-[35%] rounded-b-2xl flex items-center">
-                <h3 className="text-[16px] sm:text-[20px] md:text-[30px] text-[#000000DE] font-semibold leading-tight">
+              <div className="bg-white py-5 px-6 sm:px-10 h-[35%] rounded-b-2xl flex items-center">
+                <h3 className="text-[16px] sm:text-[18px] md:text-[20px] lg:text-[24px] text-[#000000DE] font-semibold leading-tight">
                   {card.text}
                 </h3>
               </div>
