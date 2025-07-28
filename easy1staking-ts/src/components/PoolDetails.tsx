@@ -229,9 +229,10 @@ const PoolDetails = (props: { stakePoolAssessment: StakePoolAssessment }) => {
   }
 
   const getEstimateRewardsIncrease = () => {
-    const diff = getEasy1RewardsEstimate() - getCurrentPoolRewardsEstimate();
-    const increase = getCurrentPoolRewardsEstimate() / diff;
-    return increase.toFixed(2);
+    const currentRewards = getCurrentPoolRewardsEstimate();
+    const easy1Rewards = getEasy1RewardsEstimate();
+    const percentageIncrease = ((easy1Rewards - currentRewards) / currentRewards) * 100;
+    return percentageIncrease.toFixed(2);
   }
 
 
