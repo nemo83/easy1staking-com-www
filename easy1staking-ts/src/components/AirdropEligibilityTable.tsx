@@ -78,7 +78,7 @@ const AirdropEligibilityTable: React.FC<AirdropEligibilityTableProps> = ({ stake
   if (loading) {
     return (
       <div className="w-full max-w-4xl mx-auto mt-8 bg-white rounded-2xl shadow-lg overflow-hidden">
-        <div className="bg-gradient-to-r from-[#304FFE] to-[#536DFE] px-6 py-4">
+        <div className="bg-[#304FFE] px-6 py-4">
           <h3 className="text-white text-xl font-semibold flex items-center">
             <span className="mr-2">🎁</span>
             Airdrop Eligibility - Delegate to EASY1 to Unlock
@@ -95,7 +95,7 @@ const AirdropEligibilityTable: React.FC<AirdropEligibilityTableProps> = ({ stake
   if (error || extraRewards.length === 0) {
     return (
       <div className="w-full max-w-4xl mx-auto mt-8 bg-white rounded-2xl shadow-lg overflow-hidden">
-        <div className="bg-gradient-to-r from-[#304FFE] to-[#536DFE] px-6 py-4">
+        <div className="bg-[#304FFE] px-6 py-4">
           <h3 className="text-white text-xl font-semibold flex items-center">
             <span className="mr-2">🎁</span>
             Airdrop Eligibility - Delegate to EASY1 to Unlock
@@ -112,7 +112,7 @@ const AirdropEligibilityTable: React.FC<AirdropEligibilityTableProps> = ({ stake
 
   return (
     <div className="w-full max-w-4xl mx-auto mt-8 bg-white rounded-2xl shadow-lg overflow-hidden">
-      <div className="bg-gradient-to-r from-[#304FFE] to-[#536DFE] px-6 py-4">
+      <div className="bg-[#304FFE] px-6 py-4">
         <h3 className="text-white text-xl font-semibold flex items-center">
           <span className="mr-2">🎁</span>
           Airdrop Eligibility - Delegate to EASY1 to Unlock
