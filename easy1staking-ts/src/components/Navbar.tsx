@@ -116,7 +116,26 @@ const Navbar = () => {
               marginLeft: "auto",
             }}
           >
-            <CardanoWallet />
+            <div className="wallet-connect-wrapper">
+              <style jsx>{`
+                .wallet-connect-wrapper :global(button) {
+                  color: #ffffff !important;
+                  background-color: transparent !important;
+                  border: 2px solid #ffffff !important;
+                  border-radius: 9999px !important;
+                  padding: 8px 16px !important;
+                  font-weight: 600 !important;
+                  font-size: 16px !important;
+                }
+                .wallet-connect-wrapper :global(button:hover) {
+                  background-color: rgba(255, 255, 255, 0.1) !important;
+                }
+              `}</style>
+              <CardanoWallet 
+                label="Connect Wallet"
+                isDark={false}
+              />
+            </div>
             {/* <button
               className="font-semibold text-[12px] md:text-[16px] py-2 px-4 md:py-3 border-white border-2 rounded-full mx-2"
               onClick={() => setIsOpen(true)}
