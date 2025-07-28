@@ -8,6 +8,7 @@ import { StakePoolAssessment } from "@/lib/interfaces/AppTypes";
 import { EASY1STAKING_API } from "@/lib/util/Constants";
 import toast from "react-hot-toast";
 import { RepeatOneSharp } from "@mui/icons-material";
+import { resolveRewardAddress } from '@meshsdk/core';
 
 const Distribution = () => {
 
@@ -18,36 +19,9 @@ const Distribution = () => {
   const [checkBtn, setCheckBtn] = useState(false);
   const [stakePoolAssessment, setStakePoolAssessment] = useState<StakePoolAssessment | undefined>(undefined)
 
-
-
-  // useEffect(() => {
-  //   if (connected) {
-  //     wallet
-  //       .getRewardAddresses()
-  //       .then((rewardAddresses) => {
-  //         if (!rewardAddresses) {
-  //           console.log('no reward addresses')
-  //           return Promise.resolve(EASY1DelegationType.UnsupportedWallet)
-  //         } else {
-  //           console.log('rewards addresses: ' + JSON.stringify(rewardAddresses));
-  //           const stakeAddress = rewardAddresses.shift()!;
-  //           return TransactionUtil.canBeDelegated(stakeAddress)
-  //         }
-  //       })
-  //       .then(delegatedType => {
-  //         console.log('delegatedType: ' + delegatedType)
-  //         setDelegatedType(delegatedType)
-  //       })
-
-  //   } else {
-  //     setDelegatedType(EASY1DelegationType.ConnectWallet)
-  //   }
-  // }, [connected]);
-
-
   useEffect(() => {
     if (connected) {
-    
+
       wallet.getUsedAddresses()
         .then((address) => {
           setWalletAddress(address[0]);
@@ -67,11 +41,34 @@ const Distribution = () => {
       setWalletAddress("");
       setStakeAddress(undefined);
     }
-  }, [connected]);
+  }, [connected, wallet]);
+
+  useEffect(() => {
+
+    if (walletAddress) {
+
+      if (walletAddress.startsWith("stake1")) {
+        setStakeAddress(walletAddress);
+      } else {
+        try {
+          const stakeAddress = resolveRewardAddress(walletAddress);
+          if (stakeAddress) {
+            setStakeAddress(stakeAddress);
+          }
+        } catch (error) {
+          console.log('Invalid address format');
+        }
+      }
+
+    }
+
+
+  }, [walletAddress])
+
 
   const check = async () => {
     setCheckBtn(true);
-    
+
     fetch(EASY1STAKING_API + '/stake_assessment/' + walletAddress)
       .then(response => {
         if (response.ok) {
@@ -110,7 +107,7 @@ const Distribution = () => {
           <button
             className={`!absolute right-5 z-10 select-none rounded-[20px]   ${checkBtn
               ? "bg-none text-[#304FFE] border border-[#304FFE]"
-              : stakeAddress
+              : walletAddress
                 ? "bg-[#304FFE]"
                 : "bg-[#acb9ff]"
               }
@@ -124,7 +121,7 @@ const Distribution = () => {
             type="text"
             className="peer h-full w-full rounded-3xl p-8 pr-20 font-sans text-sm font-normal transition-all  focus:border-t-transparent focus:outline-0 text-[#000000DE]"
             placeholder="Wallet Address"
-            value={stakeAddress}
+            value={walletAddress}
             onChange={(e) => {
               setWalletAddress(e.target.value);
             }}
@@ -137,8 +134,8 @@ const Distribution = () => {
             {/* Show Airdrop Eligibility only if NOT delegated to EASY1 */}
             {stakeAddress && !isAlreadyDelegatedToEasy1() && (
               <div className="mt-8">
-                <AirdropEligibilityTable 
-                  stakeBalance={stakePoolAssessment.stake_balance} 
+                <AirdropEligibilityTable
+                  stakeBalance={stakePoolAssessment.stake_balance}
                   walletAddress={stakeAddress}
                 />
               </div>
