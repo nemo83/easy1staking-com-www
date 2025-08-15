@@ -139,15 +139,35 @@ const CardanoSummit2025Page = () => {
     setIsProcessing(true);
     
     try {
-      // In a real implementation, you would check the transaction status
-      // For now, simulate the verification
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (!challengeTxHash) {
+        toast.error("No transaction hash found");
+        return;
+      }
+
+      toast.loading("Checking transaction on blockchain...");
       
-      toast.success("Transaction confirmed on-chain!");
-      setCurrentPhase(2);
-      savePhaseToStorage(2, challengeTxHash, "");
+      // Check if transaction exists on-chain using our proxy API
+      const response = await fetch(`/api/verify-tx?txHash=${challengeTxHash}`);
+      
+      const result = await response.json();
+      
+      if (response.ok && result.confirmed) {
+        // Transaction exists and is confirmed
+        toast.dismiss();
+        toast.success("Transaction confirmed on-chain!");
+        setCurrentPhase(2);
+        savePhaseToStorage(2, challengeTxHash, "");
+        
+      } else if (response.status === 404 || !result.confirmed) {
+        toast.dismiss();
+        toast.error("Transaction not yet confirmed. Please wait a bit longer.");
+      } else {
+        toast.dismiss();
+        toast.error("Error checking transaction status. Please try again.");
+      }
       
     } catch (error) {
+      toast.dismiss();
       console.error("Error verifying transaction:", error);
       toast.error("Failed to verify transaction. Please wait for confirmation.");
     } finally {
