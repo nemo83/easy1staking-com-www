@@ -227,9 +227,11 @@ const CardanoSummit2025Page = () => {
       toast.dismiss();
       console.error("Error in verification process:", error);
       
-      if (error.message?.includes("User declined")) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage.includes("User declined")) {
         toast.error("Signature cancelled by user");
-      } else if (error.message?.includes("fetch")) {
+      } else if (errorMessage.includes("fetch")) {
         toast.error("Network error - please check your connection");
       } else {
         toast.error("Verification failed. Please try again.");
