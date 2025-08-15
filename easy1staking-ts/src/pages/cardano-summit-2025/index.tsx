@@ -3,8 +3,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useWallet } from "@meshsdk/react";
 import toast from "react-hot-toast";
-import { Box, Container, Typography, Button, Card, CardContent, Stepper, Step, StepLabel, Divider, CircularProgress, IconButton, Tooltip } from "@mui/material";
-import { ContentCopy } from "@mui/icons-material";
+import { Box, Container, Typography, Button, Card, CardContent, Stepper, Step, StepLabel, Divider, CircularProgress, IconButton, Tooltip, Checkbox, FormControlLabel } from "@mui/material";
+import { ContentCopy, Warning } from "@mui/icons-material";
 import { MeshTxBuilder, mConStr0 } from "@meshsdk/core";
 import { BlockfrostProvider } from "@meshsdk/core";
 
@@ -15,6 +15,7 @@ const CardanoSummit2025Page = () => {
   const [challengeTxHash, setChallengeTxHash] = useState("");
   const [countdown, setCountdown] = useState(120); // 2 minutes countdown
   const [discountCode, setDiscountCode] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const phases = ["Complete Challenge", "Verify Transaction", "Collect Discount"];
 
@@ -408,6 +409,102 @@ const CardanoSummit2025Page = () => {
                 <Typography variant="caption" sx={{ color: "#999" }}>
                   Use the &quot;Connect Wallet&quot; button in the navigation above
                 </Typography>
+              </CardContent>
+            </Card>
+          ) : !acceptedTerms ? (
+            // Terms & Conditions Disclaimer
+            <Card sx={{ 
+              maxWidth: 800, 
+              mx: "auto", 
+              p: 3,
+              background: "rgba(255, 255, 255, 0.95)",
+              backdropFilter: "blur(10px)",
+              borderRadius: 3,
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.3)"
+            }}>
+              <CardContent sx={{ p: 4 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
+                  <Warning sx={{ color: "#FF9800", fontSize: 32 }} />
+                  <Typography variant="h4" sx={{ fontWeight: "bold", color: "#FF9800" }}>
+                    Terms & Conditions
+                  </Typography>
+                </Box>
+                
+                <Typography variant="body1" sx={{ mb: 3, fontWeight: "bold" }}>
+                  Please read and accept the following terms before proceeding:
+                </Typography>
+
+                <Box sx={{ mb: 4, pl: 2 }}>
+                  <Typography variant="body2" sx={{ mb: 2, lineHeight: 1.6 }}>
+                    <strong>1. No Financial Responsibility:</strong> We assume no responsibility for any lost funds, transaction fees, or financial losses incurred while using this service.
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ mb: 2, lineHeight: 1.6 }}>
+                    <strong>2. Service Reliability:</strong> We take no responsibility if the service errors, fails to work, or if discount codes are not generated successfully.
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ mb: 2, lineHeight: 1.6 }}>
+                    <strong>3. No Support Provided:</strong> This is a free service provided without any technical support or customer service.
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ mb: 2, lineHeight: 1.6 }}>
+                    <strong>4. Wallet Recommendations:</strong> It&apos;s recommended to use a small hot wallet with minimal funds (about 10 $ada). Hardware wallet support is not guaranteed.
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ mb: 2, lineHeight: 1.6 }}>
+                    <strong>5. Developer Eligibility:</strong> This discount is intended for legitimate Cardano developers only. Using this service without being a developer constitutes cheating and violates the spirit of the developer program.
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ mb: 2, lineHeight: 1.6 }}>
+                    <strong>6. Beta Service:</strong> This tool is provided as-is and may contain bugs or unexpected behavior. Use at your own risk.
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ mb: 2, lineHeight: 1.6 }}>
+                    <strong>7. Data Privacy:</strong> Transaction data and wallet addresses may be temporarily locally stored for functionality purposes only.
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mb: 4, p: 2, bgcolor: "#fff3e0", borderRadius: 2, border: "1px solid #FF9800" }}>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "#E65100" }}>
+                    ⚠️ IMPORTANT: By proceeding, you acknowledge that you are a legitimate Cardano developer and agree to all terms above.
+                  </Typography>
+                </Box>
+
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={acceptedTerms}
+                      onChange={(e) => setAcceptedTerms(e.target.checked)}
+                      sx={{ color: "#FF9800" }}
+                    />
+                  }
+                  label={
+                    <Typography variant="body1" sx={{ fontWeight: "bold" }}>
+                      I have read and accept all terms and conditions above
+                    </Typography>
+                  }
+                  sx={{ mb: 3 }}
+                />
+
+                <Button
+                  variant="contained"
+                  size="large"
+                  disabled={!acceptedTerms}
+                  onClick={() => setAcceptedTerms(true)}
+                  sx={{
+                    bgcolor: acceptedTerms ? "#2E7D32" : "#ccc",
+                    "&:hover": { 
+                      bgcolor: acceptedTerms ? "#1B5E20" : "#ccc"
+                    },
+                    py: 1.5,
+                    px: 4,
+                    fontSize: "1.1rem",
+                    fontWeight: "bold",
+                    width: "100%"
+                  }}
+                >
+                  {acceptedTerms ? "Proceed to Developer Challenge" : "Please Accept Terms to Continue"}
+                </Button>
               </CardContent>
             </Card>
           ) : (
