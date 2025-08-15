@@ -3,7 +3,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useWallet } from "@meshsdk/react";
 import toast from "react-hot-toast";
-import { Box, Container, Typography, Button, Card, CardContent, Stepper, Step, StepLabel, Divider, CircularProgress } from "@mui/material";
+import { Box, Container, Typography, Button, Card, CardContent, Stepper, Step, StepLabel, Divider, CircularProgress, IconButton, Tooltip } from "@mui/material";
+import { ContentCopy } from "@mui/icons-material";
 import { MeshTxBuilder, mConStr0 } from "@meshsdk/core";
 import { BlockfrostProvider } from "@meshsdk/core";
 
@@ -208,13 +209,27 @@ const CardanoSummit2025Page = () => {
       
       toast.dismiss();
       
-      if (response.ok && result.success) {
-        // Extract discount code from API response
-        const discountCode = result.discountCode || result.code || `SUMMIT2025-${challengeTxHash.slice(0, 8).toUpperCase()}`;
+      if (response.ok && result.success && result.data?.success) {
+        // Extract discount code from the nested API response structure
+        const developerResult = result.data.results?.find((r: any) => r.category === "developers");
         
-        toast.success("Discount verified successfully!");
-        setDiscountCode(discountCode);
-        savePhaseToStorage(2, challengeTxHash, discountCode);
+        if (developerResult?.eligible && developerResult?.discountCode) {
+          const discountCode = developerResult.discountCode;
+          const discountPercentage = developerResult.discountPercentage;
+          const discountAmount = developerResult.discountAmount;
+          
+          toast.success(`Developer discount verified! ${discountPercentage}% off ($${discountAmount} savings)`);
+          setDiscountCode(discountCode);
+          savePhaseToStorage(2, challengeTxHash, discountCode);
+        } else {
+          // Check if challenge was completed but not eligible for developer discount
+          if (developerResult?.details?.challengeCompleted) {
+            toast.error("Challenge completed but not eligible for developer discount");
+          } else {
+            toast.error("Developer challenge not found or incomplete");
+          }
+          console.log("Developer result:", developerResult);
+        }
         
       } else {
         // Handle API error
@@ -264,6 +279,16 @@ const CardanoSummit2025Page = () => {
     } catch (error) {
       console.error("Error resetting progress:", error);
       toast.error("Failed to reset progress");
+    }
+  };
+
+  const handleCopyCode = () => {
+    if (discountCode) {
+      navigator.clipboard.writeText(discountCode).then(() => {
+        toast.success("Discount code copied to clipboard!");
+      }).catch(() => {
+        toast.error("Failed to copy code");
+      });
     }
   };
 
@@ -500,11 +525,28 @@ const CardanoSummit2025Page = () => {
                           bgcolor: "#e8f5e8", 
                           borderRadius: 2, 
                           border: "2px solid #2E7D32",
-                          mb: 3
+                          mb: 3,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 2
                         }}>
                           <Typography variant="h4" sx={{ fontFamily: "monospace", fontWeight: "bold" }}>
                             {discountCode}
                           </Typography>
+                          <Tooltip title="Copy to clipboard">
+                            <IconButton 
+                              onClick={handleCopyCode}
+                              sx={{ 
+                                color: "#2E7D32",
+                                "&:hover": { 
+                                  backgroundColor: "rgba(46, 125, 50, 0.1)" 
+                                }
+                              }}
+                            >
+                              <ContentCopy />
+                            </IconButton>
+                          </Tooltip>
                         </Box>
                         <Button
                           variant="outlined"
