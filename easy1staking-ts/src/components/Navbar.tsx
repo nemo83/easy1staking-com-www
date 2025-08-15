@@ -37,6 +37,12 @@ const Navbar = () => {
       enabled: true,
     },
     {
+      name: "Summit 2025 Discount",
+      href: "/cardano-summit-2025",
+      enabled: true,
+      isNew: true,
+    },
+    {
       name: "Raffles",
       href: "/raffles",
       enabled: false,
@@ -100,9 +106,14 @@ const Navbar = () => {
                 key={page.href}
                 onClick={handleCloseNavMenu}
                 href={page.href}
-                className="font-semibold mx-3"
+                className={`font-semibold mx-3 ${page.isNew ? "relative" : ""}`}
               >
                 {page.name}
+                {page.isNew && (
+                  <span className="absolute -top-1 -right-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">
+                    NEW
+                  </span>
+                )}
               </Link>
             ))}
           </Box>
@@ -185,8 +196,13 @@ const Navbar = () => {
           >
             {pages.map((page) => (
               <MenuItem key={page.href} onClick={handleCloseNavMenu}>
-                <Link className="font-semibold" href={page.href}>
+                <Link className={`font-semibold ${page.isNew ? "relative" : ""}`} href={page.href}>
                   {page.name}
+                  {page.isNew && (
+                    <span className="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">
+                      NEW
+                    </span>
+                  )}
                 </Link>
               </MenuItem>
             ))}
