@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import Head from "next/head";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useWallet } from "@meshsdk/react";
@@ -315,6 +316,59 @@ const CardanoSummit2025Page = () => {
 
   return (
     <>
+      <Head>
+        {/* Basic Meta Tags */}
+        <title>Cardano Summit 2025 Developer Discount Challenge | Easy1Staking</title>
+        <meta name="description" content="Claim your exclusive Cardano Summit 2025 developer discount! Complete the blockchain challenge, verify your developer status, and save up to 47% on summit tickets. For legitimate Cardano developers only." />
+        
+        {/* Open Graph / Facebook */}
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://easy1staking.com/cardano-summit-2025" />
+        <meta property="og:title" content="🎉 Cardano Summit 2025 Developer Discount Challenge" />
+        <meta property="og:description" content="Exclusive developer discount for Cardano Summit 2025! Complete the blockchain challenge and save up to 47% on your summit ticket. Three-step verification process for legitimate developers only." />
+        <meta property="og:image" content="https://easy1staking.com/images/summit-2025-preview.jpg" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:site_name" content="Easy1Staking" />
+        
+        {/* Twitter */}
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:url" content="https://easy1staking.com/cardano-summit-2025" />
+        <meta property="twitter:title" content="🎉 Cardano Summit 2025 Developer Discount Challenge" />
+        <meta property="twitter:description" content="Exclusive developer discount for Cardano Summit 2025! Complete the blockchain challenge and save up to 47% on your summit ticket." />
+        <meta property="twitter:image" content="https://easy1staking.com/images/summit-2025-preview.jpg" />
+        
+        {/* Additional SEO */}
+        <meta name="keywords" content="Cardano Summit 2025, Developer Discount, Blockchain Challenge, Cardano Developers, Summit Tickets, Easy1Staking" />
+        <meta name="author" content="Easy1Staking" />
+        <meta name="robots" content="index, follow" />
+        <link rel="canonical" href="https://easy1staking.com/cardano-summit-2025" />
+        
+        {/* Schema.org for Search Engines */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebPage",
+              "name": "Cardano Summit 2025 Developer Discount Challenge",
+              "description": "Exclusive developer discount challenge for Cardano Summit 2025 tickets",
+              "url": "https://easy1staking.com/cardano-summit-2025",
+              "provider": {
+                "@type": "Organization",
+                "name": "Easy1Staking",
+                "url": "https://easy1staking.com"
+              },
+              "offers": {
+                "@type": "Offer",
+                "description": "Up to 47% discount on Cardano Summit 2025 tickets for verified developers",
+                "eligibility": "Cardano developers only"
+              }
+            })
+          }}
+        />
+      </Head>
+      
       <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900">
         <Navbar />
         
@@ -703,35 +757,63 @@ const CardanoSummit2025Page = () => {
           )}
 
           <Box sx={{ textAlign: "center", mt: 6, p: 4 }}>
-            <Typography variant="h6" sx={{ color: "white", fontWeight: "bold", mb: 3 }}>
+            <Typography variant="h5" sx={{ color: "white", fontWeight: "bold", mb: 4 }}>
               💡 Support & Backup Options
             </Typography>
             
-            <Box sx={{ mb: 4, p: 3, bgcolor: "rgba(255, 255, 255, 0.1)", borderRadius: 2 }}>
-              <Typography variant="body1" sx={{ color: "white", mb: 2, fontWeight: "bold" }}>
-                Enjoying this service? Support the developer! 🙏
+            <Box sx={{ 
+              mb: 4, 
+              p: 4, 
+              bgcolor: "rgba(46, 125, 50, 0.15)", 
+              borderRadius: 3,
+              border: "2px solid rgba(46, 125, 50, 0.3)",
+              boxShadow: "0 4px 20px rgba(46, 125, 50, 0.2)"
+            }}>
+              <Typography variant="h6" sx={{ color: "white", mb: 3, fontWeight: "bold" }}>
+                🙏 Enjoying this service? Support the developer!
               </Typography>
-              <Typography variant="body2" sx={{ color: "rgba(255, 255, 255, 0.9)", mb: 2 }}>
-                • <strong>Tip via ADA Handle:</strong> $cryptojoe101
-              </Typography>
-              <Typography variant="body2" sx={{ color: "rgba(255, 255, 255, 0.9)" }}>
-                • <strong>Delegate to Easy1StakePool:</strong> Use our staking assessment tool on this website
-              </Typography>
+              <Box sx={{ 
+                display: "flex", 
+                flexDirection: { xs: "column", sm: "row" }, 
+                gap: 2, 
+                justifyContent: "center",
+                alignItems: "center"
+              }}>
+                <Box sx={{ p: 2, bgcolor: "rgba(255, 255, 255, 0.1)", borderRadius: 2 }}>
+                  <Typography variant="body1" sx={{ color: "#4FC3F7", fontWeight: "bold" }}>
+                    💰 Tip: <span style={{ fontFamily: "monospace", color: "white" }}>$cryptojoe101</span>
+                  </Typography>
+                </Box>
+                <Typography variant="body1" sx={{ color: "white", fontWeight: "bold" }}>
+                  OR
+                </Typography>
+                <Box sx={{ p: 2, bgcolor: "rgba(255, 255, 255, 0.1)", borderRadius: 2 }}>
+                  <Typography variant="body1" sx={{ color: "#4CAF50", fontWeight: "bold" }}>
+                    🏊 Delegate to Easy1StakePool
+                  </Typography>
+                </Box>
+              </Box>
             </Box>
 
-            <Box sx={{ p: 3, bgcolor: "rgba(255, 255, 255, 0.1)", borderRadius: 2 }}>
-              <Typography variant="body1" sx={{ color: "white", mb: 2, fontWeight: "bold" }}>
-                Having Issues? 🛠️
+            <Box sx={{ 
+              p: 4, 
+              bgcolor: "rgba(255, 152, 0, 0.15)", 
+              borderRadius: 3,
+              border: "2px solid rgba(255, 152, 0, 0.3)",
+              boxShadow: "0 4px 20px rgba(255, 152, 0, 0.2)"
+            }}>
+              <Typography variant="h6" sx={{ color: "white", mb: 2, fontWeight: "bold" }}>
+                🛠️ Having Issues?
               </Typography>
-              <Typography variant="body2" sx={{ color: "rgba(255, 255, 255, 0.9)", lineHeight: 1.6 }}>
-                If you successfully completed the challenge but can&apos;t collect your discount code here, 
-                no worries! You can complete the &quot;ownership verification&quot; directly on the{" "}
+              <Typography variant="body1" sx={{ color: "rgba(255, 255, 255, 0.9)", lineHeight: 1.6 }}>
+                If you completed the challenge but can&apos;t collect your discount code here, 
+                you can complete the &quot;ownership verification&quot; directly on the{" "}
                 <a 
                   href="https://hey.cardano.org/summitdeals" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   style={{ 
-                    color: "#4FC3F7", 
+                    color: "#FFD700", 
                     textDecoration: "underline",
                     fontWeight: "bold"
                   }}
