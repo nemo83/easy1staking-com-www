@@ -39,7 +39,7 @@ const Navbar = () => {
     {
       name: "Summit 2025 Discount",
       href: "/cardano-summit-2025",
-      enabled: true,
+      enabled: false,
       isNew: true,
     },
     {
