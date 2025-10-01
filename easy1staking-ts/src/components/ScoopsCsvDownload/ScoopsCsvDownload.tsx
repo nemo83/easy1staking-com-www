@@ -11,7 +11,8 @@ import {
   Typography,
   IconButton,
   TextField,
-  Divider
+  Divider,
+  Autocomplete
 } from "@mui/material";
 import DownloadIcon from '@mui/icons-material/Download';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -28,6 +29,8 @@ const ExpandMore = styled((props: any) => {
   }),
 }));
 
+const EASY1_PKH = "37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f6a983f67f3f";
+
 const ScoopsCsvDownload = () => {
   const [selectedYear, setSelectedYear] = React.useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = React.useState<number>(new Date().getMonth() + 1);
@@ -39,6 +42,7 @@ const ScoopsCsvDownload = () => {
   const [dateStart, setDateStart] = React.useState<string>('');
   const [dateEnd, setDateEnd] = React.useState<string>('');
   const [downloadingCustom, setDownloadingCustom] = React.useState(false);
+  const [scooperList, setScooperList] = React.useState<string[]>([]);
 
   // Generate years from 2024 to current year
   const years = React.useMemo(() => {
@@ -61,6 +65,26 @@ const ScoopsCsvDownload = () => {
     { value: 11, label: 'November' },
     { value: 12, label: 'December' },
   ];
+
+  // Fetch scooper list
+  React.useEffect(() => {
+    fetch('https://scooper-api.easy1staking.com/scoops/scoopers')
+      .then(res => res.json())
+      .then(data => {
+        setScooperList(data);
+      })
+      .catch(error => {
+        console.error('Error fetching scoopers:', error);
+      });
+  }, []);
+
+  // Create display options with EASY1 label
+  const scooperOptions = React.useMemo(() => {
+    return scooperList.map(pkh => ({
+      value: pkh,
+      label: pkh === EASY1_PKH ? 'EASY1' : pkh,
+    }));
+  }, [scooperList]);
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -151,7 +175,7 @@ const ScoopsCsvDownload = () => {
         onClick={() => setExpanded(!expanded)}
       >
         <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-          Reports
+          Scooper Reports
         </Typography>
         <ExpandMore
           expand={expanded}
@@ -166,7 +190,7 @@ const ScoopsCsvDownload = () => {
         <Box sx={{ p: 3, pt: 0 }}>
           {/* Monthly Aggregated Report */}
           <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
-            Monthly Aggregated Report
+            Monthly Payouts Report
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 3 }}>
             <FormControl sx={{ minWidth: 120 }}>
@@ -216,15 +240,43 @@ const ScoopsCsvDownload = () => {
 
           {/* Custom Date Range Report */}
           <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
-            Custom Date Range Report
+            Scoops History
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              label="Scooper Public Key Hash (optional)"
+            <Autocomplete
+              freeSolo
+              options={scooperOptions}
+              getOptionLabel={(option) => typeof option === 'string' ? option : option.label}
               value={scooperPkh}
-              onChange={(e) => setScooperPkh(e.target.value)}
-              placeholder="37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f6a983f67f3f"
-              fullWidth
+              onChange={(event, newValue) => {
+                if (typeof newValue === 'string') {
+                  setScooperPkh(newValue);
+                } else if (newValue && newValue.value) {
+                  setScooperPkh(newValue.value);
+                } else {
+                  setScooperPkh('');
+                }
+              }}
+              onInputChange={(event, newInputValue) => {
+                setScooperPkh(newInputValue);
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Scooper Public Key Hash (optional)"
+                  placeholder="Select or enter a scooper PKH"
+                />
+              )}
+              renderOption={(props, option) => (
+                <li {...props} key={option.value}>
+                  {option.label}
+                  {option.label === 'EASY1' && (
+                    <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+                      ({option.value.substring(0, 8)}...)
+                    </Typography>
+                  )}
+                </li>
+              )}
             />
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <TextField
