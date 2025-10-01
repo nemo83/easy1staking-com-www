@@ -22,33 +22,25 @@ type Scoop = {
 
 const Scoops = () => {
   const [scoops, setScoops] = React.useState<Scoop[]>([]);
+  const stompClientRef = React.useRef<any>(null);
+  const reconnectTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  React.useEffect(() => {
-    (async () => {
-      fetch(
-        "https://scooper-api.easy1staking.com/scoops?" +
-        new URLSearchParams({ sort: "DESC", limit: "10" }).toString()
-      )
-        .then((res) => res.json())
-        .then((data) => {
-          const foo: Scoop[] = data.map((s: any) => ({
-            timestamp: s.timestamp,
-            txHash: s.tx_hash,
-            numOrders: s.num_orders,
-            scooperHash: s.scooper_hash,
-            isMempool: s.is_mempool,
-          }));
+  const connectWebSocket = React.useCallback(() => {
+    try {
+      const socket = new SockJS("https://scooper-api.easy1staking.com/ws");
+      const stompClient = Stomp.over(socket);
 
-          setScoops(foo);
-          return Promise.resolve(0);
-        })
-        .then((data) => {
+      // Disable debug logging
+      stompClient.debug = () => {};
 
-          var socket = new SockJS("https://scooper-api.easy1staking.com/ws");
-          const stompClient = Stomp.over(socket);
-          stompClient.connect({}, function (frame: any) {
-            console.log("Connected: " + frame);
-            stompClient.subscribe("/topic/messages", function (messageOutput: any) {
+      stompClientRef.current = stompClient;
+
+      stompClient.connect(
+        {},
+        (frame: any) => {
+          console.log("WebSocket Connected: " + frame);
+          stompClient.subscribe("/topic/messages", (messageOutput: any) => {
+            try {
               console.log("ws: " + JSON.stringify(messageOutput.body));
               const serverScoop = JSON.parse(messageOutput.body);
               const scoop: Scoop = {
@@ -59,21 +51,77 @@ const Scoops = () => {
                 isMempool: serverScoop.is_mempool
               };
 
-              setScoops((oldScoops) => [scoop].concat(oldScoops.slice()));
-            });
+              setScoops((oldScoops) => [scoop].concat(oldScoops.slice(0, 9)));
+            } catch (error) {
+              console.error("Error processing message:", error);
+            }
           });
-
-        });
-    })();
+        },
+        (error: any) => {
+          console.error("WebSocket connection error:", error);
+          // Attempt to reconnect after 5 seconds
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.log("Attempting to reconnect WebSocket...");
+            connectWebSocket();
+          }, 5000);
+        }
+      );
+    } catch (error) {
+      console.error("Error creating WebSocket:", error);
+      // Attempt to reconnect after 5 seconds
+      reconnectTimeoutRef.current = setTimeout(() => {
+        console.log("Attempting to reconnect WebSocket...");
+        connectWebSocket();
+      }, 5000);
+    }
   }, []);
+
+  React.useEffect(() => {
+    // Fetch initial data
+    fetch(
+      "https://scooper-api.easy1staking.com/scoops?" +
+      new URLSearchParams({ sort: "DESC", limit: "10" }).toString()
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        const foo: Scoop[] = data.map((s: any) => ({
+          timestamp: s.timestamp,
+          txHash: s.tx_hash,
+          numOrders: s.num_orders,
+          scooperHash: s.scooper_hash,
+          isMempool: s.is_mempool,
+        }));
+
+        setScoops(foo);
+        // Connect WebSocket after initial data is loaded
+        connectWebSocket();
+      })
+      .catch((error) => {
+        console.error("Error fetching initial scoops:", error);
+        // Still try to connect WebSocket even if initial fetch fails
+        connectWebSocket();
+      });
+
+    // Cleanup function
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (stompClientRef.current && stompClientRef.current.connected) {
+        stompClientRef.current.disconnect(() => {
+          console.log("WebSocket disconnected");
+        });
+      }
+    };
+  }, [connectWebSocket]);
 
   const trimTxHash = (hash: string) => {
     return `${hash.substring(0, 5)}...${hash.substring(hash.length - 5)}`;
   };
 
   return (
-    <TableContainer component={Paper}>
-      <Table sx={{ minWidth: 650 }} aria-label="simple table">
+    <TableContainer component={Paper} sx={{ maxWidth: 1200, margin: '2rem auto' }}>
+      <Table aria-label="simple table">
         <TableHead>
           <TableRow>
             <TableCell>Time</TableCell>

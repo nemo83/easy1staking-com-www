@@ -2,6 +2,7 @@ import Head from "next/head";
 import Scoops from "../../components/Scoops/Scoops";
 import ScoopsPies from "../../components/ScoopsPie/ScoopsPie";
 import BasicBars from "../../components/ScoopsPeriodicStats/ScoopsPeriodicStats";
+import ScoopsCsvDownload from "../../components/ScoopsCsvDownload/ScoopsCsvDownload";
 import { Box, Container, createTheme, CssBaseline, Grid2, ThemeProvider, Typography } from "@mui/material";
 import Navbar from "@/components/Navbar";
 
@@ -28,6 +29,7 @@ export default function ScooperDashboard() {
               <BasicBars />
             </Grid2>
           </Grid2>
+          <ScoopsCsvDownload />
           <Scoops />
         </ThemeProvider>
       </div>
