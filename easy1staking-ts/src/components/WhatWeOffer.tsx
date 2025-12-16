@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import IncentiveGrid from "./IncentiveGrid";
 import InfiniteCarousel from "./InfiniteCarousel";
-import Image1 from "../../public/CardContent1.png";
+// import Image1 from "../../public/CardContent1.png";
 import Image2 from "../../public/CardContent2.png";
 import Image3 from "../../public/CardContent3.png";
 import Image4 from "../../public/CardContent4.png";
@@ -32,9 +32,9 @@ const WhatWeOffer = () => {
 
   const cards1 = [
     {
-      icon: Image1, // replace with your actual icon path
+      icon: Image7, // replace with your actual icon path
       bgColor: "bg-[#FFCCCC]", // similar to the light red background
-      text: "250 $WMT per epoch shared within our pool",
+      text: "1000 $NIGHT per epoch shared within our pool",
       textColor: "text-black",
     },
     {
