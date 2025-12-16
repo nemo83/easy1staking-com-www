@@ -21,6 +21,10 @@ const nextConfig = {
       asyncWebAssembly: true,
       layers: true,
     };
+    config.output.environment = {
+      ...config.output.environment,
+      asyncFunction: true,
+    };
     return config;
   },
 };
