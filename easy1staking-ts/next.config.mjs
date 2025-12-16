@@ -13,7 +13,12 @@ const nextConfig = {
         hostname: 'plsk.tosidrop.io',
         port: '',
         pathname: '/**',
-      },
+      },{
+        protocol: 'https',
+        hostname: 'cdn.sanity.io',
+        port: '',
+        pathname: '/**',
+      },      
     ],
   },
   webpack: function (config, options) {
