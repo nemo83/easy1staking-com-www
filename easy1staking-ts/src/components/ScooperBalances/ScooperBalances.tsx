@@ -47,8 +47,8 @@ const ScooperBalances = () => {
   const [balances, setBalances] = React.useState<ScooperBalanceRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [order, setOrder] = React.useState<Order>('asc');
-  const [orderBy, setOrderBy] = React.useState<OrderBy>('pubKeyHash');
+  const [order, setOrder] = React.useState<Order>('desc');
+  const [orderBy, setOrderBy] = React.useState<OrderBy>('balanceAda');
   const [copiedText, setCopiedText] = React.useState<string | null>(null);
 
   React.useEffect(() => {
