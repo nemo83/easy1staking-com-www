@@ -11,3 +11,15 @@ export const EASY1STAKING_API = process.env.NEXT_PUBLIC_EASY1STAKING_API
 
 export const EASY1_STAKE_POOL_HASH = "20df8645abddf09403ba2656cda7da2cd163973a5e439c6e43dcbea9"
 export const EASY1_STAKE_POOL_ID = "pool1yr0cv3dtmhcfgqa6yetvmf769ngk89e6tepecmjrmjl2jzcw2lm"
+
+// Scooper public key hash mappings
+export const EASY1_SCOOPER_HASH = "37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f6a983f67f3f"
+
+export const SCOOPER_NAMES: Record<string, string> = {
+  [EASY1_SCOOPER_HASH]: "EASY1",
+  // Add more known scoopers here as they're identified
+}
+
+export const getScooperName = (hash: string): string => {
+  return SCOOPER_NAMES[hash] || `${hash.substring(0, 8)}...`
+}

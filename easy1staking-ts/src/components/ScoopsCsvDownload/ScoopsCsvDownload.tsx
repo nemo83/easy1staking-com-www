@@ -7,35 +7,20 @@ import {
   FormControl,
   InputLabel,
   Paper,
-  Collapse,
   Typography,
-  IconButton,
   TextField,
   Divider,
   Autocomplete
 } from "@mui/material";
 import DownloadIcon from '@mui/icons-material/Download';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { styled } from '@mui/material/styles';
+import { EASY1_SCOOPER_HASH, EASY1STAKING_API } from '@/lib/util/Constants';
 
-const ExpandMore = styled((props: any) => {
-  const { expand, ...other } = props;
-  return <IconButton {...other} />;
-})(({ theme, expand }) => ({
-  transform: !expand ? 'rotate(0deg)' : 'rotate(180deg)',
-  marginLeft: 'auto',
-  transition: theme.transitions.create('transform', {
-    duration: theme.transitions.duration.shortest,
-  }),
-}));
-
-const EASY1_PKH = "37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f6a983f67f3f";
+const EASY1_PKH = EASY1_SCOOPER_HASH;
 
 const ScoopsCsvDownload = () => {
   const [selectedYear, setSelectedYear] = React.useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = React.useState<number>(new Date().getMonth() + 1);
   const [downloading, setDownloading] = React.useState(false);
-  const [expanded, setExpanded] = React.useState(false);
 
   // Custom report states
   const [scooperPkh, setScooperPkh] = React.useState<string>('');
@@ -68,7 +53,7 @@ const ScoopsCsvDownload = () => {
 
   // Fetch scooper list
   React.useEffect(() => {
-    fetch('https://scooper-api.easy1staking.com/scoops/scoopers')
+    fetch(`${EASY1STAKING_API}/scoops/scoopers`)
       .then(res => res.json())
       .then(data => {
         setScooperList(data);
@@ -94,7 +79,7 @@ const ScoopsCsvDownload = () => {
       const fileName = `${yearMonthParam}-scoops-aggregated.csv`;
 
       const response = await fetch(
-        `https://scooper-api.easy1staking.com/scoops/stats/csv?month=${yearMonthParam}`
+        `${EASY1STAKING_API}/scoops/stats/csv?month=${yearMonthParam}`
       );
 
       if (!response.ok) {
@@ -138,7 +123,7 @@ const ScoopsCsvDownload = () => {
       const fileName = `scoops-custom-${dateStart || 'all'}-to-${dateEnd || 'all'}.csv`;
 
       const response = await fetch(
-        `https://scooper-api.easy1staking.com/scoops/csv?${params.toString()}`
+        `${EASY1STAKING_API}/scoops/csv?${params.toString()}`
       );
 
       if (!response.ok) {
@@ -163,31 +148,14 @@ const ScoopsCsvDownload = () => {
   };
 
   return (
-    <Paper sx={{ width: '100%', maxWidth: 1200, margin: '2rem auto' }}>
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          p: 2,
-          cursor: 'pointer',
-          userSelect: 'none'
-        }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+    <Paper sx={{ width: '100%', maxWidth: 1200, margin: '0 auto', p: 3 }}>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6" component="div">
           Scooper Reports
         </Typography>
-        <ExpandMore
-          expand={expanded}
-          aria-expanded={expanded}
-          aria-label="show more"
-        >
-          <ExpandMoreIcon />
-        </ExpandMore>
       </Box>
 
-      <Collapse in={expanded} timeout="auto" unmountOnExit>
-        <Box sx={{ p: 3, pt: 0 }}>
+      <Box>
           {/* Monthly Aggregated Report */}
           <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
             Monthly Payouts Report
@@ -306,8 +274,7 @@ const ScoopsCsvDownload = () => {
               </Button>
             </Box>
           </Box>
-        </Box>
-      </Collapse>
+      </Box>
     </Paper>
   );
 };

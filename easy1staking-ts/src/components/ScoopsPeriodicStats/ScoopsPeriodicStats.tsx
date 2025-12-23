@@ -1,53 +1,91 @@
 import * as React from 'react';
 import { BarChart } from '@mui/x-charts/BarChart';
+import { getScooperName, EASY1STAKING_API } from '@/lib/util/Constants';
 
 type ScoopStats = {
     period: string;
-    easy1Scoops: number;
-    totalScoops: number;
+    selectedScoops: number;
+    otherScoops: number;
 };
 
-const BasicBars = () => {
+interface BasicBarsProps {
+    selectedPool?: string;
+    timePeriod?: number;
+}
 
+const BasicBars = ({ selectedPool = 'all', timePeriod = 7 }: BasicBarsProps) => {
     const [stats, setStats] = React.useState<ScoopStats[]>([]);
+    const [poolName, setPoolName] = React.useState<string>('');
 
     React.useEffect(() => {
-
         (async () => {
+            const date = new Date();
 
-            const date = new Date()
+            if (selectedPool === 'all') {
+                // For "all", we'll show aggregated data
+                // Get the top scooper and show total scoops trend
+                fetch(`${EASY1STAKING_API}/scoops/stats/P1D`)
+                    .then((res) => res.json())
+                    .then((apiData) => {
+                        // Get the top scooper to show its trend
+                        const topScooper = apiData.scooper_stats.sort((a: any, b: any) =>
+                            b.total_scoops - a.total_scoops
+                        )[0];
 
-            fetch('https://scooper-api.easy1staking.com/scoops/stats/scooper/37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f6a983f67f3f')
-                .then((res) => res.json())
-                .then((data) => {
+                        if (topScooper) {
+                            return fetch(`${EASY1STAKING_API}/scoops/stats/scooper/${topScooper.pub_key_hash}?period_length=${timePeriod}`)
+                                .then((res) => res.json())
+                                .then((data) => {
+                                    const stats = data.map((stat: any) => {
+                                        const periodDate = new Date();
+                                        periodDate.setDate(date.getDate() + stat.period);
 
-                    const stats = data.map((stat: any) => {
-                        const periodDate = new Date();
-                        periodDate.setDate(date.getDate() - Math.abs(stat.period) - 1)
-                            
-                        return {
-                            period: periodDate.toLocaleDateString(undefined, {month: "short", day: "numeric"}),
-                            easy1Scoops: stat.scooperNumberScoops,
-                            totalScoops: stat.totalNumberScoops - stat.scooperNumberScoops
+                                        return {
+                                            period: periodDate.toLocaleDateString(undefined, {month: "short", day: "numeric"}),
+                                            selectedScoops: stat.totalNumberScoops,
+                                            otherScoops: 0
+                                        };
+                                    });
+
+                                    setPoolName('All Pools (Total)');
+                                    setStats(stats.reverse());
+                                });
                         }
+                    });
+            } else {
+                // Show specific pool vs others
+                fetch(`${EASY1STAKING_API}/scoops/stats/scooper/${selectedPool}?period_length=${timePeriod}`)
+                    .then((res) => res.json())
+                    .then((data) => {
+                        const stats = data.map((stat: any) => {
+                            const periodDate = new Date();
+                            periodDate.setDate(date.getDate() + stat.period);
 
-                    })
+                            return {
+                                period: periodDate.toLocaleDateString(undefined, {month: "short", day: "numeric"}),
+                                selectedScoops: stat.scooperNumberScoops,
+                                otherScoops: stat.totalNumberScoops - stat.scooperNumberScoops
+                            };
+                        });
 
-                    setStats(stats.reverse());
-
-                });
-
+                        setPoolName(getScooperName(selectedPool));
+                        setStats(stats.reverse());
+                    });
+            }
         })();
-
-    }, [])
+    }, [selectedPool, timePeriod]);
 
     return (
         <BarChart
             xAxis={[{ scaleType: 'band', data: stats.map(stat => stat.period) }]}
-            series={[
-                { label: 'EASY1', data: stats.map(stat => stat.easy1Scoops) }, 
-                { label: 'Other', data: stats.map(stat => stat.totalScoops) }, 
-            ]}
+            series={
+                selectedPool === 'all'
+                    ? [{ label: poolName, data: stats.map(stat => stat.selectedScoops), stack: 'total' }]
+                    : [
+                        { label: poolName, data: stats.map(stat => stat.selectedScoops), stack: 'total' },
+                        { label: 'Others', data: stats.map(stat => stat.otherScoops), stack: 'total' },
+                    ]
+            }
             width={500}
             height={300}
         />

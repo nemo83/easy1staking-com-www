@@ -5,9 +5,13 @@ import { MeshProvider } from "@meshsdk/react";
 import Layout from "@/components/Layout";
 
 import Hotjar from '@hotjar/browser';
-const siteId = 3741402;
-const hotjarVersion = 6;
-Hotjar.init(siteId, hotjarVersion);
+
+// Only initialize Hotjar in production
+if (process.env.NODE_ENV === 'production') {
+  const siteId = 3741402;
+  const hotjarVersion = 6;
+  Hotjar.init(siteId, hotjarVersion);
+}
 
 function App({ Component, pageProps }: AppProps) {
   return (

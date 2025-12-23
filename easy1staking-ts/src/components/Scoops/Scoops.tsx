@@ -12,6 +12,7 @@ import Stomp from "stompjs";
 import { CSSTransition, TransitionGroup } from "react-transition-group";
 import { Button, Collapse } from "@mui/material";
 import LaunchIcon from '@mui/icons-material/Launch';
+import { EASY1STAKING_API } from "@/lib/util/Constants";
 type Scoop = {
   timestamp: number;
   txHash: string;
@@ -27,7 +28,7 @@ const Scoops = () => {
 
   const connectWebSocket = React.useCallback(() => {
     try {
-      const socket = new SockJS("https://scooper-api.easy1staking.com/ws");
+      const socket = new SockJS(`${EASY1STAKING_API}/ws`);
       const stompClient = Stomp.over(socket);
 
       // Disable debug logging
@@ -79,7 +80,7 @@ const Scoops = () => {
   React.useEffect(() => {
     // Fetch initial data
     fetch(
-      "https://scooper-api.easy1staking.com/scoops?" +
+      `${EASY1STAKING_API}/scoops?` +
       new URLSearchParams({ sort: "DESC", limit: "10" }).toString()
     )
       .then((res) => res.json())
