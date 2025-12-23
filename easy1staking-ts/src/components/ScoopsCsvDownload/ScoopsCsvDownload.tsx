@@ -13,7 +13,7 @@ import {
   Autocomplete
 } from "@mui/material";
 import DownloadIcon from '@mui/icons-material/Download';
-import { EASY1_SCOOPER_HASH, EASY1STAKING_API } from '@/lib/util/Constants';
+import { EASY1_SCOOPER_HASH, SCOOPER_API } from '@/lib/util/Constants';
 
 const EASY1_PKH = EASY1_SCOOPER_HASH;
 
@@ -53,7 +53,7 @@ const ScoopsCsvDownload = () => {
 
   // Fetch scooper list
   React.useEffect(() => {
-    fetch(`${EASY1STAKING_API}/scoops/scoopers`)
+    fetch(`${SCOOPER_API}/scoops/scoopers`)
       .then(res => res.json())
       .then(data => {
         setScooperList(data);
@@ -79,7 +79,7 @@ const ScoopsCsvDownload = () => {
       const fileName = `${yearMonthParam}-scoops-aggregated.csv`;
 
       const response = await fetch(
-        `${EASY1STAKING_API}/scoops/stats/csv?month=${yearMonthParam}`
+        `${SCOOPER_API}/scoops/stats/csv?month=${yearMonthParam}`
       );
 
       if (!response.ok) {
@@ -123,7 +123,7 @@ const ScoopsCsvDownload = () => {
       const fileName = `scoops-custom-${dateStart || 'all'}-to-${dateEnd || 'all'}.csv`;
 
       const response = await fetch(
-        `${EASY1STAKING_API}/scoops/csv?${params.toString()}`
+        `${SCOOPER_API}/scoops/csv?${params.toString()}`
       );
 
       if (!response.ok) {

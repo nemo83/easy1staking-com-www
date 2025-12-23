@@ -18,7 +18,7 @@ import {
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import { getScooperName, EASY1STAKING_API } from '@/lib/util/Constants';
+import { getScooperName, SCOOPER_API } from '@/lib/util/Constants';
 
 type ScooperBalance = {
   pubKeyHash: string;
@@ -55,7 +55,7 @@ const ScooperBalances = () => {
     setLoading(true);
     setError(null);
 
-    fetch(`${EASY1STAKING_API}/scoopers/balances`)
+    fetch(`${SCOOPER_API}/scoopers/balances`)
       .then((res) => {
         if (!res.ok) {
           throw new Error(`HTTP error! status: ${res.status}`);

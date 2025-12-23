@@ -15,7 +15,7 @@ import {
   TextField,
   SelectChangeEvent
 } from '@mui/material';
-import { EASY1STAKING_API } from '@/lib/util/Constants';
+import { SCOOPER_API } from '@/lib/util/Constants';
 
 type ViewType = 'current-month' | 'last-30' | 'last-90' | 'last-12-months' | 'custom';
 type Granularity = 'hour' | 'day' | 'week' | 'month';
@@ -82,22 +82,22 @@ const ProtocolAnalytics = () => {
 
     switch (viewType) {
       case 'current-month':
-        apiUrl = `${EASY1STAKING_API}/scoops/analytics/current-month`;
+        apiUrl = `${SCOOPER_API}/scoops/analytics/current-month`;
         break;
 
       case 'last-30':
         const start30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        apiUrl = `${EASY1STAKING_API}/scoops/analytics/timeseries?date_start=${formatDate(start30)}&date_end=${formatDate(now)}&granularity=day`;
+        apiUrl = `${SCOOPER_API}/scoops/analytics/timeseries?date_start=${formatDate(start30)}&date_end=${formatDate(now)}&granularity=day`;
         break;
 
       case 'last-90':
         const start90 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        apiUrl = `${EASY1STAKING_API}/scoops/analytics/timeseries?date_start=${formatDate(start90)}&date_end=${formatDate(now)}&granularity=day`;
+        apiUrl = `${SCOOPER_API}/scoops/analytics/timeseries?date_start=${formatDate(start90)}&date_end=${formatDate(now)}&granularity=day`;
         break;
 
       case 'last-12-months':
         const start12 = new Date(now.getFullYear(), now.getMonth() - 12, 1);
-        apiUrl = `${EASY1STAKING_API}/scoops/analytics/monthly?date_start=${formatDate(start12)}&date_end=${formatDate(now)}`;
+        apiUrl = `${SCOOPER_API}/scoops/analytics/monthly?date_start=${formatDate(start12)}&date_end=${formatDate(now)}`;
         break;
 
       case 'custom':
@@ -105,7 +105,7 @@ const ProtocolAnalytics = () => {
           setLoading(false);
           return;
         }
-        apiUrl = `${EASY1STAKING_API}/scoops/analytics/timeseries?date_start=${dateStart}&date_end=${dateEnd}&granularity=${granularity}`;
+        apiUrl = `${SCOOPER_API}/scoops/analytics/timeseries?date_start=${dateStart}&date_end=${dateEnd}&granularity=${granularity}`;
         break;
     }
 

@@ -8,7 +8,7 @@ import ScooperBalances from "../../components/ScooperBalances/ScooperBalances";
 import ProtocolAnalytics from "../../components/ProtocolAnalytics/ProtocolAnalytics";
 import { Box, Container, createTheme, CssBaseline, Grid2, ThemeProvider, Typography, Tabs, Tab, FormControl, Select, MenuItem, InputLabel, Divider } from "@mui/material";
 import Navbar from "@/components/Navbar";
-import { getScooperName, EASY1STAKING_API } from "@/lib/util/Constants";
+import { getScooperName, SCOOPER_API } from "@/lib/util/Constants";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -50,7 +50,7 @@ export default function ScooperDashboard() {
 
   // Fetch pool options
   useEffect(() => {
-    fetch(`${EASY1STAKING_API}/scoops/stats/P1D`)
+    fetch(`${SCOOPER_API}/scoops/stats/P1D`)
       .then((res) => res.json())
       .then((data) => {
         const sorted = [...data.scooper_stats]

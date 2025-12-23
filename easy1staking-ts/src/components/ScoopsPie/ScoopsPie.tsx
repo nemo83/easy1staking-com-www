@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { PieChart } from '@mui/x-charts/PieChart';
-import { getScooperName, EASY1STAKING_API } from '@/lib/util/Constants';
+import { getScooperName, SCOOPER_API } from '@/lib/util/Constants';
 
 const props = {
     width: 500,
@@ -32,7 +32,7 @@ const ScoopsPies = ({ selectedPool, timePeriod = 7 }: ScoopsPiesProps) => {
         (async () => {
             // Convert days to ISO duration format (P7D, P14D, etc.)
             const duration = `P${timePeriod}D`;
-            fetch(`${EASY1STAKING_API}/scoops/stats/${duration}`)
+            fetch(`${SCOOPER_API}/scoops/stats/${duration}`)
                 .then((res) => res.json())
                 .then((data) => {
                     const scooperStats: ScooperStat[] = data.scooper_stats;

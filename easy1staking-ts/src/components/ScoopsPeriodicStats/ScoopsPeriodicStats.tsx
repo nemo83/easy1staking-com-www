@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { BarChart } from '@mui/x-charts/BarChart';
-import { getScooperName, EASY1STAKING_API } from '@/lib/util/Constants';
+import { getScooperName, SCOOPER_API } from '@/lib/util/Constants';
 
 type ScoopStats = {
     period: string;
@@ -24,7 +24,7 @@ const BasicBars = ({ selectedPool = 'all', timePeriod = 7 }: BasicBarsProps) => 
             if (selectedPool === 'all') {
                 // For "all", we'll show aggregated data
                 // Get the top scooper and show total scoops trend
-                fetch(`${EASY1STAKING_API}/scoops/stats/P1D`)
+                fetch(`${SCOOPER_API}/scoops/stats/P1D`)
                     .then((res) => res.json())
                     .then((apiData) => {
                         // Get the top scooper to show its trend
@@ -33,7 +33,7 @@ const BasicBars = ({ selectedPool = 'all', timePeriod = 7 }: BasicBarsProps) => 
                         )[0];
 
                         if (topScooper) {
-                            return fetch(`${EASY1STAKING_API}/scoops/stats/scooper/${topScooper.pub_key_hash}?period_length=${timePeriod}`)
+                            return fetch(`${SCOOPER_API}/scoops/stats/scooper/${topScooper.pub_key_hash}?period_length=${timePeriod}`)
                                 .then((res) => res.json())
                                 .then((data) => {
                                     const stats = data.map((stat: any) => {
@@ -54,7 +54,7 @@ const BasicBars = ({ selectedPool = 'all', timePeriod = 7 }: BasicBarsProps) => 
                     });
             } else {
                 // Show specific pool vs others
-                fetch(`${EASY1STAKING_API}/scoops/stats/scooper/${selectedPool}?period_length=${timePeriod}`)
+                fetch(`${SCOOPER_API}/scoops/stats/scooper/${selectedPool}?period_length=${timePeriod}`)
                     .then((res) => res.json())
                     .then((data) => {
                         const stats = data.map((stat: any) => {
