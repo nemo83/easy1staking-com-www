@@ -19,6 +19,8 @@ export const EASY1_SCOOPER_HASH = "37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f
 export const SCOOPER_NAMES: Record<string, string> = {
   [EASY1_SCOOPER_HASH]: "EASY1",
   "f90599106a15fca2bf2829124ddcb11a4dcd53916f46f209d16f1fbb": "TITAN",
+  "c0f984cacef4eb54112e3fbcea7a8f5c20c10151f982409968525933": "AHL",
+  "8a0fdfd566a537017bce807cbc223eb1b00e969bae146457e11c4de8": "BCSH"
   // Add more known scoopers here as they're identified
 }
 
