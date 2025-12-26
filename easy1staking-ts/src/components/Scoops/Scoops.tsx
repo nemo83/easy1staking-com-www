@@ -12,7 +12,7 @@ import Stomp from "stompjs";
 import { CSSTransition, TransitionGroup } from "react-transition-group";
 import { Button, Collapse } from "@mui/material";
 import LaunchIcon from '@mui/icons-material/Launch';
-import { SCOOPER_API } from "@/lib/util/Constants";
+import { SCOOPER_API, getScooperName } from "@/lib/util/Constants";
 type Scoop = {
   timestamp: number;
   txHash: string;
@@ -145,10 +145,7 @@ const Scoops = () => {
                 </TableCell>
                 <TableCell align="left">{scoop.numOrders}</TableCell>
                 <TableCell align="left">
-                  {scoop.scooperHash ===
-                    "37eb116b3ff8a70e4be778b5e8d30d3b40421ffe6622f6a983f67f3f"
-                    ? "EASY1"
-                    : scoop.scooperHash}
+                  {getScooperName(scoop.scooperHash)}
                 </TableCell>
                 <TableCell align="left">{scoop.isMempool ? <CheckIcon /> : ''}</TableCell>
               </TableRow>
