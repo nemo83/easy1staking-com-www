@@ -14,7 +14,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import Navbar from '@/components/Navbar';
 import { KreateNFT } from '@/lib/interfaces/AppTypes';
 import { EASY1STAKING_API, KREATE_SCRIPT } from '@/lib/util/Constants';
-import { MeshTxBuilder, mConStr, BlockfrostProvider } from '@meshsdk/core';
+import { MeshTxBuilder, mConStr, BlockfrostProvider, deserializeAddress } from '@meshsdk/core';
 
 const BLOCKFROST_API_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
 const blockfrostProvider = new BlockfrostProvider(BLOCKFROST_API_KEY!);
@@ -227,6 +227,10 @@ export default function KreateDelistPage() {
         submitter: blockfrostProvider,
       });
 
+      // Get payment credential (pub key hash) from wallet address
+      const addressDetails = deserializeAddress(walletAddress);
+      const pubKeyHash = addressDetails.pubKeyHash;
+
       txBuilder
         .spendingPlutusScriptV2()
         .txIn(nft.txHash, nft.outputIndex)
@@ -236,7 +240,8 @@ export default function KreateDelistPage() {
         .txOut(walletAddress, scriptUtxo.output.amount)
         .changeAddress(walletAddress)
         .txInCollateral(collateralUtxos[0].input.txHash, collateralUtxos[0].input.outputIndex)
-        .selectUtxosFrom(walletUtxos);
+        .selectUtxosFrom(walletUtxos)
+        .requiredSignerHash(pubKeyHash);
 
       await txBuilder.complete();
 
