@@ -58,3 +58,14 @@ export interface StakePoolDetails {
     is_mpo: boolean;
     lovelaces_per_ada: string;
 }
+
+// Kreate NFT Delisting
+export interface KreateNFT {
+    assetName: string;          // Hex-encoded
+    assetNameDecoded: string;   // UTF-8 decoded
+    policyId: string;
+    txHash: string;             // UTXO tx hash
+    outputIndex: number;        // UTXO output index
+    scriptBytes: string;        // Script bytes for delisting
+    utxoId: string;             // `${txHash}#${outputIndex}` for unique ID
+}

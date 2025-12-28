@@ -37,6 +37,12 @@ const Navbar = () => {
       enabled: true,
     },
     {
+      name: "Kreate Delist",
+      href: "/kreate-delist",
+      enabled: true,
+      isNew: true,
+    },
+    {
       name: "Summit 2025 Discount",
       href: "/cardano-summit-2025",
       enabled: false,
