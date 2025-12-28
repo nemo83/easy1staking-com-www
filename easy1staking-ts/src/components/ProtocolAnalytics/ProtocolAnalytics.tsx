@@ -5,20 +5,17 @@ import {
   Paper,
   Typography,
   CircularProgress,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   FormGroup,
   FormControlLabel,
   Checkbox,
-  TextField,
-  SelectChangeEvent
+  Tooltip,
+  Divider,
+  Chip,
+  IconButton
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { SCOOPER_API } from '@/lib/util/Constants';
-
-type ViewType = 'current-month' | 'last-30' | 'last-90' | 'last-12-months' | 'custom';
-type Granularity = 'hour' | 'day' | 'week' | 'month';
 
 type AnalyticsDataPoint = {
   period: string;
@@ -36,10 +33,9 @@ type MetricToggles = {
 };
 
 const ProtocolAnalytics = () => {
-  const [viewType, setViewType] = React.useState<ViewType>('last-30');
-  const [granularity, setGranularity] = React.useState<Granularity>('day');
-  const [dateStart, setDateStart] = React.useState<string>('');
-  const [dateEnd, setDateEnd] = React.useState<string>('');
+  const now = new Date();
+  const [selectedYear, setSelectedYear] = React.useState<number>(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = React.useState<number>(now.getMonth()); // 0-indexed
   const [data, setData] = React.useState<AnalyticsDataPoint[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -50,14 +46,6 @@ const ProtocolAnalytics = () => {
     transactionFees: true,
   });
 
-  const handleViewTypeChange = (event: SelectChangeEvent<ViewType>) => {
-    setViewType(event.target.value as ViewType);
-  };
-
-  const handleGranularityChange = (event: SelectChangeEvent<Granularity>) => {
-    setGranularity(event.target.value as Granularity);
-  };
-
   const handleMetricToggle = (metric: keyof MetricToggles) => {
     setMetrics((prev) => ({
       ...prev,
@@ -65,12 +53,37 @@ const ProtocolAnalytics = () => {
     }));
   };
 
+  const handlePreviousMonth = () => {
+    if (selectedMonth === 0) {
+      setSelectedMonth(11);
+      setSelectedYear(selectedYear - 1);
+    } else {
+      setSelectedMonth(selectedMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    const currentDate = new Date();
+    const isCurrentMonth = selectedYear === currentDate.getFullYear() && selectedMonth === currentDate.getMonth();
+
+    if (isCurrentMonth) {
+      return; // Can't go into the future
+    }
+
+    if (selectedMonth === 11) {
+      setSelectedMonth(0);
+      setSelectedYear(selectedYear + 1);
+    } else {
+      setSelectedMonth(selectedMonth + 1);
+    }
+  };
+
+  // Check if we're viewing the current month
+  const isCurrentMonth = selectedYear === now.getFullYear() && selectedMonth === now.getMonth();
+
   React.useEffect(() => {
     setLoading(true);
     setError(null);
-
-    let apiUrl = '';
-    const now = new Date();
 
     // Helper function to format date as YYYY-MM-DD
     const formatDate = (date: Date): string => {
@@ -80,54 +93,37 @@ const ProtocolAnalytics = () => {
       return `${year}-${month}-${day}`;
     };
 
-    switch (viewType) {
-      case 'current-month':
-        apiUrl = `${SCOOPER_API}/scoops/analytics/current-month`;
-        break;
+    let apiUrl = '';
 
-      case 'last-30':
-        const start30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        apiUrl = `${SCOOPER_API}/scoops/analytics/timeseries?date_start=${formatDate(start30)}&date_end=${formatDate(now)}&granularity=day`;
-        break;
+    if (isCurrentMonth) {
+      // Use current-month endpoint for the current month
+      apiUrl = `${SCOOPER_API}/scoops/analytics/current-month`;
+    } else {
+      // Use timeseries endpoint with daily granularity for past months
+      const startDate = new Date(selectedYear, selectedMonth, 1);
+      const endDate = new Date(selectedYear, selectedMonth + 1, 0); // Last day of selected month
+      // Add 1 day to end date since API treats end_date as exclusive
+      endDate.setDate(endDate.getDate() + 1);
+      apiUrl = `${SCOOPER_API}/scoops/analytics/timeseries?date_start=${formatDate(startDate)}&date_end=${formatDate(endDate)}&granularity=day`;
+    }
 
-      case 'last-90':
-        const start90 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        apiUrl = `${SCOOPER_API}/scoops/analytics/timeseries?date_start=${formatDate(start90)}&date_end=${formatDate(now)}&granularity=day`;
-        break;
-
-      case 'last-12-months':
-        const start12 = new Date(now.getFullYear(), now.getMonth() - 12, 1);
-        apiUrl = `${SCOOPER_API}/scoops/analytics/monthly?date_start=${formatDate(start12)}&date_end=${formatDate(now)}`;
-        break;
-
-      case 'custom':
-        if (!dateStart || !dateEnd) {
-          setLoading(false);
-          return;
+    fetch(apiUrl)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
         }
-        apiUrl = `${SCOOPER_API}/scoops/analytics/timeseries?date_start=${dateStart}&date_end=${dateEnd}&granularity=${granularity}`;
-        break;
-    }
-
-    if (apiUrl) {
-      fetch(apiUrl)
-        .then((res) => {
-          if (!res.ok) {
-            throw new Error(`HTTP error! status: ${res.status}`);
-          }
-          return res.json();
-        })
-        .then((apiData: AnalyticsDataPoint[]) => {
-          setData(apiData);
-          setLoading(false);
-        })
-        .catch((err) => {
-          console.error('Error fetching protocol analytics:', err);
-          setError('Failed to load protocol analytics');
-          setLoading(false);
-        });
-    }
-  }, [viewType, granularity, dateStart, dateEnd]);
+        return res.json();
+      })
+      .then((apiData: AnalyticsDataPoint[]) => {
+        setData(apiData);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Error fetching protocol analytics:', err);
+        setError('Failed to load protocol analytics');
+        setLoading(false);
+      });
+  }, [selectedYear, selectedMonth, isCurrentMonth]);
 
   if (loading) {
     return (
@@ -159,13 +155,27 @@ const ProtocolAnalytics = () => {
   // Convert fees from lovelace to ADA
   const protocolFeesAda = totals.protocolFees / 1_000_000;
   const transactionFeesAda = totals.transactionFees / 1_000_000;
+  const protocolProfitAda = protocolFeesAda - transactionFeesAda;
 
-  // Prepare chart data
+  // Calculate profit distribution
+  const sundaeLabsShare = protocolProfitAda * 0.16;
+  const sundaeTokenHoldersShare = protocolProfitAda * 0.15;
+  const qusdmShare = protocolProfitAda * 0.15;
+
+  // Determine which scooper regime is active
+  const fiftyPercentShare = protocolProfitAda * 0.50;
+  const baseFormulaShare = 20000 + protocolProfitAda * 0.10;
+  const scoopersBaseShare = Math.min(fiftyPercentShare, baseFormulaShare);
+  const scoopersPercentage = (scoopersBaseShare / protocolProfitAda) * 100;
+  const isCapActive = fiftyPercentShare <= baseFormulaShare;
+
+  // Get month name for display
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const displayMonthYear = `${monthNames[selectedMonth]} ${selectedYear}`;
+
+  // Prepare chart data - always show day and month for daily breakdown
   const xAxisData = data.map((point) => {
     const date = new Date(point.period);
-    if (viewType === 'last-12-months') {
-      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-    }
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   });
 
@@ -206,61 +216,19 @@ const ProtocolAnalytics = () => {
   return (
     <Box>
       {/* Controls Section */}
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        {/* View Type Selector */}
-        <FormControl sx={{ minWidth: 200 }}>
-          <InputLabel id="view-type-label">View Type</InputLabel>
-          <Select
-            labelId="view-type-label"
-            id="view-type-select"
-            value={viewType}
-            label="View Type"
-            onChange={handleViewTypeChange}
-          >
-            <MenuItem value="current-month">Current Month</MenuItem>
-            <MenuItem value="last-30">Last 30 Days</MenuItem>
-            <MenuItem value="last-90">Last 90 Days</MenuItem>
-            <MenuItem value="last-12-months">Last 12 Months</MenuItem>
-            <MenuItem value="custom">Custom Range</MenuItem>
-          </Select>
-        </FormControl>
-
-        {/* Custom Range Date Pickers */}
-        {viewType === 'custom' && (
-          <>
-            <TextField
-              label="Start Date"
-              type="date"
-              value={dateStart}
-              onChange={(e) => setDateStart(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ minWidth: 200 }}
-            />
-            <TextField
-              label="End Date"
-              type="date"
-              value={dateEnd}
-              onChange={(e) => setDateEnd(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ minWidth: 200 }}
-            />
-            <FormControl sx={{ minWidth: 150 }}>
-              <InputLabel id="granularity-label">Granularity</InputLabel>
-              <Select
-                labelId="granularity-label"
-                id="granularity-select"
-                value={granularity}
-                label="Granularity"
-                onChange={handleGranularityChange}
-              >
-                <MenuItem value="hour">Hour</MenuItem>
-                <MenuItem value="day">Day</MenuItem>
-                <MenuItem value="week">Week</MenuItem>
-                <MenuItem value="month">Month</MenuItem>
-              </Select>
-            </FormControl>
-          </>
-        )}
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* Month Navigation */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <IconButton onClick={handlePreviousMonth} color="primary">
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h6" sx={{ minWidth: 200, textAlign: 'center', fontWeight: 600 }}>
+            {displayMonthYear}
+          </Typography>
+          <IconButton onClick={handleNextMonth} color="primary" disabled={isCurrentMonth}>
+            <ArrowForwardIcon />
+          </IconButton>
+        </Box>
 
         {/* Metric Toggles */}
         <Paper sx={{ p: 2 }}>
@@ -389,9 +357,11 @@ const ProtocolAnalytics = () => {
           </Box>
 
           <Box>
-            <Typography variant="caption" color="text.secondary">
-              Protocol Fees
-            </Typography>
+            <Tooltip title="Profit before removing transaction fees, which must be repaid to scoopers" arrow>
+              <Typography variant="caption" color="text.secondary" sx={{ cursor: 'help', display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                Protocol Fees ⓘ
+              </Typography>
+            </Tooltip>
             <Typography variant="h5" sx={{ fontWeight: 700, color: '#EC4899' }}>
               ₳ {protocolFeesAda.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
@@ -410,6 +380,91 @@ const ProtocolAnalytics = () => {
                 maximumFractionDigits: 2,
               })}
             </Typography>
+          </Box>
+
+          <Box>
+            <Tooltip title="Protocol Fees minus Transaction Fees (which are repaid to scoopers)" arrow>
+              <Typography variant="caption" color="text.secondary" sx={{ cursor: 'help', display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                Protocol Profit ⓘ
+              </Typography>
+            </Tooltip>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#10B981' }}>
+              ₳ {protocolProfitAda.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </Typography>
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: 'text.primary' }}>
+            Profit Distribution
+          </Typography>
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" color="text.secondary">
+                Sundae Labs (16%)
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                ₳ {sundaeLabsShare.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" color="text.secondary">
+                SUNDAE Holders (15%)
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                ₳ {sundaeTokenHoldersShare.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" color="text.secondary">
+                qUSDM (15%)
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                ₳ {qusdmShare.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                <Tooltip title="min(50%, 20k ADA + 10%)" arrow>
+                  <Typography variant="caption" color="text.secondary" sx={{ cursor: 'help' }}>
+                    Scoopers ({scoopersPercentage.toFixed(1)}%) ⓘ
+                  </Typography>
+                </Tooltip>
+                <Chip
+                  label={isCapActive ? "50% Cap Active" : "Base Formula (20k + 10%)"}
+                  size="small"
+                  color={isCapActive ? "warning" : "success"}
+                  sx={{
+                    height: 20,
+                    fontSize: '0.65rem',
+                    fontWeight: 600,
+                    width: 'fit-content'
+                  }}
+                />
+              </Box>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                ₳ {scoopersBaseShare.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </Typography>
+            </Box>
           </Box>
         </Paper>
       </Box>
