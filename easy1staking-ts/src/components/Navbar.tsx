@@ -6,6 +6,7 @@ import Toolbar from "@mui/material/Toolbar";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
 import MenuIcon from "@mui/icons-material/Menu";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import Container from "@mui/material/Container";
 import MenuItem from "@mui/material/MenuItem";
 import Image from "next/image";
@@ -31,36 +32,25 @@ const Navbar = () => {
       href: "/staking-assessment",
       enabled: true,
     },
+  ].filter((page) => page.enabled);
+
+  const toolsSubmenu = [
     {
       name: "WMTx Conversion",
       href: "/wmtx-conversion",
-      enabled: true,
     },
     {
       name: "Kreate Delist",
       href: "/kreate-delist",
-      enabled: true,
-      isNew: true,
     },
     {
-      name: "Summit 2025 Discount",
-      href: "/cardano-summit-2025",
-      enabled: false,
-      isNew: true,
+      name: "UPLC.link",
+      href: "/tools/uplc-link",
     },
-    {
-      name: "Raffles",
-      href: "/raffles",
-      enabled: false,
-    },
-    {
-      name: "NFT Raffles",
-      href: "/nft-raffles",
-      enabled: false,
-    },
-  ].filter((page) => page.enabled);
+  ];
 
   const [anchorElNav, setAnchorElNav] = React.useState(null);
+  const [anchorElTools, setAnchorElTools] = React.useState<null | HTMLElement>(null);
   const [isOpen, setIsOpen] = React.useState(false);
 
   const closeWallet = () => {
@@ -73,6 +63,14 @@ const Navbar = () => {
 
   const handleCloseNavMenu = () => {
     setAnchorElNav(null);
+  };
+
+  const handleOpenToolsMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorElTools(event.currentTarget);
+  };
+
+  const handleCloseToolsMenu = () => {
+    setAnchorElTools(null);
   };
 
   return (
@@ -105,6 +103,7 @@ const Navbar = () => {
               display: { xs: "none", md: "flex" },
               justifyContent: "center",
               marginLeft: 0,
+              alignItems: "center",
             }}
           >
             {pages.map((page) => (
@@ -112,16 +111,40 @@ const Navbar = () => {
                 key={page.href}
                 onClick={handleCloseNavMenu}
                 href={page.href}
-                className={`font-semibold mx-3 ${page.isNew ? "relative" : ""}`}
+                className="font-semibold mx-3"
               >
                 {page.name}
-                {page.isNew && (
-                  <span className="absolute -top-1 -right-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">
-                    NEW
-                  </span>
-                )}
               </Link>
             ))}
+            {/* Tools Dropdown */}
+            <button
+              onClick={handleOpenToolsMenu}
+              className="font-semibold mx-3 flex items-center"
+            >
+              Tools
+              <KeyboardArrowDownIcon sx={{ fontSize: 20, ml: 0.5 }} />
+            </button>
+            <Menu
+              anchorEl={anchorElTools}
+              open={Boolean(anchorElTools)}
+              onClose={handleCloseToolsMenu}
+              anchorOrigin={{
+                vertical: "bottom",
+                horizontal: "center",
+              }}
+              transformOrigin={{
+                vertical: "top",
+                horizontal: "center",
+              }}
+            >
+              {toolsSubmenu.map((tool) => (
+                <MenuItem key={tool.href} onClick={handleCloseToolsMenu} sx={{ p: 0 }}>
+                  <Link href={tool.href} className="font-semibold block w-full px-4 py-2">
+                    {tool.name}
+                  </Link>
+                </MenuItem>
+              ))}
+            </Menu>
           </Box>
 
           {/* Connect Wallet Button */}
@@ -201,14 +224,19 @@ const Navbar = () => {
             sx={{ display: { xs: "block", md: "none" } }}
           >
             {pages.map((page) => (
-              <MenuItem key={page.href} onClick={handleCloseNavMenu}>
-                <Link className={`font-semibold ${page.isNew ? "relative" : ""}`} href={page.href}>
+              <MenuItem key={page.href} onClick={handleCloseNavMenu} sx={{ p: 0 }}>
+                <Link className="font-semibold block w-full px-4 py-2" href={page.href}>
                   {page.name}
-                  {page.isNew && (
-                    <span className="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">
-                      NEW
-                    </span>
-                  )}
+                </Link>
+              </MenuItem>
+            ))}
+            <MenuItem disabled sx={{ opacity: 0.7, fontWeight: 600 }}>
+              Tools
+            </MenuItem>
+            {toolsSubmenu.map((tool) => (
+              <MenuItem key={tool.href} onClick={handleCloseNavMenu} sx={{ p: 0 }}>
+                <Link className="font-semibold block w-full px-4 py-2 pl-8" href={tool.href}>
+                  {tool.name}
                 </Link>
               </MenuItem>
             ))}
