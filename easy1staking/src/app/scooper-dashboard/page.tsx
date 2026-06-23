@@ -1,13 +1,28 @@
-import Head from "next/head";
+"use client";
+
 import { useState, useEffect } from "react";
-import Scoops from "../../components/Scoops/Scoops";
-import ScoopsPies from "../../components/ScoopsPie/ScoopsPie";
-import BasicBars from "../../components/ScoopsPeriodicStats/ScoopsPeriodicStats";
-import ScoopsCsvDownload from "../../components/ScoopsCsvDownload/ScoopsCsvDownload";
-import ScooperBalances from "../../components/ScooperBalances/ScooperBalances";
-import ProtocolAnalytics from "../../components/ProtocolAnalytics/ProtocolAnalytics";
-import { Box, Container, createTheme, CssBaseline, Grid2, ThemeProvider, Typography, Tabs, Tab, FormControl, Select, MenuItem, InputLabel, Divider } from "@mui/material";
-import Navbar from "@/components/Navbar";
+import Scoops from "@/components/Scoops/Scoops";
+import ScoopsPies from "@/components/ScoopsPie/ScoopsPie";
+import BasicBars from "@/components/ScoopsPeriodicStats/ScoopsPeriodicStats";
+import ScoopsCsvDownload from "@/components/ScoopsCsvDownload/ScoopsCsvDownload";
+import ScooperBalances from "@/components/ScooperBalances/ScooperBalances";
+import ProtocolAnalytics from "@/components/ProtocolAnalytics/ProtocolAnalytics";
+import {
+  Box,
+  Container,
+  createTheme,
+  CssBaseline,
+  Grid2,
+  ThemeProvider,
+  Typography,
+  Tabs,
+  Tab,
+  FormControl,
+  Select,
+  MenuItem,
+  InputLabel,
+  Divider,
+} from "@mui/material";
 import { getScooperName, SCOOPER_API } from "@/lib/util/Constants";
 
 interface TabPanelProps {
@@ -40,7 +55,7 @@ type PoolOption = {
 
 export default function ScooperDashboard() {
   const [activeTab, setActiveTab] = useState(0);
-  const [selectedPool, setSelectedPool] = useState<string>('all');
+  const [selectedPool, setSelectedPool] = useState<string>("all");
   const [timePeriod, setTimePeriod] = useState<number>(7);
   const [poolOptions, setPoolOptions] = useState<PoolOption[]>([]);
 
@@ -60,43 +75,43 @@ export default function ScooperDashboard() {
         const options: PoolOption[] = sorted.map((stat: any) => ({
           hash: stat.pub_key_hash,
           name: getScooperName(stat.pub_key_hash),
-          scoops: stat.total_scoops
+          scoops: stat.total_scoops,
         }));
 
         setPoolOptions(options);
       })
-      .catch((error) => console.error('Error fetching pool options:', error));
+      .catch((error) => console.error("Error fetching pool options:", error));
   }, []);
 
   const sundaeTheme = createTheme({
     palette: {
-      mode: 'dark',
+      mode: "dark",
       primary: {
-        main: '#F070D0', // Sundae pink
-        light: '#FF9DE6',
-        dark: '#D44BB8',
+        main: "#F070D0", // Sundae pink
+        light: "#FF9DE6",
+        dark: "#D44BB8",
       },
       secondary: {
-        main: '#A855F7', // Purple
-        light: '#C084FC',
-        dark: '#7E22CE',
+        main: "#A855F7", // Purple
+        light: "#C084FC",
+        dark: "#7E22CE",
       },
       background: {
-        default: '#0F0A1E', // Deep purple-black
-        paper: '#1A1329', // Dark purple
+        default: "#0F0A1E", // Deep purple-black
+        paper: "#1A1329", // Dark purple
       },
       text: {
-        primary: '#FFFFFF',
-        secondary: '#D1C4E9',
+        primary: "#FFFFFF",
+        secondary: "#D1C4E9",
       },
     },
     typography: {
       fontFamily: '"Inter", "Segoe UI", "Roboto", sans-serif',
       h4: {
         fontWeight: 700,
-        background: 'linear-gradient(135deg, #F070D0 0%, #A855F7 100%)',
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
+        background: "linear-gradient(135deg, #F070D0 0%, #A855F7 100%)",
+        WebkitBackgroundClip: "text",
+        WebkitTextFillColor: "transparent",
       },
       h6: {
         fontWeight: 600,
@@ -109,26 +124,26 @@ export default function ScooperDashboard() {
       MuiPaper: {
         styleOverrides: {
           root: {
-            backgroundImage: 'none',
-            backgroundColor: '#1A1329',
-            boxShadow: '0 4px 20px rgba(240, 112, 208, 0.2)',
-            border: '1px solid rgba(240, 112, 208, 0.2)',
+            backgroundImage: "none",
+            backgroundColor: "#1A1329",
+            boxShadow: "0 4px 20px rgba(240, 112, 208, 0.2)",
+            border: "1px solid rgba(240, 112, 208, 0.2)",
           },
         },
       },
       MuiButton: {
         styleOverrides: {
           root: {
-            textTransform: 'none',
+            textTransform: "none",
             fontWeight: 600,
             borderRadius: 12,
           },
           contained: {
-            background: 'linear-gradient(135deg, #F070D0 0%, #A855F7 100%)',
-            boxShadow: '0 4px 12px rgba(240, 112, 208, 0.4)',
-            '&:hover': {
-              background: 'linear-gradient(135deg, #FF9DE6 0%, #C084FC 100%)',
-              boxShadow: '0 6px 16px rgba(240, 112, 208, 0.5)',
+            background: "linear-gradient(135deg, #F070D0 0%, #A855F7 100%)",
+            boxShadow: "0 4px 12px rgba(240, 112, 208, 0.4)",
+            "&:hover": {
+              background: "linear-gradient(135deg, #FF9DE6 0%, #C084FC 100%)",
+              boxShadow: "0 6px 16px rgba(240, 112, 208, 0.5)",
             },
           },
         },
@@ -136,15 +151,15 @@ export default function ScooperDashboard() {
       MuiTextField: {
         styleOverrides: {
           root: {
-            '& .MuiOutlinedInput-root': {
-              '& fieldset': {
-                borderColor: 'rgba(240, 112, 208, 0.3)',
+            "& .MuiOutlinedInput-root": {
+              "& fieldset": {
+                borderColor: "rgba(240, 112, 208, 0.3)",
               },
-              '&:hover fieldset': {
-                borderColor: 'rgba(240, 112, 208, 0.5)',
+              "&:hover fieldset": {
+                borderColor: "rgba(240, 112, 208, 0.5)",
               },
-              '&.Mui-focused fieldset': {
-                borderColor: '#F070D0',
+              "&.Mui-focused fieldset": {
+                borderColor: "#F070D0",
               },
             },
           },
@@ -153,31 +168,32 @@ export default function ScooperDashboard() {
       MuiTabs: {
         styleOverrides: {
           root: {
-            borderBottom: '1px solid rgba(240, 112, 208, 0.2)',
-            backgroundColor: '#1A1329',
-            borderRadius: '16px',
+            borderBottom: "1px solid rgba(240, 112, 208, 0.2)",
+            backgroundColor: "#1A1329",
+            borderRadius: "16px",
           },
           indicator: {
             height: 3,
-            background: 'linear-gradient(135deg, #F070D0 0%, #A855F7 100%)',
-            borderRadius: '3px 3px 0 0',
+            background: "linear-gradient(135deg, #F070D0 0%, #A855F7 100%)",
+            borderRadius: "3px 3px 0 0",
           },
         },
       },
       MuiTab: {
         styleOverrides: {
           root: {
-            textTransform: 'none',
+            textTransform: "none",
             fontWeight: 600,
-            fontSize: '1rem',
-            color: '#D1C4E9',
-            transition: 'all 0.3s ease',
-            '&:hover': {
-              color: '#F070D0',
+            fontSize: "1rem",
+            color: "#D1C4E9",
+            transition: "all 0.3s ease",
+            "&:hover": {
+              color: "#F070D0",
             },
-            '&.Mui-selected': {
-              color: '#FFFFFF',
-              background: 'linear-gradient(135deg, rgba(240, 112, 208, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)',
+            "&.Mui-selected": {
+              color: "#FFFFFF",
+              background:
+                "linear-gradient(135deg, rgba(240, 112, 208, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)",
             },
           },
         },
@@ -185,11 +201,11 @@ export default function ScooperDashboard() {
       MuiSelect: {
         styleOverrides: {
           root: {
-            '&:hover .MuiOutlinedInput-notchedOutline': {
-              borderColor: 'rgba(240, 112, 208, 0.5)',
+            "&:hover .MuiOutlinedInput-notchedOutline": {
+              borderColor: "rgba(240, 112, 208, 0.5)",
             },
-            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-              borderColor: '#F070D0',
+            "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+              borderColor: "#F070D0",
             },
           },
         },
@@ -197,9 +213,9 @@ export default function ScooperDashboard() {
       MuiInputLabel: {
         styleOverrides: {
           root: {
-            color: '#D1C4E9',
-            '&.Mui-focused': {
-              color: '#F070D0',
+            color: "#D1C4E9",
+            "&.Mui-focused": {
+              color: "#F070D0",
             },
           },
         },
@@ -207,13 +223,13 @@ export default function ScooperDashboard() {
       MuiMenuItem: {
         styleOverrides: {
           root: {
-            '&:hover': {
-              backgroundColor: 'rgba(240, 112, 208, 0.1)',
+            "&:hover": {
+              backgroundColor: "rgba(240, 112, 208, 0.1)",
             },
-            '&.Mui-selected': {
-              backgroundColor: 'rgba(240, 112, 208, 0.2)',
-              '&:hover': {
-                backgroundColor: 'rgba(240, 112, 208, 0.3)',
+            "&.Mui-selected": {
+              backgroundColor: "rgba(240, 112, 208, 0.2)",
+              "&:hover": {
+                backgroundColor: "rgba(240, 112, 208, 0.3)",
               },
             },
           },
@@ -223,34 +239,52 @@ export default function ScooperDashboard() {
   });
 
   return (
-    <div className="min-h-[100vh]" style={{
-      background: 'linear-gradient(180deg, #0F0A1E 0%, #1A0B2E 50%, #2D1B4E 100%)'
-    }}>
-      <Navbar />
+    <div
+      className="min-h-[100vh]"
+      style={{
+        background:
+          "linear-gradient(180deg, #0F0A1E 0%, #1A0B2E 50%, #2D1B4E 100%)",
+      }}
+    >
       <div className="h-full flex flex-col justify-center items-center py-8">
         <ThemeProvider theme={sundaeTheme}>
           <CssBaseline />
 
           <Container maxWidth="xl">
-            <Box sx={{ textAlign: 'center', mb: 4, mt: 4 }}>
-              <Typography variant="h4" component="h1" sx={{ mb: 2, fontSize: '2.5rem' }}>
+            <Box sx={{ textAlign: "center", mb: 4, mt: 4 }}>
+              <Typography
+                variant="h4"
+                component="h1"
+                sx={{ mb: 2, fontSize: "2.5rem" }}
+              >
                 Scooper Analytics Dashboard
               </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ fontSize: '1.1rem' }}>
+              <Typography
+                variant="body1"
+                color="text.secondary"
+                sx={{ fontSize: "1.1rem" }}
+              >
                 Track DEX scooper performance - one scoop at a time 🍦
               </Typography>
             </Box>
 
-            <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <Box
+              sx={{
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+            >
               <Tabs
                 value={activeTab}
                 onChange={handleTabChange}
                 sx={{
                   mb: 2,
-                  width: 'fit-content',
-                  '& .MuiTabs-flexContainer': {
+                  width: "fit-content",
+                  "& .MuiTabs-flexContainer": {
                     gap: 2,
-                  }
+                  },
                 }}
               >
                 <Tab
@@ -281,7 +315,15 @@ export default function ScooperDashboard() {
 
               <TabPanel value={activeTab} index={1}>
                 {/* Filters */}
-                <Box sx={{ mb: 3, display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <Box
+                  sx={{
+                    mb: 3,
+                    display: "flex",
+                    gap: 2,
+                    justifyContent: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <FormControl sx={{ minWidth: 200 }}>
                     <InputLabel id="pool-select-label">Scooper Pool</InputLabel>
                     <Select
@@ -319,15 +361,30 @@ export default function ScooperDashboard() {
 
                 {/* Scoops Stats Section */}
                 <Box sx={{ mb: 4 }}>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}>
+                  <Typography
+                    variant="h6"
+                    sx={{ mb: 2, fontWeight: 600, color: "text.primary" }}
+                  >
                     Scoops Stats
                   </Typography>
-                  <Grid2 container direction="row" spacing={3} justifyContent={"center"} alignItems={"flex-start"}>
+                  <Grid2
+                    container
+                    direction="row"
+                    spacing={3}
+                    justifyContent={"center"}
+                    alignItems={"flex-start"}
+                  >
                     <Grid2>
-                      <ScoopsPies selectedPool={selectedPool} timePeriod={timePeriod} />
+                      <ScoopsPies
+                        selectedPool={selectedPool}
+                        timePeriod={timePeriod}
+                      />
                     </Grid2>
                     <Grid2>
-                      <BasicBars selectedPool={selectedPool} timePeriod={timePeriod} />
+                      <BasicBars
+                        selectedPool={selectedPool}
+                        timePeriod={timePeriod}
+                      />
                     </Grid2>
                   </Grid2>
                 </Box>
@@ -336,7 +393,10 @@ export default function ScooperDashboard() {
 
                 {/* Protocol Analytics Section */}
                 <Box>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}>
+                  <Typography
+                    variant="h6"
+                    sx={{ mb: 2, fontWeight: 600, color: "text.primary" }}
+                  >
                     Protocol Analytics
                   </Typography>
                   <ProtocolAnalytics />

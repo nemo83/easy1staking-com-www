@@ -1,36 +1,35 @@
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Pin file-tracing to this app dir; silences the multi-lockfile root warning
+  // caused by stray lockfiles in parent directories.
+  outputFileTracingRoot: __dirname,
   images: {
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: 'vm.adaseal.eu',
-        port: '',
-        pathname: '/**',
-      }, {
-        protocol: 'https',
-        hostname: 'plsk.tosidrop.io',
-        port: '',
-        pathname: '/**',
-      },{
-        protocol: 'https',
-        hostname: 'cdn.sanity.io',
-        port: '',
-        pathname: '/**',
-      },      
+        protocol: "https",
+        hostname: "vm.adaseal.eu",
+        port: "",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "plsk.tosidrop.io",
+        port: "",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "cdn.sanity.io",
+        port: "",
+        pathname: "/**",
+      },
     ],
-  },
-  webpack: function (config, options) {
-    config.experiments = {
-      asyncWebAssembly: true,
-      layers: true,
-    };
-    config.output.environment = {
-      ...config.output.environment,
-      asyncFunction: true,
-    };
-    return config;
   },
 };
 
