@@ -7,9 +7,9 @@ export default function Home() {
   return (
     <main>
       <Hero />
+      <ContributionGrid />
       <PoolStatsStrip />
       <DelegatePanel />
-      <ContributionGrid />
     </main>
   );
 }
