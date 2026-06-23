@@ -33,7 +33,7 @@ export const siteConfig = {
 export type NavLink = { label: string; href: string };
 
 export const navLinks: NavLink[] = [
+  { label: "Tools", href: "#contribution" },
   { label: "Pool", href: "#pool" },
-  { label: "Contribution", href: "#contribution" },
   { label: "Blog", href: "/blog" },
 ];

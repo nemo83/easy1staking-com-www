@@ -96,21 +96,21 @@ export function ContributionGrid() {
     <section id="contribution" className="scroll-mt-16 px-6 py-20 md:px-16">
       <header className="mb-14 flex flex-col items-start justify-between gap-8 md:flex-row md:items-end">
         <h2 className="text-[clamp(32px,4vw,56px)] font-extrabold leading-none tracking-[-0.035em]">
-          My contribution
+          Things you can
           <br />
           <em className="font-serif font-normal italic text-ink-mid">
-            to Cardano.
+            use today.
           </em>
         </h2>
         <p className="max-w-[50ch] text-[16px] text-ink-mid">
-          Six years on Cardano. A pool, two infrastructure roles, and a handful
-          of open-source apps the community uses. Here&#39;s the whole list,
-          honest about what&#39;s mine and what&#39;s OS.
+          Open-source apps, bots, and utilities the Cardano community uses every
+          day — free to try, most of them open source. Below them, the
+          infrastructure I operate for other projects across the ecosystem.
         </p>
       </header>
 
-      <Group label="Operations & Infrastructure" tone="ops" projects={operations} />
       <Group label="Apps & Tools" tone="apps" projects={apps} />
+      <Group label="Operations & Infrastructure" tone="ops" projects={operations} />
     </section>
   );
 }
