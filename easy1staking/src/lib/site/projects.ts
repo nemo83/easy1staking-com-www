@@ -72,15 +72,6 @@ export const operations: Project[] = [
 /** Tier 3 — own initiatives, each on its own domain. */
 export const apps: Project[] = [
   {
-    initials: "UL",
-    role: "App · open source",
-    name: "uplc.link",
-    description:
-      "Shareable links for inspecting UPLC. Decode, compare, debug on-chain Plutus scripts in the browser.",
-    href: "https://uplc.link",
-    badges: [{ label: "Open source", tone: "os" }],
-  },
-  {
     initials: "AM",
     role: "App · partial OS",
     name: "adamatic",
@@ -105,6 +96,15 @@ export const apps: Project[] = [
     description:
       "Open-source Cardano tool. [Short description placeholder — real copy TBD.]",
     href: "https://shithole.app",
+    badges: [{ label: "Open source", tone: "os" }],
+  },
+  {
+    initials: "UL",
+    role: "App · open source",
+    name: "uplc.link",
+    description:
+      "Shareable links for inspecting UPLC. Decode, compare, debug on-chain Plutus scripts in the browser.",
+    href: "https://uplc.link",
     badges: [{ label: "Open source", tone: "os" }],
   },
 ];

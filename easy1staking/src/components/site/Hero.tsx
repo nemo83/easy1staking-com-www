@@ -24,19 +24,27 @@ export function Hero() {
       </h1>
 
       <div className="relative z-10 mt-12 grid items-end gap-8 md:mt-[72px] md:grid-cols-[1fr_auto_auto] md:gap-16">
-        <p className="max-w-[52ch] text-[18px] leading-[1.55] text-ink-mid">
-          A Cardano{" "}
-          <strong className="font-semibold text-ink-high">stake pool</strong>, a
-          SundaeSwap{" "}
-          <strong className="font-semibold text-ink-high">scooper</strong>, a
-          Butane <strong className="font-semibold text-ink-high">oracle</strong>,
-          and the{" "}
-          <strong className="font-semibold text-ink-high">
-            open-source projects
-          </strong>{" "}
-          that help the ecosystem move. Operated by a builder. Reliable since
-          2020.
-        </p>
+        <div className="max-w-[52ch]">
+          <p className="text-[18px] leading-[1.55] text-ink-mid">
+            A Cardano{" "}
+            <strong className="font-semibold text-ink-high">stake pool</strong>,
+            a SundaeSwap{" "}
+            <strong className="font-semibold text-ink-high">scooper</strong>, a
+            Butane{" "}
+            <strong className="font-semibold text-ink-high">oracle</strong>, and
+            a set of{" "}
+            <strong className="font-semibold text-ink-high">
+              open-source tools
+            </strong>{" "}
+            you can actually use. Operated by a builder. Reliable since 2020.
+          </p>
+          <a
+            href="#contribution"
+            className="mt-5 inline-flex items-center gap-1.5 font-mono text-[12px] uppercase tracking-[0.12em] text-ink-low transition-colors hover:text-ink-high"
+          >
+            Explore the tools <span className="arrow">↓</span>
+          </a>
+        </div>
         <a href="#delegate" className="btn btn-primary">
           Delegate stake <span className="arrow">→</span>
         </a>
