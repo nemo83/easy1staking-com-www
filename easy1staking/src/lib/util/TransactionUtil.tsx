@@ -16,15 +16,15 @@ class BlockfrostProviderSingleton {
 
     public static getInstance(): BlockfrostProvider {
         if (!BlockfrostProviderSingleton.instance) {
-            console.log('BLOCKFROST_API_KEY: ' + BLOCKFROST_API_KEY);
-            BlockfrostProviderSingleton.instance = new BlockfrostProvider(BLOCKFROST_API_KEY!);
+            if (!BLOCKFROST_API_KEY?.trim()) {
+                throw new Error('NEXT_PUBLIC_BLOCKFROST_API_KEY is required for blockchain actions');
+            }
+            BlockfrostProviderSingleton.instance = new BlockfrostProvider(BLOCKFROST_API_KEY);
         }
         return BlockfrostProviderSingleton.instance;
     }
 
 }
-
-const blockchainProvider = BlockfrostProviderSingleton.getInstance();
 
 class TxBuilderSingleton {
 
@@ -34,6 +34,7 @@ class TxBuilderSingleton {
 
     public static getInstance(): MeshTxBuilder {
         if (!TxBuilderSingleton.instance) {
+            const blockchainProvider = BlockfrostProviderSingleton.getInstance();
             TxBuilderSingleton.instance = new MeshTxBuilder({
                 fetcher: blockchainProvider,
                 submitter: blockchainProvider,
@@ -44,11 +45,10 @@ class TxBuilderSingleton {
 
 }
 
-const txBuilder = TxBuilderSingleton.getInstance();
-
 export default class TransactionUtil {
 
     public static async canBeDelegated(stakingAddress: string): Promise<EASY1DelegationType> {
+        const blockchainProvider = BlockfrostProviderSingleton.getInstance();
 
         return blockchainProvider
             .fetchAccountInfo(stakingAddress)
@@ -113,6 +113,7 @@ export default class TransactionUtil {
             return Promise.reject('Wallet has no available collateral, please set it in the wallet, or send additional 5 ada to the current wallet address');
         }
 
+        const txBuilder = TxBuilderSingleton.getInstance();
         txBuilder.reset();
 
         txBuilder

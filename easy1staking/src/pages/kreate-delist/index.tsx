@@ -17,7 +17,17 @@ import { EASY1STAKING_API, KREATE_SCRIPT } from '@/lib/util/Constants';
 import { MeshTxBuilder, mConStr, BlockfrostProvider, deserializeAddress } from '@meshsdk/core';
 
 const BLOCKFROST_API_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
-const blockfrostProvider = new BlockfrostProvider(BLOCKFROST_API_KEY!);
+let blockfrostProvider: BlockfrostProvider;
+
+function getBlockfrostProvider(): BlockfrostProvider {
+  if (!blockfrostProvider) {
+    if (!BLOCKFROST_API_KEY?.trim()) {
+      throw new Error('NEXT_PUBLIC_BLOCKFROST_API_KEY is required for blockchain actions');
+    }
+    blockfrostProvider = new BlockfrostProvider(BLOCKFROST_API_KEY);
+  }
+  return blockfrostProvider;
+}
 
 export default function KreateDelistPage() {
   // Wallet state
@@ -211,6 +221,7 @@ export default function KreateDelistPage() {
       }
 
       // Fetch the UTXO details from the blockchain
+      const blockfrostProvider = getBlockfrostProvider();
       const utxo = await blockfrostProvider.fetchUTxOs(nft.txHash);
       if (!utxo || utxo.length === 0) {
         throw new Error('UTXO not found on chain');
