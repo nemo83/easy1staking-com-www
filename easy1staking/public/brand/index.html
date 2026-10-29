@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0B1220">
+  <meta name="description" content="The easy1staking brand kit. Download E1 logos, wordmarks, black and white versions, profile images and social banners.">
+  <title>easy1staking · Brand kit</title>
+  <link rel="icon" type="image/png" href="assets/easy1-icon-32.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="manifest.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the brand assets</a>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="easy1staking brand kit"><img id="nav-logo" src="assets/easy1-horizontal-colour-dark.svg" alt="easy1staking" width="226" height="53"></a>
+    <nav aria-label="Brand kit"><a href="#logos">Logos</a><a href="#social">Social</a><a href="#palette">Colours</a><a href="#usage">Usage</a></nav>
+    <button class="theme-switch" id="theme-switch" type="button" aria-label="Switch to light theme">Light view <span aria-hidden="true">◐</span></button>
+  </header>
+  <main id="main">
+    <section class="hero wrap" id="top" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="status-dot"></span> THE EASY1 BRAND KIT</p>
+        <h1 id="hero-title">Familiar roots.<br><span>A clearer identity.</span></h1>
+        <p class="intro">The next chapter of easy1staking. The same E1, simplified and softened. Ready for the places you share what you build.</p>
+        <div class="hero-actions"><a class="button primary" href="easy1staking-brand-kit.zip" download>Download the full kit <span aria-hidden="true">↓</span></a><a class="text-link" href="#logos">Explore the assets <span aria-hidden="true">↘</span></a></div>
+        <p class="hero-note">SVG + PNG · Transparent + solid backgrounds · Colour + black & white</p>
+      </div>
+      <div class="hero-art" aria-hidden="true"><div class="art-grid"></div><img src="assets/easy1-symbol-colour-dark.svg" width="1024" height="1024" alt=""><span class="art-label">CONNECTED SOFT / E1</span></div>
+    </section>
+    <div class="overview wrap"><p><strong>One mark.</strong> Every context.</p><span>Logo library</span><span>Social profiles</span><span>Colour system</span><span>Ready to download</span></div>
+    <section class="section wrap" id="logos" aria-labelledby="logos-title">
+      <div class="section-heading"><div><p class="eyebrow">01 / THE IDENTITY</p><h2 id="logos-title">Logo library</h2><p>Choose the symbol, a full lockup or the wordmark on its own. Every logo has a transparent background.</p></div><span class="count" id="logo-count">16 variants</span></div>
+      <div class="filters" aria-label="Logo filters">
+        <label>Layout<select id="layout-filter"><option value="all">All layouts</option><option value="symbol">E1 symbol</option><option value="horizontal">Horizontal logo</option><option value="stacked">Stacked logo</option><option value="wordmark">Wordmark only</option></select></label>
+        <label>Colour<select id="colour-filter"><option value="all">All colours</option><option value="colour">Brand gradient</option><option value="black">Solid black</option><option value="white">Solid white</option></select></label>
+        <label>Preview background<select id="background-filter"><option value="recommended">Recommended</option><option value="dark">Dark</option><option value="light">Light</option><option value="checker">Transparency grid</option></select></label>
+        <button class="reset" id="reset-filters" type="button">Reset filters</button>
+      </div>
+      <div class="asset-grid" id="logo-grid"></div>
+      <p class="empty" id="empty-logos" hidden>No matching assets. Reset the filters to see the full library.</p>
+      <noscript><p>Enable JavaScript for the preview library, or <a href="easy1staking-brand-kit.zip" download>download the complete kit</a>.</p></noscript>
+    </section>
+    <section class="section wrap" id="social" aria-labelledby="social-title">
+      <div class="section-heading"><div><p class="eyebrow">02 / OUT IN THE WORLD</p><h2 id="social-title">Make it yours. Everywhere.</h2><p>Profile images, covers and share cards. Use PNG for social uploads; SVG for layouts you want to adapt.</p></div></div>
+      <div class="filters social-filters"><label>Format<select id="social-filter"><option value="all">All formats</option><option value="avatar">Profile images</option><option value="x-header">X headers</option><option value="linkedin-cover">LinkedIn profile covers</option><option value="share-card">Share cards</option></select></label><label>Background<select id="social-theme"><option value="all">All backgrounds</option><option value="dark">Dark</option><option value="light">Light</option><option value="black">Black on white</option><option value="white">White on black</option></select></label></div>
+      <div class="asset-grid social-grid" id="social-grid"></div>
+      <p class="empty" id="empty-social" hidden>No matching assets. Try a different format or background.</p>
+      <p class="source-note">Cover sizes follow <a href="https://help.x.com/en/managing-your-account/how-to-customize-your-profile" target="_blank" rel="noopener noreferrer">X's guidance</a> and <a href="https://www.linkedin.com/help/linkedin/answer/a568217" target="_blank" rel="noopener noreferrer">LinkedIn's guidance</a>. Covers keep the main lockup away from the left-hand profile image; check the platform preview before saving.</p>
+      <div class="icon-row"><div><h3>Small places. Same identity.</h3><p>App icons and favicons, with extra space around the E1 mark.</p></div><div id="icon-downloads" class="icon-downloads"></div></div>
+    </section>
+    <section class="section wrap" id="palette" aria-labelledby="palette-title">
+      <div class="section-heading"><div><p class="eyebrow">03 / THE PALETTE</p><h2 id="palette-title">Deep foundations. Softer colour.</h2><p>Navy and ivory do the grounding. Indigo, blue and teal bring the mark to life. Click a swatch to copy its hex code.</p></div></div>
+      <div class="palette-grid" id="palette-grid"></div>
+    </section>
+    <section class="section wrap usage" id="usage" aria-labelledby="usage-title">
+      <div class="section-heading"><div><p class="eyebrow">04 / A FEW SIMPLE RULES</p><h2 id="usage-title">Keep it recognisable.</h2></div><a class="text-link" href="source/identity.json" download>Identity source <span aria-hidden="true">↓</span></a></div>
+      <div class="usage-grid"><article><span class="rule-number">01</span><h3>Give the E1 room.</h3><p>Keep at least one stroke's width of clear space around the mark. Use the symbol on its own when the wordmark would be too small to read.</p></article><article><span class="rule-number">02</span><h3>Match the background.</h3><p>Use the light wordmark on dark surfaces and the navy wordmark on light ones. Use solid black or white when colour isn't appropriate.</p></article><article><span class="rule-number">03</span><h3>Keep the shape intact.</h3><p>Scale proportionally. Keep the E spine, three arms and diagonal cut together. Leave the gradient and letter spacing as supplied.</p></article><article><span class="rule-number">04</span><h3>Choose the right file.</h3><p>SVG stays sharp at any size and includes outlined lettering. PNG is ready for social uploads. The logo library is transparent; social assets include their backgrounds.</p></article></div>
+    </section>
+    <section class="closing wrap"><div><p class="eyebrow">THE NEXT CHAPTER OF EASY1</p><h2>An evolution.<br>Still unmistakably E1.</h2></div><a class="button primary" href="easy1staking-brand-kit.zip" download>Get every asset <span aria-hidden="true">↓</span></a></section>
+  </main>
+  <footer class="wrap"><span>easy1staking · Connected Soft</span><a href="https://easy1staking.com">easy1staking.com ↗</a><a href="source/Poppins-OFL.txt">Typeface licence</a></footer>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

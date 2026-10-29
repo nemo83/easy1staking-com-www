@@ -1,0 +1,24 @@
+{
+  "name": "easy1staking",
+  "direction": "Connected Soft",
+  "concept_reference": "docs/brand-research/concepts/03-connected-soft-v3.png",
+  "intent": "An evolution and simplification of the existing E1 identity, chosen by Giovanni on 2026-10-10.",
+  "viewBox": "0 0 240 240",
+  "paths": [
+    "M28 0H161Q166 0 162 4L120 48Q114 54 106 54H54Q48 54 48 60V88Q48 94 54 94H121Q142 94 142 115V127Q142 148 121 148H54Q48 148 48 154V182Q48 188 54 188H128Q151 188 151 211V218Q151 240 128 240H28Q0 240 0 212V28Q0 0 28 0Z",
+    "M201 0H222Q240 0 240 18V222Q240 240 222 240H204Q186 240 186 222V72Q186 54 168 54H153Q146 54 151 49L194 6Q200 0 201 0Z"
+  ],
+  "palette": {
+    "navy": "#0B1220",
+    "ivory": "#F6F5F1",
+    "indigo": "#6458EF",
+    "blue": "#5D9EF7",
+    "teal": "#35D5DA",
+    "black": "#000000",
+    "white": "#FFFFFF"
+  },
+  "sources": {
+    "x_header": "https://help.x.com/en/managing-your-account/how-to-customize-your-profile",
+    "linkedin_cover": "https://www.linkedin.com/help/linkedin/answer/a568217"
+  }
+}

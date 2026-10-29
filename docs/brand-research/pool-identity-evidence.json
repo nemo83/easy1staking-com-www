@@ -1,0 +1,23 @@
+{
+  "recorded_at": "2026-10-14T07:56:57.952889+00:00",
+  "observed_pool_response_at": "2026-10-13 (request before current-date rollover)",
+  "source": "https://api.koios.rest/api/v1/pool_info",
+  "method": "POST read-only RPC",
+  "request": {
+    "_pool_bech32_ids": [
+      "pool1yr0cv3dtmhcfgqa6yetvmf769ngk89e6tepecmjrmjl2jzcw2lm"
+    ]
+  },
+  "pool_id_bech32": "pool1yr0cv3dtmhcfgqa6yetvmf769ngk89e6tepecmjrmjl2jzcw2lm",
+  "pool_id_hex": "20df8645abddf09403ba2656cda7da2cd163973a5e439c6e43dcbea9",
+  "observed_pool_status": "registered",
+  "metadata_source": "https://gist.githubusercontent.com/nemo83/938ae946652f9188fefea030f26c6510/raw/579468ea38ec95c9e7fa4846813a31bd0be5b78c/metadata.json",
+  "metadata_hash": "0ce2b4d2a2e54abe24d0439d0a7b181a16f821cac489b4aced6b5692eb40e38f",
+  "metadata_blake2b256_matches": true,
+  "metadata": {
+    "name": "easy1staking.com",
+    "ticker": "EASY1",
+    "homepage": "https://easy1staking.com"
+  },
+  "limits": "One indexed chain-data observation and hash-matched off-chain metadata; not a permanent registration/retirement guarantee or a transaction acceptance test. Runtime eligibility must be rechecked."
+}

@@ -1,0 +1,58 @@
+[
+  {
+    "name": "adawatch",
+    "requested_url": "https://adawatchbot.xyz",
+    "final_url": "https://adawatchbot.xyz/",
+    "http_status": 200,
+    "title": "Ada Watch Bot — Cardano notifications on Telegram & Discord",
+    "captured_at": "2026-10-13T08:12:47.474Z",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "file": "captures/adawatch.png",
+    "scope": "Read-only public landing-page capture; no wallet connected or product interaction"
+  },
+  {
+    "name": "adamatic",
+    "requested_url": "https://adamatic.xyz",
+    "final_url": "https://adamatic.xyz/",
+    "http_status": 200,
+    "title": "AdaMatic — Automate your Cardano payments.",
+    "captured_at": "2026-10-13T08:12:51.084Z",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "file": "captures/adamatic.png",
+    "scope": "Read-only public landing-page capture; no wallet connected or product interaction"
+  },
+  {
+    "name": "uplc-link",
+    "requested_url": "https://uplc.link",
+    "final_url": "https://uplc.link/",
+    "http_status": 200,
+    "title": "UPLC Link - Cardano Smart Contract Verification",
+    "captured_at": "2026-10-13T08:12:48.347Z",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "file": "captures/uplc-link.png",
+    "scope": "Read-only public landing-page capture; no wallet connected or product interaction"
+  },
+  {
+    "name": "cardano-dev-skills",
+    "requested_url": "https://cardano-foundation.github.io/cardano-dev-skills/",
+    "final_url": "https://cardano-foundation.github.io/cardano-dev-skills/",
+    "http_status": 200,
+    "title": "Cardano dev knowledge, native in your AI coding agent | Cardano Dev Skills",
+    "captured_at": "2026-10-13T14:35:32.451Z",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "file": "captures/cardano-dev-skills.png",
+    "scope": "Read-only public landing-page capture; no wallet connected or product interaction"
+  }
+]

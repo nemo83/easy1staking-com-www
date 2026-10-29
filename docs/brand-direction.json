@@ -1,0 +1,187 @@
+{
+  "updated": "2026-10-14",
+  "status": "Editorial identity/page layouts and visitor journey approved; product specification and component layout v0.1 consolidated for review. Implementation not dispatched.",
+  "brand": "easy1staking.com",
+  "confirmed_direction": {
+    "origin": "Started as a Cardano staking platform and stake pool; Giovanni later became a Cardano and smart contract developer.",
+    "purpose": "Make the connection between Giovanni, easy1staking and his independent projects clear to individuals and enterprises.",
+    "priority_decided_2026_10_10": "Build recognition of the easy1staking brand first; Giovanni expects this to help product usage and explicitly wants to maximize delegated stake in the EASY1 pool.",
+    "visual_direction_decided_2026_10_10": "Polished dark editorial: navy backgrounds, strong typography, real product imagery, restrained gradients and subtle motion. Preserve independent product identities. Exact palette tokens and creative composition await mockups.",
+    "projects_named_by_user": [
+      "uplc.link",
+      "AdaWatch",
+      "AdaMatic"
+    ],
+    "launch_portfolio_decided_2026_10_10": [
+      "AdaWatch",
+      "AdaMatic",
+      "UPLC Link"
+    ],
+    "excluded_from_launch": [
+      "shithole",
+      "Scooper dashboard",
+      "DRep and governance features"
+    ],
+    "adawatch_identity": "The Telegram/Discord bot. Its website explains how it works and is not a separate application in the portfolio.",
+    "pool_placement_decided_2026_10_10": "Prominent homepage pool section with stats and a Stake with EASY1 action; full wallet connection and delegation on /pool; staking link in main navigation and relevant project pages.",
+    "personal_presence_decided_2026_10_10": "Giovanni approved his name, builder story and photo: short homepage introduction plus an About page connecting his journey from pool operator to Cardano developer. Proposed role: Cardano developer and stake pool operator. Final wording and photo selection remain open.",
+    "blog_launch_decided_2026_10_10": "Show the three remembered article titles publicly labelled Coming soon; lorem ipsum article bodies are restricted to design previews. Upcoming titles must not imply published articles. Final titles and the third theme's featured product remain editorial inputs.",
+    "services_excluded_decided_2026_10_10": "Giovanni is not looking for paid work at present. Exclude Work with me, service offers, hire-me calls to action and development-enquiry funnels from launch. Present development experience to establish authorship and credibility. Reconsider services only if Giovanni requests them later.",
+    "logo_exploration_decided_2026_10_10": "Giovanni requested a few EASY1 logo/wordmark suggestions. Exploration is approved, not a final identity selection or name change; preserve independent product logos.",
+    "logo_feedback_decided_2026_10_10": "Builder concept rejected. Heritage and Connected are shortlisted for refinement, with no final selection. Heritage must show a clear E and 1 without additional ambiguous E strokes; Connected must include the E's left vertical spine. Giovanni expects their geometry to converge while colours and styling differ. Revised concept sheets and exact prompts are saved under docs/brand-research/concepts as v2.",
+    "logo_refinement_decided_2026_10_10": "Giovanni praised Connected v2 and chose its overall E1 lines as the base for refinement. Soften its shapes and colours toward Heritage while preserving the E spine, three arms, numeral 1 and diagonal top gap. Connected Soft v3 is a review draft; final production logo approval remains pending.",
+    "logo_selection_decided_2026_10_10": "Giovanni selected Connected Soft v3: an evolution and simplification recognisable to existing followers, rather than a wholesale rebranding. This supersedes earlier pending concept selection. Preserve the easy1staking name and independent product identities.",
+    "brand_media_decided_2026_10_10": "Giovanni requested a reusable media page with light/dark versions, with/without easy1staking text, LinkedIn/X formats and true black/white versions. Delivered locally under easy1staking/public/brand: a filterable page, 32 assets in SVG and PNG, a ZIP containing the self-contained page and media, vector source paths, outlined Poppins SemiBold lettering, working palette, icons, avatars and social banners. No public deployment or full-site implementation was requested.",
+    "scooper_dashboard_excluded_decided_2026_10_10": "Giovanni explicitly excluded the scooper dashboard from launch. Do not retain its page or navigation entry in the planned brand hub. Treatment of the old URL belongs in the route migration specification; no code has been deleted during intake.",
+    "drep_excluded_decided_2026_10_10": "Giovanni explicitly dropped DRep from launch. Exclude voting-power delegation, DRep assessment and promotion, governance pages and links, and DRep-specific configuration from the planned website. /pool supports stake delegation only; its transactions must leave existing voting delegation unchanged. This is website scope, with no on-chain deregistration or code deletion performed during intake.",
+    "project_overviews_decided_2026_10_11": "Giovanni approved each project card opening a short overview page within easy1staking, explaining the product and his role, with a clear button to the independent product website. Applies to AdaWatch, AdaMatic and UPLC Link. Exact slugs, copy and visuals remain design inputs.",
+    "homepage_sequence_decided_2026_10_11": "Giovanni approved brand introduction with Explore the projects as the primary action, followed by AdaWatch/AdaMatic/UPLC Link, a prominent Stake with EASY1 pool section, his story and the three Coming soon articles. Detailed desktop/mobile composition remains for visual mockups.",
+    "relationship": "Projects belong under the easy1staking brand while retaining their independent identities.",
+    "main_site": "A central place to understand the full portfolio without needing to visit every individual product website.",
+    "user_feedback": "User liked the proposed brand hub, project pages, technical examples and marketing direction. Later clarified he is not seeking paid work; service and enterprise-enquiry proposals are outside launch scope.",
+    "current_request": "Approved Editorial visitor journey consolidated into SPEC.md/LAYOUT.md drafts and ordered implementation phases. Resolve legacy-route scope, review technical proposals, run independent review and lock before implementation tickets.",
+    "blog": "User wants a simple blog section and likes the proposed themes; articles are not ready to write. User suggested lorem ipsum placeholders during design exploration.",
+    "public_social_links": {
+      "confirmed_on": "2026-10-12",
+      "x": "https://x.com/cryptojoe101",
+      "github": "https://github.com/easy1staking-com",
+      "additional_accounts": "No additional personal GitHub or LinkedIn destination supplied or approved"
+    },
+    "navigation_decided_2026_10_12": "Projects links to the homepage project section; Pool /pool; About /about; Blog /blog. Logo returns home; Stake with EASY1 prominent in the header.",
+    "homepage_visual_selection_decided_2026_10_13": "Giovanni enthusiastically preferred A / Editorial (\"the editorial is LIT\"). Carry the Editorial composition forward: spacious split hero, Connected Soft E1/product connections, soft purple accents, serif highlights and compact product grid. This selects the visual direction; draft copy, portrait, metric treatment and final article title remain review inputs.",
+    "launch_portfolio_decided_2026_10_13": [
+      "AdaWatch",
+      "AdaMatic",
+      "UPLC Link",
+      "Cardano Dev Skills"
+    ],
+    "cardano_dev_skills_added_2026_10_13": "Giovanni explicitly added cardano-dev-skills, stating he started it and handed it to the Cardano Foundation. Include it as work originating with Giovanni, with clear current stewardship attribution; do not imply current EASY1 ownership.",
+    "third_article_decided_2026_10_13": "Inside AdaMatic confirmed by Giovanni; public Coming soon, article not yet written.",
+    "page_journey_decided_2026_10_13": "Giovanni approved the complete Editorial page-layout direction and visitor journey. Proceed to product specification/layout consolidation; portrait, technical proposals and implementation/release checks remain separate.",
+    "legacy_tools_retired_decided_2026_10_13": [
+      "WMTx conversion",
+      "Kreate delisting",
+      "Vitevis verification",
+      "Cardano Summit 2025"
+    ]
+  },
+  "remembered_article_ideas": [
+    {
+      "title": "From stake pool operator to Cardano developer",
+      "purpose": "Tell Giovanni's story and explain the relationship between easy1staking and its projects."
+    },
+    {
+      "title": "A real debugging walkthrough using uplc.link",
+      "purpose": "Show a reproducible example readers can try."
+    },
+    {
+      "title": "Inside AdaMatic",
+      "purpose": "Explain the problem, engineering decisions and lessons learned behind AdaMatic.",
+      "confirmed_on": "2026-10-13"
+    }
+  ],
+  "previous_assistant_proposals": {
+    "positioning": "Cardano software, smart contracts and infrastructure; built and operated by Giovanni.",
+    "project_attribution": "Built by Giovanni · an easy1staking project, linked from each product site and GitHub README.",
+    "pages": [
+      "Project overview pages",
+      "About",
+      "Blog",
+      "Pool"
+    ],
+    "services_revision": "Earlier Work with me and enterprise-enquiry proposals were superseded by Giovanni's decision not to seek work at present.",
+    "evidence": "Demonstrations and case studies using problems, implementation decisions and verifiable results.",
+    "distribution": "Reuse substantive articles as short demos and posts on X and LinkedIn; track project visits, demo usage and staking engagement."
+  },
+  "ui_ux_proposals_not_decided": {
+    "scope": "Refine hierarchy, navigation and project presentation using the branch's existing visual foundation; inspect a rendered preview before judging visual polish.",
+    "home_order": [
+      "Brand positioning",
+      "Featured projects with screenshots",
+      "Prominent infrastructure and pool section",
+      "Giovanni and the brand's history",
+      "Blog preview",
+      "Social and community links"
+    ],
+    "navigation": [
+      "Projects",
+      "Blog",
+      "About",
+      "Pool"
+    ],
+    "palette": "Keep dark navy, use indigo as the main brand colour and teal as a supporting accent; use magenta sparingly and check text contrast.",
+    "pages": "Project overview pages and the dedicated pool/delegation page are approved; exact routes remain design inputs. No pagination needed for the small project portfolio; consider numbered blog pages only when the archive grows.",
+    "blog_placeholders_revision": "Approved; see confirmed_direction.blog_launch_decided_2026_10_10. Detailed presentation remains a mockup decision.",
+    "next_question": "Review the fourth project addition; portrait/biography remain a content input.",
+    "site_structure_proposal": "docs/brand-research/site-structure-proposal.json — navigation, Editorial direction, four-project portfolio and overview pattern approved; exact overview slugs/migration responses remain proposed.",
+    "pool_placement_revision": "Superseded by the confirmed prominent homepage pool section and dedicated /pool flow; exact section order remains a mockup decision."
+  },
+  "open_decisions": [
+    "Detailed homepage composition and balance within the approved sequence; Explore the projects is the approved primary action",
+    "Exact palette tokens, typography scale and creative treatment within the confirmed polished dark editorial direction",
+    "Amount of pool content within the approved prominent homepage section",
+    "Exact product overview slugs and old-route migration behavior",
+    "Blog preview design, final article titles; public Coming soon behavior is confirmed",
+    "Project screenshots, verified descriptions and evidence"
+  ],
+  "repository_context": {
+    "branch": "feat/rebrand-cutover",
+    "reviewed_head": "419704f",
+    "review_basis": "Initial source and commit inspection; subsequent isolated build and lint passed on 2026-10-12 with reused dependencies. No rendered full-site or wallet transaction verification; see docs/brand-research/baseline-check.json.",
+    "current_style": "Dark navy with indigo, teal and magenta accents; Geist, Geist Mono and Instrument Serif typography.",
+    "current_home_order": [
+      "Hero",
+      "ContributionGrid",
+      "PoolStatsStrip",
+      "DelegatePanel"
+    ],
+    "known_gaps": "Placeholder project copy, contact and social details awaiting confirmation, links to unimplemented blog and governance content.",
+    "governance_observed": "The branch's DelegatePanel renders a Voting power section with a separate Delegate voting power action; staking.ts takes independent stake/vote actions and builds the respective pool or DRep certificate. A configured ID and an easy1 DRep label do not establish that Giovanni operates that DRep. Giovanni subsequently excluded DRep and governance features from launch."
+  },
+  "visual_previews": {
+    "created": "2026-10-13",
+    "path": "docs/brand-research/homepage-previews/index.html",
+    "status": "A / Editorial selected as the direction on 2026-10-13; detailed copy/content refinement pending",
+    "variants": {
+      "editorial": "Selected spacious split E1 hero and two-column grid for four projects; fourth card carries founder/handover attribution.",
+      "projects": "Compact type-led hero and large project rows with actual site captures"
+    },
+    "assets": "Official saved product icons, Connected Soft kit and public-site screenshots captured 2026-10-13; provenance stored alongside previews",
+    "placeholders": [
+      "Portrait explicitly pending",
+      "Pool metrics shown as unavailable"
+    ],
+    "verification": "Updated four-project compositions checked over the live LAN HTTP server at 360/390/768/1440px; no overflow or page errors, all assets loaded. New official-site destination and founding/handover text verified.",
+    "scope": "Local visual exploration outside app/public directories; no full-site implementation, specification lock or release",
+    "selected_variant": "editorial"
+  },
+  "page_previews": {
+    "created": "2026-10-13",
+    "status": "Editorial page-layout direction and visitor journey approved on 2026-10-13; portrait and detailed technical proposals remain separate",
+    "directory": "docs/brand-research/homepage-previews",
+    "pages": [
+      "adawatch.html",
+      "adamatic.html",
+      "uplc-link.html",
+      "cardano-dev-skills.html",
+      "pool.html",
+      "about.html",
+      "blog.html",
+      "article-layout.html"
+    ],
+    "navigation": "Homepage cards and navigation reach page drafts; each project has its onward destination",
+    "placeholders": "Portrait and pool metrics remain labelled; Pool wallet entry demonstrates layout only; lorem ipsum restricted to labelled review article sample",
+    "verification": "9 served pages at 360/390/768/1440px; all images/local links, key navigation journeys, mobile menu, wallet-preview close, project attribution and article/sample separation passed without page errors or document horizontal overflow",
+    "scope": "Static design-review documents; no implemented application routes or wallet transactions"
+  },
+  "specification": {
+    "version": "1.0",
+    "status": "locked scope/defaults; implementation not dispatched",
+    "spec": "SPEC.md",
+    "layout": "LAYOUT.md",
+    "review_page": "docs/brand-research/homepage-previews/review-plan.html",
+    "defaults": "Four overview slugs, two compatibility redirects, approved preview typography/motion, remembered article titles, corroborated pool target, honest five-minute facts cache and no new analytics. Owner-adopted engineering defaults; user scope/layout/retirement approvals separately recorded.",
+    "review": "Two independent fresh-context static passes completed; findings actioned. Application/audit/ledger evidence still owed.",
+    "portrait": "Real approved image remains a public-release input."
+  }
+}

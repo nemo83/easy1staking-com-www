@@ -1,0 +1,77 @@
+{
+  "observed_at": "2026-10-09",
+  "status": "Four-project launch portfolio confirmed: AdaWatch, AdaMatic, UPLC Link and Cardano Dev Skills. Product copy remains for review; ownership/handover attribution is explicit.",
+  "excluded_from_launch": [
+    "shithole"
+  ],
+  "products": [
+    {
+      "name": "Ada Watch Bot",
+      "canonical_url": "https://adawatchbot.xyz",
+      "description_proposal": "Cardano wallet, DeFi and NFT notifications through Telegram and Discord, with non-custodial trading strategies available from chat.",
+      "evidence": "Live HTML metadata and homepage; local source at 067722a815e54e933180cb4523692ac29457faad.",
+      "logo_url": "https://adawatchbot.xyz/icon.svg",
+      "logo_reference_file": "logos/ada-watch.svg",
+      "source_reference": "adawatch/ada-watch-bot/lib/brand.ts",
+      "logo_colours": [
+        "#0e1e35",
+        "#2AABEE",
+        "#3b82f6",
+        "#5fb9ee"
+      ],
+      "identity_confirmed_2026_10_10": "AdaWatch is the Telegram/Discord bot. Its website explains how it works; it is not a separate portfolio application."
+    },
+    {
+      "name": "AdaMatic",
+      "canonical_url": "https://adamatic.xyz",
+      "description_proposal": "Payment automation for Cardano, with HOSKY auto-pulls available today and recurring ADA payments on its roadmap.",
+      "evidence": "Live HTML metadata and homepage.",
+      "logo_url": "https://adamatic.xyz/favicon.svg",
+      "logo_reference_file": "logos/adamatic.svg",
+      "logo_colours": [
+        "#2196F3",
+        "#21CBF3",
+        "#1976d2"
+      ],
+      "open_question": "Confirm the approved full-size product lockup against the visible site header; this source is the official site icon."
+    },
+    {
+      "name": "UPLC Link",
+      "canonical_url": "https://uplc.link",
+      "description_proposal": "Verify Aiken source code against on-chain Cardano scripts and explore a registry of verified contracts.",
+      "evidence": "Live homepage and metadata; local source at e0a175da8d662fcb13a4cb57f76ebca852879dc1.",
+      "logo_url": "https://uplc.link/favicon.svg",
+      "logo_reference_file": "logos/uplc-link.svg",
+      "logo_colours": [
+        "#0F172A",
+        "#60A5FA"
+      ],
+      "notes": "The live header and footer use favicon.svg. The local larger logo.svg is a different visual variant; do not select it merely because of its filename. The branch's script-inspection description does not match the current live positioning."
+    },
+    {
+      "name": "Cardano Dev Skills",
+      "repository_name": "cardano-dev-skills",
+      "canonical_url": "https://cardano-foundation.github.io/cardano-dev-skills/",
+      "repository_url": "https://github.com/cardano-foundation/cardano-dev-skills",
+      "description_proposal": "Cardano knowledge for AI coding agents: developer workflows, bundled documentation and project context for Claude Code and Codex.",
+      "attribution_decided_2026_10_13": "Started by Giovanni; handed over to the Cardano Foundation.",
+      "attribution_provenance": "First-hand statement from Giovanni in this session. The official repository supports project scope and its current Cardano Foundation location; it is not independent evidence of founder identity.",
+      "current_relationship": "An originated project included in Giovanni\u2019s portfolio; do not present it as a currently owned EASY1 product.",
+      "description_evidence": "Official public repository README and website, observed 2026-10-13.",
+      "logo_url": "https://cardano-foundation.github.io/cardano-dev-skills/favicon.svg",
+      "logo_reference_file": "logos/cardano-dev-skills.svg",
+      "header_logo_url": "https://cardano-foundation.github.io/cardano-dev-skills/_astro/logo.rzxKOTX0.svg",
+      "header_logo_reference_file": "logos/cardano-dev-skills-header.svg",
+      "logo_evidence": "Official site asset downloads returned success; header image URL observed in live HTML.",
+      "screenshot": "homepage-previews/captures/cardano-dev-skills.png"
+    }
+  ],
+  "creative_proposals": [
+    "A distinctive hero composition connecting code, automation and infrastructure, with restrained motion adapted to the chosen style.",
+    "Real product captures framed consistently, retaining each product's own colours and actual interface.",
+    "A shared cover-image treatment for the three planned blog themes.",
+    "AI-generated illustration may be commissioned after style selection. Never use generated logos or synthetic screenshots as evidence of real product behavior."
+  ],
+  "scope": "Read-only research of product websites and repositories. Changes to product-site footers or repositories require separate implementation scope.",
+  "updated": "2026-10-13"
+}
