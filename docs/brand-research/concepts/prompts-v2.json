@@ -1,0 +1,29 @@
+{
+  "created": "2026-10-10",
+  "mode": "Built-in image_gen tool, edits of the v1 concept sheets",
+  "status": "Shortlisted visual explorations; no final logo selected",
+  "user_feedback": {
+    "builder": "Rejected",
+    "heritage": "Remove ambiguous extra E strokes; clearly render E and 1",
+    "connected": "Add the missing left spine of the E",
+    "relationship": "User expects both revisions to converge in their underlying E1 shape"
+  },
+  "concepts": [
+    {
+      "title": "Heritage — simplified E1",
+      "file": "01-heritage-v2.png",
+      "ref": "/home/giovanni/Development/workspace/easy1staking-com-www/docs/brand-research/concepts/01-heritage.png",
+      "prompt": "Use case: precise-object-edit / logo-brand. Edit the provided Heritage concept sheet. The user likes the identity but correctly sees redundant ambiguous strokes inside the E. Change only the E1 emblem geometry consistently in the main logo and ALL three miniature reproductions. The emblem must contain exactly one clear capital E on the left and one clear numeral 1 on the right. Build the E from ONE continuous left vertical spine and EXACTLY THREE horizontal arms: top, middle, bottom. Middle arm shorter, top and bottom longer. Remove the extra floating inner upper arm underneath the top arm and remove the extra inward-turning lower ribbon above the bottom arm; no fourth or fifth bar, repeated outlines, decorative tails, loops, double strokes or unexplained connecting lines. Keep a narrow negative-space gap between the E arms and the numeral 1. Numeral 1 has a single upright on the right and a modest angled top flag, no long flag that becomes another E arm. Retain softened corners, substantial equal stroke widths and compact square proportions. Colours remain indigo-to-teal, but make the interior fill a smooth progression without overlapping ribbon seams that look like extra strokes. Monochrome preview uses exactly the same silhouette in a single solid navy fill. Keep the original navy background, sheet layout, scale, typography, all wordmarks with exact text \"easy1staking\", title \"01 / HERITAGE\", and the existing captions unchanged. Do not introduce symbols or shapes beyond the E and 1. This is an iterative raster draft, not a production logo."
+    },
+    {
+      "title": "Connected — complete E spine",
+      "file": "03-connected-v2.png",
+      "ref": "/home/giovanni/Development/workspace/easy1staking-com-www/docs/brand-research/concepts/03-connected.png",
+      "prompt": "Use case: precise-object-edit / logo-brand. Edit the provided Connected identity sheet with one precise change: give the capital E its missing left vertical back/spine. The current symbol has three detached horizontal bars to the left of a numeral 1. ADD ONE SOLID CONTINUOUS VERTICAL STROKE AT THE LEFT EDGE OF THOSE THREE BARS, connecting their left ends from the top of the upper arm down to the bottom of the lower arm. This creates a clearly readable complete uppercase E with exactly three arms and two open counters. The new left spine should be the SAME thickness as the existing horizontal bars. Keep the separate numeral 1 on the right, its height, width, diagonal top cut, and the existing narrow negative-space separation from the E intact. The left E spine and right numeral 1 must BOTH be present and fully visible. Preserve the strong angular geometry and flat indigo hue, rather than adding rounded corners or gradients. Apply this exact E-spine correction consistently to the main coloured emblem, the bottom-left monochrome emblem and the bottom-right icon; all three must have identical geometry. Preserve every other detail: navy background, ivory tile, original composition, typography and exact wordmark \"easy1staking\", title \"03 / CONNECTED\", small swatches, spacing and icon placement. Do not add extra bars, decorative marks or borders. This should read immediately as E1, with a capital E that has a complete left backbone."
+    }
+  ],
+  "review": {
+    "heritage": "E now has one left spine and exactly three arms, separate from the numeral 1; repeated internal ribbon strokes removed. Rounded edges and smooth indigo/teal treatment retained.",
+    "connected": "Added left spine joining all three E arms, repeated in the monochrome and icon versions. Angular indigo styling retained."
+  }
+}

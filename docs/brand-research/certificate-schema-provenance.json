@@ -1,0 +1,17 @@
+{
+  "observed_on": "2026-10-14",
+  "source": "https://github.com/IntersectMBO/cardano-ledger/blob/9ef91412eec246062fa811513bc7e3f5d472c0fb/eras/conway/impl/cddl/data/conway.cddl",
+  "downloaded_sha256": "316ed8ee090ea172983083329e849f24f4360a236d26be0a6f2094c6078f1e1f",
+  "allowed_for_this_flow": {
+    "2": "delegation_to_stake_pool_cert",
+    "7": "account_registration_deposit_cert",
+    "11": "account_registration_delegation_to_stake_pool_cert"
+  },
+  "vote_bearing_rejected": [
+    9,
+    10,
+    12,
+    13
+  ],
+  "limits": "Protocol schema reference, not evidence of what pinned Evolution SDK emits or what a built transaction does. Independently decode actual bytes and run ledger controls."
+}

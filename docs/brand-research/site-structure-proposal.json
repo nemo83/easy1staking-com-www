@@ -1,0 +1,143 @@
+{
+  "created": "2026-10-10",
+  "updated": "2026-10-14",
+  "status": "SPEC/LAYOUT v1.0 locked following two independent static reviews; approved Editorial/four-project scope and retirement, adopted engineering defaults; application implementation not dispatched.",
+  "project_navigation_decision": "Approved by Giovanni on 2026-10-11: each project card opens a short overview within easy1staking, explaining the product and his role, with a clear onward link to its independent website. Exact route slugs remain design inputs.",
+  "homepage_sequence_decision": "Approved by Giovanni on 2026-10-11: brand introduction with Explore the projects, three launch products, prominent Stake with EASY1 section, Giovanni's story, then three Coming soon articles. Detailed visual composition remains pending.",
+  "identity": "Connected Soft; approved and reusable media kit delivered",
+  "goal": "Make easy1staking recognisable as Giovanni's parent brand, encourage product usage and grow EASY1 delegation",
+  "navigation_proposal": [
+    {
+      "label": "Projects",
+      "href": "/#projects"
+    },
+    {
+      "label": "Pool",
+      "href": "/pool"
+    },
+    {
+      "label": "About",
+      "href": "/about"
+    },
+    {
+      "label": "Blog",
+      "href": "/blog"
+    }
+  ],
+  "homepage_proposal": [
+    {
+      "section": "Brand introduction",
+      "purpose": "Explain Cardano software, smart contracts and the EASY1 pool, with clear authorship",
+      "primary_action": {
+        "label": "Explore the projects",
+        "href": "#projects"
+      },
+      "secondary_path": "Stake with EASY1 via navigation and the pool section"
+    },
+    {
+      "section": "Four portfolio projects",
+      "purpose": "Show AdaWatch, AdaMatic, UPLC Link and Cardano Dev Skills with official identities, accurate summaries and real captures. Explain creator credit and the Cardano Foundation handover on Cardano Dev Skills; link each to an in-hub overview."
+    },
+    {
+      "section": "Prominent EASY1 pool section",
+      "purpose": "Give visitors pool facts and a Stake with EASY1 link to /pool; decide verified metrics and explicit unavailable states during specification"
+    },
+    {
+      "section": "Giovanni's builder story",
+      "purpose": "Short introduction and photo connecting stake-pool origins to software development; full story on About"
+    },
+    {
+      "section": "Writing coming soon",
+      "purpose": "Three remembered article themes; clear upcoming labels, without published article links or fabricated dates"
+    },
+    {
+      "section": "Footer and community",
+      "purpose": "Verified social/source links, pool access and brand-kit access; existing utility routes subject to owner ruling"
+    }
+  ],
+  "pages_proposal": [
+    {
+      "path": "/",
+      "purpose": "Brand hub and featured portfolio"
+    },
+    {
+      "path": "/projects/adawatch",
+      "purpose": "In-hub overview of the Telegram/Discord bot, with https://adawatchbot.xyz as the explanatory product destination"
+    },
+    {
+      "path": "/projects/adamatic",
+      "purpose": "In-hub overview using live versus roadmap capabilities accurately; external destination https://adamatic.xyz"
+    },
+    {
+      "path": "/projects/uplc-link",
+      "purpose": "In-hub overview of source-to-on-chain verification and registry; external destination https://uplc.link"
+    },
+    {
+      "path": "/projects/cardano-dev-skills",
+      "purpose": "Proposed in-hub overview of Giovanni’s originated project and handover to the Cardano Foundation, with links to its official site and repository; not current EASY1 ownership."
+    },
+    {
+      "path": "/pool",
+      "purpose": "Full pool information, wallet connection and stake delegation only; preserve visitors' existing voting delegation"
+    },
+    {
+      "path": "/about",
+      "purpose": "Giovanni's journey, photo and authorship; no service offers or hire-me funnel"
+    },
+    {
+      "path": "/blog",
+      "purpose": "Public upcoming article titles; article layout only in private design preview at launch"
+    },
+    {
+      "path": "/brand/index.html",
+      "purpose": "Already delivered media kit; include a discreet footer link"
+    }
+  ],
+  "pending_existing_features": [],
+  "excluded_existing_features": [
+    {
+      "path": "#governance",
+      "observed": "Branch footer points to a missing anchor, while configuration and wallet flow include DRep/vote-delegation support",
+      "decision": "Giovanni dropped DRep on 2026-10-10. Exclude the voting-power action, DRep assessment and promotion, governance links or pages, and DRep-specific configuration from launch. This anchor was never an implemented governance page; no code deletion or on-chain action performed during intake."
+    }
+  ],
+  "excluded_existing_routes": [
+    {
+      "path": "/scooper-dashboard",
+      "decision": "Giovanni excluded the dashboard from launch on 2026-10-10. Do not include its page or navigation entry.",
+      "pending_migration_detail": "Specify the old URL's response in the route migration map. No code deletion performed during intake."
+    }
+  ],
+  "not_in_scope": [
+    "Paid services and Work with me",
+    "Scooper dashboard",
+    "DRep and governance features",
+    "shithole",
+    "Renaming the parent brand",
+    "Changing independent product identities",
+    "Published placeholder articles",
+    "Unrequested public deployment"
+  ],
+  "delegation_invariant": "Pool staking transactions must leave existing voting delegation unchanged; do not select a DRep, Abstain or No Confidence on the visitor's behalf.",
+  "next_question": "Real portrait remains a public-release delivery input; unrelated implementation can proceed after role capability checks.",
+  "public_social_links": {
+    "confirmed_on": "2026-10-12",
+    "x": "https://x.com/cryptojoe101",
+    "github": "https://github.com/easy1staking-com",
+    "additional_accounts": "No additional personal GitHub or LinkedIn destination supplied or approved"
+  },
+  "navigation_decision": "Approved by Giovanni on 2026-10-12: Projects links to the homepage project section; Pool /pool; About /about; Blog /blog. Logo returns home; Stake with EASY1 is prominent in the header. Individual project overviews remain approved; exact slugs not yet ruled.",
+  "visual_direction_decision": "Giovanni preferred A / Editorial on 2026-10-13; carry its composition into page design. Copy/placeholders and specification remain pending.",
+  "launch_portfolio": [
+    "AdaWatch",
+    "AdaMatic",
+    "UPLC Link",
+    "Cardano Dev Skills"
+  ],
+  "portfolio_addition_decision": "Added by Giovanni 2026-10-13: Cardano Dev Skills originated with him and was handed to Cardano Foundation; show founding/handover credit prominently.",
+  "third_article_decision": "Inside AdaMatic approved 2026-10-13; Coming soon without article body or invented date.",
+  "page_preview_directory": "docs/brand-research/homepage-previews",
+  "specification_reference": "SPEC.md sections Pages and journeys / Migration and publication behavior",
+  "legacy_tools_retirement_decision": "Giovanni confirmed on 2026-10-13 he no longer needs WMTx conversion, Kreate delisting, Vitevis verification or Cardano Summit 2025; retire their pages and associated legacy API handlers using the proposed retirement responses.",
+  "implementation_defaults_adoption": "2026-10-14: owner adopted concrete routes/redirects, preview typography/motion, remembered titles, verified intended pool target, honest cache and initial no-new-analytics scope within authorized planning/recommendation work. This is not a newly inferred user approval."
+}

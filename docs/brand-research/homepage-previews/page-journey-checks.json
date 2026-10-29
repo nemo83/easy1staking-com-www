@@ -1,0 +1,270 @@
+{
+  "checked_at": "2026-10-13T20:13:40.083Z",
+  "served_base": "http://192.168.1.22:8766/docs/brand-research/homepage-previews/",
+  "scope": "Static Editorial page design review; no wallet APIs or application transaction verification",
+  "responsive_checks": [
+    {
+      "file": "index.html",
+      "width": 360,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "index.html",
+      "width": 390,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "index.html",
+      "width": 768,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "index.html",
+      "width": 1440,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "adawatch.html",
+      "width": 360,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "adawatch.html",
+      "width": 390,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "adawatch.html",
+      "width": 768,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "adawatch.html",
+      "width": 1440,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "adamatic.html",
+      "width": 360,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "adamatic.html",
+      "width": 390,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "adamatic.html",
+      "width": 768,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "adamatic.html",
+      "width": 1440,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "uplc-link.html",
+      "width": 360,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "uplc-link.html",
+      "width": 390,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "uplc-link.html",
+      "width": 768,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "uplc-link.html",
+      "width": 1440,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "cardano-dev-skills.html",
+      "width": 360,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "cardano-dev-skills.html",
+      "width": 390,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "cardano-dev-skills.html",
+      "width": 768,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "cardano-dev-skills.html",
+      "width": 1440,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "pool.html",
+      "width": 360,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "pool.html",
+      "width": 390,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "pool.html",
+      "width": 768,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "pool.html",
+      "width": 1440,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "about.html",
+      "width": 360,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "about.html",
+      "width": 390,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "about.html",
+      "width": 768,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "about.html",
+      "width": 1440,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "blog.html",
+      "width": 360,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "blog.html",
+      "width": 390,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "blog.html",
+      "width": 768,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "blog.html",
+      "width": 1440,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "article-layout.html",
+      "width": 360,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "article-layout.html",
+      "width": 390,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "article-layout.html",
+      "width": 768,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    },
+    {
+      "file": "article-layout.html",
+      "width": 1440,
+      "status": 200,
+      "no_horizontal_overflow": true,
+      "assets_loaded": true
+    }
+  ],
+  "journeys": [
+    "Homepage -> AdaWatch overview -> product link",
+    "Overview -> homepage projects",
+    "Homepage -> Pool -> wallet layout preview -> close",
+    "Mobile Pool -> About",
+    "Cardano Dev Skills -> official site/repository, founding/handover attribution",
+    "Blog -> explicitly labelled article-layout sample; upcoming cards unlinked",
+    "Reduced motion",
+    "Alternative homepage -> fourth project overview"
+  ],
+  "page_errors": []
+}

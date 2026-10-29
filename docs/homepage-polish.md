@@ -1,11 +1,14 @@
 # Homepage polish references and reproduction
 
-The Editorial homepage and supporting pages are implemented on
-`feat/homepage-polish`. The application at
+The Editorial homepage and supporting pages are consolidated on the canonical
+`feat/rebrand-cutover` branch. The commit IDs below are **pre-rewrite historical
+verification identities**, not current checkout instructions. The application at
 `1ce8befcb17b872bc75e0d58d0ea424d8cb63db1` was independently verified using
-Node.js 24.22.1. Its clean application lineage starts at
-`8bc3eb713c26db54a8eaf2b6bee7580ef303ac2f`; that earlier baseline alone still has
-the older layout. Use a checkout containing the implemented homepage commit.
+Node.js 24.22.1; its earlier baseline was
+`8bc3eb713c26db54a8eaf2b6bee7580ef303ac2f`. History cleanup preserves the reviewed
+application tree but supplies no new runtime verification. Start from the current
+canonical redesign branch and read [repository maintenance](repository-maintenance.md)
+for fresh-clone/rebase guidance, remaining maintenance and hosting-copy limits.
 The package manifest and lockfile are unchanged by homepage polish.
 This stage supplies the homepage, shared presentation, four project overviews,
 About, a Coming soon Blog and a read-only Pool destination. Composed browser,
@@ -27,7 +30,7 @@ The reviewed product references are:
   [public project imagery](../easy1staking/public/images/projects/).
 
 These references and media were recovered as exact bytes from historical commit
-`b76886e6e91f8e90e3c381d05eb52dec88209d93`. That commit supplies reference data
+`b76886e6e91f8e90e3c381d05eb52dec88209d93` (a pre-rewrite historical identity). That commit supplies reference data
 only. Use the clean application source above for all installation, build and
 runtime commands; historical startup guidance is not reproduction guidance.
 Original SVG and font-licence whitespace is retained to preserve the reviewed

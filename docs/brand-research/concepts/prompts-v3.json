@@ -1,0 +1,18 @@
+{
+  "created": "2026-10-10",
+  "mode": "Built-in image_gen edit",
+  "status": "Connected chosen as the geometry to refine; this softened raster draft awaits user review",
+  "file": "03-connected-soft-v3.png",
+  "references": [
+    {
+      "file": "03-connected-v2.png",
+      "role": "Edit target; preserve E1 construction and sheet"
+    },
+    {
+      "file": "01-heritage-v2.png",
+      "role": "Softer shapes and colour reference only"
+    }
+  ],
+  "prompt": "Use case: precise-object-edit / logo-brand.\nEdit target: Image 1, the Connected v2 identity sheet. Image 2, Heritage v2, is ONLY a reference for softer corner treatment and indigo-to-teal colour; do not adopt its alternative numeral 1 design or its sheet composition.\nRequest: soften Connected into Heritage while preserving Connected's overall E1 lines, proportions, and negative-space structure.\nGeometry invariants: keep the capital E's full left vertical spine and exactly three horizontal arms; keep both open E counters; keep the separate right-hand numeral 1's vertical stem and diagonal top construction; preserve the distinctive diagonal gap between the E's top arm and the numeral 1; keep relative arm lengths, equal stroke widths, mark height/width, glyph spacing and compact square silhouette. Do NOT turn Connected into Heritage's standalone hooked numeral 1.\nChange only finishing: gently round exterior and interior corners with a consistent modest radius, about one-quarter to one-third of stroke thickness. Keep straight edges straight and diagonal edges diagonal; softened corners should not alter the underlying geometry or turn the glyphs into bubbly lettering. Remove harsh sharp vertices but preserve crisp legibility.\nColour: replace flat violet with a sophisticated smooth muted indigo-to-soft-blue-to-teal progression across the mark, inspired by Image 2. Indigo toward left/lower E, blue toward upper E, teal toward right numeral 1. Reduce saturation relative to Heritage's bright cyan. No ribbon seams, overlapping strips, translucent polygons, texture, glow, bevels or extra decorative strokes.\nApply exactly the same softened geometry to the large emblem, bottom-left monochrome emblem and bottom-right favicon. The bottom-left mark remains solid navy on ivory, proving the softer silhouette works without colour. Main emblem and favicon use the same subtle gradient.\nPreserve all other details of Image 1: navy background, off-white wordmark with exact text \"easy1staking\", title \"03 / CONNECTED\", sheet layout and positions, typography, ivory tile, favicon border, and generous whitespace. Update the three tiny colour swatches only to match the revised palette. No new text or symbols. High-quality raster review draft.",
+  "review": "Visually inspected the large, monochrome and icon versions: complete E left spine and three arms, separate numeral 1, diagonal top gap retained; corners softened and indigo/blue/teal treatment applied. Production vector geometry and colour tokens remain pending."
+}

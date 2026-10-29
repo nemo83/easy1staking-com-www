@@ -1,0 +1,21 @@
+{
+  "scope": "Static design-review pages, not implemented application routes",
+  "pages": [
+    "index.html",
+    "adawatch.html",
+    "adamatic.html",
+    "uplc-link.html",
+    "cardano-dev-skills.html",
+    "pool.html",
+    "about.html",
+    "blog.html",
+    "article-layout.html"
+  ],
+  "notes": [
+    "Project pages preserve independent identities and creator credit",
+    "Cardano Dev Skills states founding/handover attribution",
+    "Pool wallet button demonstrates planned entry; no wallet APIs",
+    "Upcoming article cards remain unlinked",
+    "Lorem ipsum exists only on the explicitly labelled private article-layout sample"
+  ]
+}

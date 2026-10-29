@@ -1,0 +1,64 @@
+{
+  "checked_at": "2026-10-13T14:46:10.392Z",
+  "scope": "Static design review only",
+  "viewports": [
+    {
+      "mode": "editorial",
+      "width": 360,
+      "horizontal_overflow": false,
+      "all_images_loaded": true
+    },
+    {
+      "mode": "editorial",
+      "width": 390,
+      "horizontal_overflow": false,
+      "all_images_loaded": true
+    },
+    {
+      "mode": "editorial",
+      "width": 768,
+      "horizontal_overflow": false,
+      "all_images_loaded": true
+    },
+    {
+      "mode": "editorial",
+      "width": 1440,
+      "horizontal_overflow": false,
+      "all_images_loaded": true
+    },
+    {
+      "mode": "projects",
+      "width": 360,
+      "horizontal_overflow": false,
+      "all_images_loaded": true
+    },
+    {
+      "mode": "projects",
+      "width": 390,
+      "horizontal_overflow": false,
+      "all_images_loaded": true
+    },
+    {
+      "mode": "projects",
+      "width": 768,
+      "horizontal_overflow": false,
+      "all_images_loaded": true
+    },
+    {
+      "mode": "projects",
+      "width": 1440,
+      "horizontal_overflow": false,
+      "all_images_loaded": true
+    }
+  ],
+  "interaction_checks": [
+    "Mode switch",
+    "Project overview dialogs and correct external destinations, including Cardano Dev Skills founding/handover credit",
+    "Pool preview dialog",
+    "Escape and close button",
+    "Mobile menu open/navigation/close",
+    "Reduced-motion scroll behavior",
+    "Coming soon articles without links"
+  ],
+  "page_errors": []
+}

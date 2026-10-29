@@ -1,0 +1,21 @@
+{
+  "observed_on": "2026-10-12",
+  "baseline": "419704fe362cc4e9b2ad241d331429c5710421b5",
+  "branch": "feat/rebrand-cutover",
+  "scope": "Unmodified application exported at the pinned SHA; no redesigned-site implementation or release verification",
+  "method": "git archive the easy1staking subtree into an isolated directory; use the existing node_modules installation through a symlink; run commands from the exported easy1staking directory",
+  "toolchain": {"node": "20.20.2", "npm": "10.8.2", "next": "15.5.9", "typescript": "5.6.3"},
+  "checks": [
+    {"command": "npm run build", "exit_code": 0, "result": "Compilation, type/lint checks and page generation completed; production artifact generated"},
+    {"command": "npm run lint", "exit_code": 0, "result": "No ESLint warnings or errors; next lint deprecation notice"}
+  ],
+  "build_id": "hyRDgmEuPBXsIOQ_9Qkbo",
+  "observed_page_entries": ["/_not-found/page", "/page", "/scooper-dashboard/page"],
+  "limits": [
+    "No clean npm ci, lockfile equivalence or cross-machine reproduction was verified",
+    "No automated application suite is established; build and lint are distinct from wallet transaction verification",
+    "The observed scooper-dashboard route is excluded from intended launch",
+    "Current main has separate dependency failures and an unreviewed obfuscated api.js; do not execute its dev/start scripts"
+  ],
+  "reproduction_next_step": "In an isolated checkout at this SHA, install the locked dependencies with npm ci and rerun build/lint before release verification. The completed check used existing dependencies."
+}
