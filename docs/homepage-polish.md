@@ -1,11 +1,16 @@
 # Homepage polish references and reproduction
 
-The Editorial homepage and shared navigation/footer are implemented on the clean
-application lineage starting at `8bc3eb713c26db54a8eaf2b6bee7580ef303ac2f`, using
-Node.js 24.22.1. The package manifest and lockfile are unchanged by homepage polish.
+The Editorial homepage and supporting pages are implemented on
+`feat/homepage-polish`. The application at
+`1ce8befcb17b872bc75e0d58d0ea424d8cb63db1` was independently verified using
+Node.js 24.22.1. Its clean application lineage starts at
+`8bc3eb713c26db54a8eaf2b6bee7580ef303ac2f`; that earlier baseline alone still has
+the older layout. Use a checkout containing the implemented homepage commit.
+The package manifest and lockfile are unchanged by homepage polish.
 This stage supplies the homepage, shared presentation, four project overviews,
-About, a Coming soon Blog and a read-only Pool destination. Complete composed
-accessibility and visitor-journey review remains a separate acceptance step.
+About, a Coming soon Blog and a read-only Pool destination. Composed browser,
+accessibility and visitor-journey verification is complete within the preview
+scope described below.
 
 The reviewed product references are:
 
@@ -28,9 +33,9 @@ runtime commands; historical startup guidance is not reproduction guidance.
 Original SVG and font-licence whitespace is retained to preserve the reviewed
 asset bytes.
 
-The active work is the Editorial homepage and its project, About and Blog
+This stage includes the Editorial homepage and its project, About and Blog
 journeys, with the four independent project identities and explicit Cardano Dev
-Skills creator/handover credit. Pool content in this stage must be read-only,
+Skills creator/handover credit. Pool content in this stage is read-only,
 with unavailable delegation and live pool facts stated visibly before navigation
 and on `/pool`. In-site wallet connection, transactions and live pool data are
 separate follow-up work. The broader specification describes later behavior and
@@ -105,9 +110,9 @@ It has meaningful alternative text and explicit dimensions.
 The home and shared shell do not import the inherited delegation panel or live
 pool strip. Pool facts are em dashes with an explicit unavailable explanation;
 wallet connection, in-site delegation and live pool data remain separate work.
-No article cards have links, publication dates or article bodies. Composed
-keyboard/200% text review, live data, wallet work, old-route migration and release
-verification remain outstanding beyond this polish stage.
+No article cards have links, publication dates or article bodies. Keyboard and
+enlarged-text review is complete for this stage. Live data, wallet work,
+old-route migration and release verification remain follow-up work.
 
 
 ## Supporting visitor destinations
@@ -143,7 +148,27 @@ seven supporting paths and no fallback for unknown project slugs. The built
 application returned 200 for all seven paths and 404 for unknown, prototype-like
 project names and `/article-layout`. Browser verification checked loaded images,
 page titles/canonicals/Open Graph URLs, one H1 and the common skip target, plus
-representative AdaWatch/About screenshots at 1440px and 390px. This is local
-built-artifact evidence, not clean-install, complete accessibility or release
-acceptance. The inherited scooper route remains outside this change and still
-requires the separate migration work.
+representative AdaWatch/About screenshots at 1440px and 390px. The inherited
+scooper route remains outside this change and still requires the separate
+migration work.
+
+## Completed preview verification
+
+An independent clean install, production build and lint passed on Node.js
+24.22.1. All 273 browser acceptance checks passed against a separately built
+production artifact, covering the eight visitor routes at 360, 390, 768 and
+1440px, loaded real media, internal destinations, project/article 404 behavior,
+mobile menu selection/Escape/focus, keyboard skip navigation, reduced motion and
+read-only Pool safeguards. All eight routes have the required Open Graph
+properties and correct canonical URL identities.
+
+Automated accessibility scans had no violations. Manual follow-up resolved
+gradient contrast cases and verified semantic unavailable values. Enlarged-text
+checks doubled computed font sizes and line heights; native browser zoom and
+native screen-reader testing are not claimed. The genuine portrait and approved
+desktop/mobile composition were also visually inspected.
+
+This completes the homepage preview scope. It does not establish public release,
+live pool data, wallet/delegation readiness or dependency security clearance.
+Existing dependency audit findings require release review. No publication or
+deployment is implied by this guide.
