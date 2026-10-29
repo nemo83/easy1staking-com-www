@@ -1,59 +1,17 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/site/SiteNav";
 import { SiteFooter } from "@/components/site/SiteFooter";
 
-const geist = Geist({
-  subsets: ["latin"],
-  variable: "--font-geist",
-  display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-geist-mono",
-  display: "swap",
-});
-
-const instrumentSerif = Instrument_Serif({
-  weight: "400",
-  style: ["normal", "italic"],
-  subsets: ["latin"],
-  variable: "--font-instrument",
-  display: "swap",
-});
-
 export const metadata: Metadata = {
-  title: "easy1staking — Reliable Cardano infrastructure",
-  description:
-    "A Cardano stake pool, a SundaeSwap scooper, a Butane oracle, and the open-source projects that help the ecosystem move. Operated by a builder, reliable since 2020.",
-  icons: {
-    icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
-      { url: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
-      { url: "/android-chrome-192x192.png", type: "image/png", sizes: "192x192" },
-    ],
-    apple: { url: "/apple-touch-icon.png", sizes: "180x180" },
-  },
+  metadataBase: new URL("https://easy1staking.com"),
+  title: { default: "EASY1 — Built on Cardano. Made to be used.", template: "%s | EASY1" },
+  description: "Giovanni's Cardano projects, open-source work and the EASY1 stake pool where it all started. Explore AdaWatch, AdaMatic, UPLC Link and Cardano Dev Skills.",
+  openGraph: { type: "website", siteName: "easy1staking", images: [{ url: "/brand/assets/easy1-share-card-dark.png", width: 1200, height: 630, alt: "easy1staking — Connected Soft identity" }] },
+  twitter: { card: "summary_large_image", images: ["/brand/assets/easy1-share-card-dark.png"] },
+  icons: { icon: [{ url: "/brand/assets/easy1-icon-32.png", sizes: "32x32", type: "image/png" }, { url: "/brand/assets/easy1-icon-192.png", sizes: "192x192", type: "image/png" }], apple: { url: "/brand/assets/easy1-icon-180.png", sizes: "180x180" } },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html
-      lang="en"
-      className={`${geist.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
-    >
-      <body className="bg-bg font-sans text-ink-high antialiased">
-        <SiteNav />
-        {children}
-        <SiteFooter />
-      </body>
-    </html>
-  );
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return <html lang="en"><body className="bg-bg font-sans text-ink-high antialiased"><a className="skip-link" href="#main-content">Skip to content</a><SiteNav />{children}<SiteFooter /></body></html>;
 }
