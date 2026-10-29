@@ -3,8 +3,9 @@
 The Editorial homepage and shared navigation/footer are implemented on the clean
 application lineage starting at `8bc3eb713c26db54a8eaf2b6bee7580ef303ac2f`, using
 Node.js 24.22.1. The package manifest and lockfile are unchanged by homepage polish.
-This stage supplies the homepage and shared presentation; supporting destinations
-are the immediate next change, and complete visitor journeys remain to be checked.
+This stage supplies the homepage, shared presentation, four project overviews,
+About, a Coming soon Blog and a read-only Pool destination. Complete composed
+accessibility and visitor-journey review remains a separate acceptance step.
 
 The reviewed product references are:
 
@@ -75,9 +76,8 @@ wallet/delegation readiness require their own completed verification.
 The selected Editorial composition uses the delivered Connected Soft lockups, a
 split E1/project-connections hero, two-column desktop project grid and the approved
 projects → pool → Giovanni → writing section order. Website captures are labelled
-and framed as captures. Four project cards link to the agreed in-hub routes;
-those route implementations are delivered by the immediate supporting-pages
-change. This intermediate homepage commit does not establish those journeys.
+and framed as captures. Four project cards open their matching in-hub overviews. Each overview explains
+the project and Giovanni’s role before linking to its independent destination.
 
 The header has a home logo, Projects, Pool, About and Blog destinations, a visible
 read-only delegation qualification beside its pool action, and a mobile disclosure
@@ -105,6 +105,45 @@ It has meaningful alternative text and explicit dimensions.
 The home and shared shell do not import the inherited delegation panel or live
 pool strip. Pool facts are em dashes with an explicit unavailable explanation;
 wallet connection, in-site delegation and live pool data remain separate work.
-No article cards have links, publication dates or article bodies. Supporting-page
-journeys, composed keyboard/200% text review, live data, wallet work and release
-verification remain outstanding beyond this homepage stage.
+No article cards have links, publication dates or article bodies. Composed
+keyboard/200% text review, live data, wallet work, old-route migration and release
+verification remain outstanding beyond this polish stage.
+
+
+## Supporting visitor destinations
+
+The statically generated project routes are `/projects/adawatch`,
+`/projects/adamatic`, `/projects/uplc-link` and `/projects/cardano-dev-skills`.
+The route awaits Next.js 15 parameters and uses an exact catalogue lookup;
+`generateStaticParams` lists the four known slugs and `dynamicParams = false`
+prevents other slugs from generating pages. Unknown project slugs and the
+unpublished `/article-layout` path return HTTP 404 with the custom EASY1 error
+page and useful home/projects links.
+
+`OverviewPage.tsx` shares the approved split hero, framed real product capture,
+feature explanation, authorship section and quiet Pool invitation. Detail copy
+is typed in `projectOverviews` beside the shared project catalogue.
+AdaWatch explains that its website introduces the bot. AdaMatic labels HOSKY
+auto-pulls as available and recurring ADA payments as roadmap work. Cardano Dev
+Skills credits Giovanni’s origin and Foundation handover before the official
+website/repository links. Every external link announces its new tab.
+
+`/about` uses the real optimized portrait and confirmed 2020 → building → sharing
+journey. `/blog` reuses the same three Coming soon cards as the homepage.
+`/pool` prominently says **Pool information preview**, explains that delegation,
+wallet connection and live data are unavailable, shows unknown facts and the
+verified EASY1 pool ID, and links back to the projects and story. It has no wallet
+controls, disabled transaction demonstration or data requests. These supporting
+pages share the Editorial main/skip target and scoped `EditorialPages.module.css`.
+Each known destination has its own title, canonical and Open Graph URL.
+
+Build and lint passed under Node.js 24.22.1 using the existing locked dependencies,
+with no public Blockfrost configuration. The production manifest contains the
+seven supporting paths and no fallback for unknown project slugs. The built
+application returned 200 for all seven paths and 404 for unknown, prototype-like
+project names and `/article-layout`. Browser verification checked loaded images,
+page titles/canonicals/Open Graph URLs, one H1 and the common skip target, plus
+representative AdaWatch/About screenshots at 1440px and 390px. This is local
+built-artifact evidence, not clean-install, complete accessibility or release
+acceptance. The inherited scooper route remains outside this change and still
+requires the separate migration work.
