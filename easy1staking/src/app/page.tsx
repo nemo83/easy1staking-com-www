@@ -1,12 +1,17 @@
+import { PoolFacts } from "@/components/site/PoolFacts";
+import { getPoolSnapshot } from "@/lib/site/pool-snapshot";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { GiovanniPortrait, ProjectCard, UnavailablePoolFacts, UpcomingArticleGrid } from "@/components/site/EditorialSections";
+import { GiovanniPortrait, ProjectCard, UpcomingArticleGrid } from "@/components/site/EditorialSections";
 import { editorialProjects, poolPreviewNotice } from "@/lib/site/editorial";
 
 export const metadata: Metadata = { alternates: { canonical: "/" } };
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const pool = await getPoolSnapshot();
   return <main id="main-content" className="editorial" tabIndex={-1}>
     <section className="hero wrap" aria-labelledby="hero-title">
       <div className="hero-copy">
@@ -30,7 +35,7 @@ export default function Home() {
       <p className="project-credit">Projects and open-source work started by Giovanni <span>·</span> Connected by EASY1</p>
     </section>
     <section className="pool-section wrap section" aria-labelledby="pool-title">
-      <div className="pool-panel"><div className="pool-copy"><div className="eyebrow">02 / Where it started</div><h2 id="pool-title">The pool behind<br /><em>the projects.</em></h2><p>EASY1 started with staking in 2020. Today, the pool sits alongside the Cardano software and smart contracts I build.</p><Link className="pool-action" href="/pool" aria-describedby="home-pool-notice">Stake with EASY1 <span aria-hidden="true">↗</span></Link><p className="pool-small" id="home-pool-notice">{poolPreviewNotice}</p></div><UnavailablePoolFacts /></div>
+      <div className="pool-panel"><div className="pool-copy"><div className="eyebrow">02 / Where it started</div><h2 id="pool-title">The pool behind<br /><em>the projects.</em></h2><p>EASY1 started with staking in 2020. Today, the pool sits alongside the Cardano software and smart contracts I build.</p><Link className="pool-action" href="/pool" aria-describedby="home-pool-notice">Stake with EASY1 <span aria-hidden="true">↗</span></Link><p className="pool-small" id="home-pool-notice">{poolPreviewNotice}</p></div><PoolFacts {...pool} /></div>
     </section>
     <section className="story wrap section" aria-labelledby="story-title">
       <GiovanniPortrait /><div className="story-copy"><div className="eyebrow">03 / The person behind EASY1</div><h2 id="story-title">It started with a pool.<br /><em>I kept building.</em></h2><p>I started EASY1 as a staking platform. Then came the bots, payment automation and smart contracts. I also started Cardano Dev Skills and handed it over to the Cardano Foundation. Some projects I run; others I share with the wider ecosystem.</p><Link className="text-link" href="/about">The story behind EASY1 <span aria-hidden="true">↗</span></Link><div className="signature">Giovanni <span>Cardano developer &amp; stake pool operator</span></div></div>
