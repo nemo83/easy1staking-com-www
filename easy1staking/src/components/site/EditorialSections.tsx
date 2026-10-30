@@ -39,14 +39,6 @@ export function UpcomingArticleGrid() {
   ))}</div>;
 }
 
-export function UnavailablePoolFacts() {
-  return <div className="pool-data">
-    <div className="pool-id"><Image src="/brand/assets/easy1-symbol-colour-dark.svg" alt="" width={38} height={38} /><div><span>Stake pool</span><strong>EASY1</strong></div></div>
-    <dl>{[{ label: "Active stake", unit: "ADA" }, { label: "Pool saturation", unit: "%" }, { label: "Lifetime blocks" }, { label: "Margin / fixed cost" }].map(({ label, unit }) => <div key={label}><dt>{label}</dt><dd><span aria-hidden="true">—</span><span className="sr-only">Unavailable</span>{unit && <small>{unit}</small>}</dd></div>)}</dl>
-    <p className="data-note">Live pool data is unavailable in this preview. Figures are unknown.</p>
-  </div>;
-}
-
 export function GiovanniPortrait({ priority = false }: { priority?: boolean }) {
   return <figure className="giovanni-portrait"><Image src="/images/giovanni-portrait.webp" alt="Giovanni in front of illuminated CARDANO lettering" width={1200} height={1200} sizes="(max-width: 760px) 90vw, 480px" priority={priority} /></figure>;
 }
