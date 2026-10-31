@@ -7,7 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const inputs = ['package.json', 'package-lock.json', '.nvmrc', '.eslintrc.json', 'next.config.mjs', 'postcss.config.mjs', 'tailwind.config.ts', 'tsconfig.json'];
-const markers = ['EASY1_RELEASE_PRIVATE_CANARY', 'Fabbrica-Contract:', '<!-- fabbrica:begin -->', '10593-1'];
+const markers = ['EASY1_RELEASE_PRIVATE_CANARY', 'Fabbrica-Contract:', '<!-- fabbrica:begin -->'];
 const sha = data => crypto.createHash('sha256').update(data).digest('hex');
 const json = data => Buffer.from(JSON.stringify(data, null, 2) + '\n');
 function insist(condition, message) { if (!condition) throw Error(message); }
