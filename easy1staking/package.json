@@ -20,6 +20,7 @@
     "@mui/material": "^6.1.8",
     "@mui/x-charts": "^7.23.2",
     "@mui/x-data-grid": "^7.23.2",
+    "@noble/hashes": "2.2.0",
     "net": "^1.0.2",
     "next": "15.5.28",
     "react": "^18",
