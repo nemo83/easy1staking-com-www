@@ -106,9 +106,9 @@ npm start -- --hostname 127.0.0.1 --port 4328
 The runtime guard enumerates every matching lock path, including nested copies,
 and compares every target's installed package name and version with its lock
 entry. It rejects missing target packages, outdated versions, prereleases,
-nonversion strings and unreviewed majors. It explicitly reports the preserved
-**development-only YAML 2.6.1 exception** at `node_modules/yaml`; that copy is
-still affected by `GHSA-48c2-rrv3-qjmp` and receives no safety claim. The runtime
+nonversion strings and unreviewed majors. At this historical runtime-only stage it reported a preserved
+**development-only YAML 2.6.1 exception** at `node_modules/yaml`, affected by
+`GHSA-48c2-rrv3-qjmp`. The subsequent tooling patch below removes that exception. The runtime
 YAML 1 copy remains at `node_modules/cosmiconfig/node_modules/yaml`. These guards
 prevent version regressions; the separate raw audit checks current advisories.
 
@@ -129,7 +129,8 @@ Observed on 2026-10-30 with Node 24.22.1:
   `android-chrome-512x512.png` through `/_next/image` at width 64 and quality 75
   returned HTTP 200, WebP and decoded dimensions 64×64 using native Sharp.
 
-The remaining full-audit development findings are listed explicitly below.
+The runtime-only stage's full-audit development findings are listed below;
+the subsequent tooling patch resolves them.
 An inherited finding such as ESLint can have no advisory of its own and remain
 because of affected dependencies.
 
@@ -150,6 +151,120 @@ because of affected dependencies.
 
 Production zero describes this redesigned lock at that observation time. It does
 not repair the legacy production lock or its tar/IP/elliptic/Mesh chains, retire
-old public deployments, replace credentials, finish development-tool repairs,
-prove wallet/mainnet behavior or establish overall launch readiness. Repeat the
+old public deployments, replace credentials, prove wallet/mainnet behavior or establish overall launch readiness. Repeat the
 raw audits and candidate acceptance after integration and before release.
+
+
+## Compatible development-tool dependency patch
+
+The subsequent tooling repair pins ESLint 9.39.5 and resolves the previously
+listed development advisories. These are the actual repaired versions:
+
+| Package | Resolution |
+|---|---|
+| @eslint/plugin-kit | 0.4.1 |
+| @humanfs/node | 0.16.8 |
+| ajv | 6.15.0 |
+| brace-expansion | 1.1.21 and nested 2.1.7 |
+| eslint | 9.39.5 |
+| flatted | 3.4.4 |
+| glob | 10.5.0 |
+| js-yaml | 4.3.2 |
+| minimatch | 3.1.5 and nested 9.0.9 |
+| picomatch (development major 2) | 2.3.2 |
+| postcss-selector-parser | 6.1.5 |
+| yaml (development major 2) | 2.9.1 |
+
+The only added override is `brace-expansion@1: 1.1.21`, keeping its consumers on
+their existing major. Natural compatible resolution repairs both nested
+minimatch 9 copies and their brace-expansion 2 copies. The selected minimatch
+9.0.9 declares `brace-expansion: ^2.0.2`; no brace-expansion major 5 is installed.
+The initial targeted resolver also moved the unaffected runtime-classified
+`@parcel/watcher` picomatch copy. That movement was stopped and its entire
+original 4.0.4 lock entry, including registry URL and integrity, was restored
+before the final constrained install. That runtime copy remains unchanged.
+No additional runtime override was needed.
+
+The remaining changed lock entries are ESLint's declared support closure:
+
+| Package | Before → after |
+|---|---|
+| @eslint-community/eslint-utils | 4.4.1 → 4.10.1 |
+| @eslint/config-array | 0.19.0 → 0.21.2 |
+| @eslint/config-helpers | added 0.4.2 |
+| @eslint/core | 0.9.0 → 0.17.0 |
+| @eslint/eslintrc | 3.2.0 → 3.3.7 |
+| @eslint/js | 9.15.0 → 9.39.5 |
+| @eslint/object-schema | 2.1.4 → 2.1.7 |
+| @humanfs/core | 0.19.1 → 0.19.2 |
+| @humanfs/types | added 0.15.0 |
+| @humanwhocodes/retry | root 0.4.1 → 0.4.3; obsolete nested 0.3.1 removed |
+| acorn | 8.14.0 → 8.19.0 |
+| eslint-scope | 8.2.0 → 8.4.0 |
+| eslint-visitor-keys | 4.2.0 → 4.2.1 |
+| espree | 10.3.0 → 10.4.0 |
+
+The lock's root development manifest records the ESLint pin; target entries
+also record their published dependencies, engines, integrity, funding or
+deprecation metadata where changed. A complete entry comparison found every
+preexisting runtime entry identical. Application code, styles, assets, routes,
+Next 15.5.28, native Sharp 0.35.5, React 18, Evolution 0.5.9, Effect, Noble,
+Scure, serialization and transaction-building versions are unchanged.
+ESLint 9.39.5 and glob 10.5.0 carry upstream deprecation notices; compatible
+major upgrades remain separate work. The actual audits below returned no
+advisories for this graph at the observation time.
+
+Select Node 24 and reproduce from `easy1staking/` with no Blockfrost
+configuration:
+
+```sh
+node scripts/check-framework-security.cjs --lock-only
+node scripts/check-runtime-security.cjs --lock-only
+node scripts/check-tooling-security.cjs --lock-only
+npm ci --ignore-scripts
+node scripts/check-framework-security.cjs
+node scripts/check-runtime-security.cjs
+node scripts/check-tooling-security.cjs
+node scripts/check-pool-facts.cjs
+npm run build
+npm run lint
+npm audit --json
+npm audit --omit=dev --json
+npm start -- --hostname 127.0.0.1 --port 4328
+```
+
+The tooling guard enumerates every matching lock path and checks each installed
+package's actual name/version. It also checks nested installed directories for
+unlocked tooling copies. Required target names cannot silently disappear.
+Stable reviewed major families have numeric patched baselines; prereleases,
+nonversions, outdated copies and unreviewed majors fail. The existing runtime
+picomatch 4 copy is explicitly recognized at 4.0.4. The runtime guard's old
+vulnerable YAML exception is removed: development YAML 2 must be stable and at
+least 2.8.3, while runtime YAML 2 still fails. Runtime YAML 1.10.3 and all other
+runtime/native baselines retain their checks. These are known-version
+regression guards, so raw audits remain necessary for current advisories.
+
+Observed on 2026-10-31 with Node 24.22.1:
+
+- Against the unchanged predecessor lock, the tooling guard failed with 16
+  named outdated-copy failures. The full base audit returned 12 affected
+  package names (2 low, 4 moderate, 6 high); the production base audit was zero.
+  The advisory families in the historical table above are now absent.
+- A clean `npm ci --ignore-scripts` installed 530 packages. All three installed
+  security guards passed. The actual production build, type checking and lint
+  passed; lint reported no warnings or errors. The existing pool suite executed
+  all 10 tests with no failures, using synthetic local inputs.
+- Both raw full and production audits returned valid JSON, exit 0 and zero
+  findings. This is a time-specific observation for the redesigned lock.
+- The served build ID was `QnkOeSCPIki9vDOAjlomk`. The unchanged frozen browser
+  acceptance runner passed all 273 checks with external/API requests blocked.
+  Nine existing routes returned HTML 200. Native Sharp optimized the existing
+  `android-chrome-512x512.png` to a 64×64 image through `/_next/image` with
+  HTTP 200. Mobile 390px and desktop 1440px screenshots were inspected.
+  The 200% text simulation is not native zoom or assistive-technology testing.
+
+Zero current audit findings does not repair or retire the legacy production
+Mesh/tar/IP/elliptic graph, replace credentials, prove host compromise absent,
+retire old public deployments, verify real wallet/mainnet behavior, or establish
+launch readiness. Source/artifact inventory, integrated candidate acceptance
+and release checks remain required before cutover; repeat audits before release.

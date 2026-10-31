@@ -18,7 +18,7 @@ const baselines = {
 };
 const failures = [];
 const copies = {};
-const deferred = [];
+const developmentYaml = [];
 function stable(version) {
   return typeof version === 'string' && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version);
 }
@@ -31,11 +31,11 @@ for (const [location, entry] of Object.entries(lock.packages || {})) {
   const name = location.split('node_modules/').pop();
   const minimum = baselines[name];
   if (!minimum) continue;
-  // Preserve this existing dev-only major explicitly. It is affected by
-  // GHSA-48c2-rrv3-qjmp and belongs to subsequent tooling remediation.
-  const deferredYaml = name === 'yaml' && entry.version === '2.6.1' && entry.dev === true;
-  if (deferredYaml) deferred.push({ location, version: entry.version, advisory: 'GHSA-48c2-rrv3-qjmp' });
+  // YAML 2 is reviewed only as patched development tooling, never runtime.
+  const reviewedDevYaml = name === 'yaml' && stable(entry.version) && entry.version.split('.')[0] === '2' && entry.dev === true && atLeast(entry.version, '2.8.3');
+  if (reviewedDevYaml) developmentYaml.push({ location, version: entry.version });
   else {
+    if (name === 'yaml' && stable(entry.version) && entry.version.split('.')[0] === '2' && entry.dev !== true) failures.push(`${location}: unreviewed runtime YAML 2 resolution`);
     copies[name] = (copies[name] || 0) + 1;
     if (!stable(entry.version) || entry.version.split('.')[0] !== minimum.split('.')[0] || !atLeast(entry.version, minimum)) {
       failures.push(`${location}: ${name}@${entry.version} requires stable >=${minimum} within reviewed major ${minimum.split('.')[0]}`);
@@ -53,10 +53,10 @@ for (const [location, entry] of Object.entries(lock.packages || {})) {
 for (const name of Object.keys(baselines)) {
   if (!copies[name]) failures.push(`lock has no reviewed runtime resolution for ${name}`);
 }
-console.log(JSON.stringify({ mode: lockOnly ? 'lock-only' : 'installed', lockedCopies: copies, deferredDevelopmentCopies: deferred }));
+console.log(JSON.stringify({ mode: lockOnly ? 'lock-only' : 'installed', lockedCopies: copies, reviewedDevelopmentYamlCopies: developmentYaml }));
 if (failures.length) {
   for (const failure of failures) console.error(`FAIL ${failure}`);
   process.exitCode = 1;
 } else {
-  console.log('PASS reviewed runtime security baselines (development exceptions remain; run npm audit)');
+  console.log('PASS reviewed runtime security baselines and patched development YAML (run npm audit)');
 }
