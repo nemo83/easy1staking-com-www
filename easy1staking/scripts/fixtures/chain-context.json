@@ -1,0 +1,98 @@
+{
+  "notice": "Public valueless synthetic indexed observations only. No real account, project identifier, ownership or live-provider proof.",
+  "slot": "201835488",
+  "epoch": "664",
+  "tipHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fundingId": "3333333333333333333333333333333333333333333333333333333333333333",
+  "registrationId": "4444444444444444444444444444444444444444444444444444444444444444",
+  "poolRegistrationId": "5555555555555555555555555555555555555555555555555555555555555555",
+  "poolRetirementId": "6666666666666666666666666666666666666666666666666666666666666666",
+  "otherHash": "77777777777777777777777777777777777777777777777777777777",
+  "addressHex": "015ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da1e8a8dd8db193fb3f0c2c1df5cb94620cd86be43e4e05539fc678b1b5",
+  "stakeKeyHash": "e8a8dd8db193fb3f0c2c1df5cb94620cd86be43e4e05539fc678b1b5",
+  "parameterIdentity": "5a57a20747bf367451ed11cc372bf82453bfd06bcb21f243eada2db388f9b67f",
+  "accountBech32": "stake1u8523hvdkxflk0cv9swltju5vgxds6ly8e8q25ulceutrdgr3d6kh",
+  "poolHash": "20df8645abddf09403ba2656cda7da2cd163973a5e439c6e43dcbea9",
+  "poolId": "pool1yr0cv3dtmhcfgqa6yetvmf769ngk89e6tepecmjrmjl2jzcw2lm",
+  "scriptHashes": {
+    "9f1800821800581c11111111111111111111111111111111111111111111111111111111ff": "777590530185cb60b24f19d76b4fcbdd43aa9c8641a43877eb90125c",
+    "82014100": "dc61809bf0b3f33cf694fe53ada39eff7948353da297c8e04072f767",
+    "82024100": "1c08800d8c82a42adb1a41b97396718806c4e6cac8a4d19ebe224098",
+    "82034100": "1f894a81bb4eeef2375d9abf697adec940ea383a7124216c97a100e1"
+  },
+  "inlineDatumHash": "4f0860412d5af09b2bb8a267195847a29dd65154900260f6becaf4305352aff0",
+  "correspondence": {
+    "hashDatum": "82005820abababababababababababababababababababababababababababababababab",
+    "inlineDatum": "8201d818449f1800ff",
+    "differentInline": "9f1801ff",
+    "wrongDatumHash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "wrongReferenceHash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+  },
+  "pointCases": [
+    {
+      "name": "repeated identical full point",
+      "slot": 0,
+      "height": 0,
+      "hash": "same",
+      "ready": true
+    },
+    {
+      "name": "same slot hash changed height",
+      "slot": 0,
+      "height": 1,
+      "hash": "same",
+      "ready": false
+    },
+    {
+      "name": "advancing slot unchanged height",
+      "slot": 1,
+      "height": 0,
+      "hash": "new",
+      "ready": false
+    },
+    {
+      "name": "advancing slot reused hash",
+      "slot": 1,
+      "height": 1,
+      "hash": "same",
+      "ready": false
+    },
+    {
+      "name": "genuine full point advance",
+      "slot": 1,
+      "height": 1,
+      "hash": "new",
+      "ready": true
+    },
+    {
+      "name": "advancing slot lower height",
+      "slot": 1,
+      "height": -1,
+      "hash": "new",
+      "ready": false
+    }
+  ],
+  "observedTipTraces": [
+    {"id": "initial-identical", "slots": [0, 0], "hashes": ["A", "A"], "heights": [0, 0], "ready": true},
+    {"id": "initial-healthy-advance", "slots": [0, 2], "hashes": ["A", "B"], "heights": [0, 2], "ready": true},
+    {"id": "refresh-all-coincident", "slots": [0, 0, 0, 0], "hashes": ["A", "A", "A", "A"], "heights": [0, 0], "ready": true},
+    {"id": "refresh-distinct-healthy", "slots": [0, 2, 4, 6], "hashes": ["A", "B", "C", "D"], "heights": [4, 6], "ready": true},
+    {"id": "refresh-initial-repeats-current", "slots": [0, 2, 2, 4], "hashes": ["A", "B", "B", "C"], "heights": [2, 4], "ready": true},
+    {"id": "original-initial-rollback-final-recovers", "slots": [0, 0, -1, 2], "hashes": ["A", "A", "B", "C"], "heights": [-1, 2], "ready": false},
+    {"id": "original-initial-reuses-hash-final-recovers", "slots": [0, 0, 1, 2], "hashes": ["A", "A", "A", "C"], "heights": [1, 2], "ready": false},
+    {"id": "initial-replaces-prior-same-slot", "slots": [0, 0, 0, 2], "hashes": ["A", "A", "B", "C"], "heights": [0, 2], "ready": false},
+    {"id": "distinct-prior-initial-rolls-back-to-construction", "slots": [0, 2, 0, 4], "hashes": ["A", "B", "A", "D"], "heights": [0, 4], "ready": false},
+    {"id": "nonadjacent-construction-hash-reused-initial", "slots": [0, 2, 4, 6], "hashes": ["A", "B", "A", "D"], "heights": [4, 6], "ready": false},
+    {"id": "nonadjacent-construction-hash-reused-final", "slots": [0, 2, 4, 6], "hashes": ["A", "B", "C", "A"], "heights": [4, 6], "ready": false},
+    {"id": "prior-current-hash-reused-final", "slots": [0, 2, 4, 6], "hashes": ["A", "B", "C", "B"], "heights": [4, 6], "ready": false},
+    {"id": "malformed-prior-current-before-construction", "slots": [0, -1, 2, 4], "hashes": ["A", "B", "C", "D"], "heights": [2, 4], "ready": false},
+    {"id": "malformed-prior-current-reuses-construction-hash", "slots": [0, 2, 4, 6], "hashes": ["A", "A", "C", "D"], "heights": [4, 6], "ready": false},
+    {"id": "initial-same-slot-height-conflict", "slots": [0, 0], "hashes": ["A", "A"], "heights": [0, 1], "ready": false},
+    {"id": "initial-advanced-slot-unchanged-height", "slots": [0, 1], "hashes": ["A", "B"], "heights": [0, 0], "ready": false},
+    {"id": "initial-advanced-slot-lower-height", "slots": [0, 1], "hashes": ["A", "B"], "heights": [0, -1], "ready": false},
+    {"id": "initial-advanced-slot-reuses-hash", "slots": [0, 1], "hashes": ["A", "A"], "heights": [0, 1], "ready": false},
+    {"id": "initial-final-rolls-back", "slots": [0, -1], "hashes": ["A", "B"], "heights": [0, -1], "ready": false},
+    {"id": "initial-same-slot-replaces-hash", "slots": [0, 0], "hashes": ["A", "B"], "heights": [0, 0], "ready": false},
+    {"id": "untrusted-extra-prior-heights-ignored", "slots": [0, 2, 4, 6], "hashes": ["A", "B", "C", "D"], "heights": [4, 6], "ready": true, "extraPriorHeights": ["999999999999999999", "0"]}
+  ]
+}
