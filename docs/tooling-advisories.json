@@ -1,0 +1,254 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-10-31",
+  "scope": "Redesigned development dependency lock; raw npm audit reports remain separate and unchanged.",
+  "advisories": [
+    {
+      "id": "GHSA-g3hv-75wg-m249",
+      "url": "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+      "package": "minimatch",
+      "version": "3.1.5",
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_present",
+      "mechanism": "At optimizationLevel >= 2, firstPhasePreProcess can amplify globParts and secondPhasePreProcess compares pattern pairs.",
+      "evidence": "The exact 3.1.5 implementation has no optimizationLevel, firstPhasePreProcess or secondPhasePreProcess. Its make function maps brace-expanded strings to slash-separated components and parses those components directly, without the reported optimization pipeline.",
+      "source": {
+        "repository": "https://github.com/isaacs/minimatch",
+        "commit": "7bba97888a27a6162983056bcce2a6e28f668712",
+        "file": "minimatch.js",
+        "url": "https://github.com/isaacs/minimatch/blob/7bba97888a27a6162983056bcce2a6e28f668712/minimatch.js",
+        "sha256": "746849f267c4868a53729225bd85c7dccd387712136fb305fcc0a3eadd4a3d9d"
+      },
+      "lock": {
+        "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-3.1.5.tgz",
+        "integrity": "sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w=="
+      },
+      "limits": [
+        "Applies only to this advisory and the exact version, registry integrity and installed source hash above; it does not establish general safety of minimatch 3 or other legacy versions.",
+        "The public scanner range <11.0.1 still includes 3.1.5. Raw findings and inherited parent findings must be reported, never suppressed or rewritten.",
+        "Source absence, installed artifact identity and advisory mechanism require independent review before accepting this assessment."
+      ]
+    },
+    {
+      "id": "GHSA-g3hv-75wg-m249",
+      "url": "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+      "package": "minimatch",
+      "version": "11.0.3",
+      "status": "fixed",
+      "source": {
+        "repository": "https://github.com/isaacs/minimatch",
+        "commit": "b0c2aa83161cb6aaa19fa2e612f0b64edffd18ee",
+        "file": "src/index.ts",
+        "url": "https://github.com/isaacs/minimatch/blob/b0c2aa83161cb6aaa19fa2e612f0b64edffd18ee/src/index.ts"
+      },
+      "evidence": "The former parser-only 9.x resolution is scoped to 11.0.3. This implementation caps first-phase pattern growth with braceExpandMax and skips quadratic second-phase optimization for sets larger than 1000. The parser uses the compatible named minimatch(filePath, pattern) API."
+    },
+    {
+      "id": "GHSA-3g3m-2fjr-6pw4",
+      "url": "https://github.com/advisories/GHSA-3g3m-2fjr-6pw4",
+      "package": "glob",
+      "status": "component_not_present",
+      "mechanism": "An async glob walk can continue filesystem traversal after AbortSignal cancellation.",
+      "evidence": "The sole glob parent was Sucrase 3.35.0. Supported patch 3.35.1 replaces glob with tinyglobby; the lock and installed tooling guard prohibit every glob copy.",
+      "replacement": {
+        "package": "sucrase",
+        "version": "3.35.1",
+        "source": {
+          "repository": "https://github.com/alangpierce/sucrase",
+          "commit": "fa5b7abfb5588afc20c6c28f23a95b9e347215d7",
+          "file": "src/cli.ts",
+          "url": "https://github.com/alangpierce/sucrase/blob/fa5b7abfb5588afc20c6c28f23a95b9e347215d7/src/cli.ts"
+        }
+      }
+    }
+  ],
+  "compatibility": {
+    "parser": {
+      "package": "@typescript-eslint/typescript-estree",
+      "version": "8.15.0",
+      "sourceCommit": "244435126619afb9497ace04cbf4819012e27330",
+      "sourceFile": "packages/typescript-estree/src/useProgramFromProjectService.ts",
+      "sourceUrl": "https://github.com/typescript-eslint/typescript-eslint/blob/244435126619afb9497ace04cbf4819012e27330/packages/typescript-estree/src/useProgramFromProjectService.ts",
+      "call": "minimatch(filePath, pattern)",
+      "options": "default; no optimizationLevel override"
+    },
+    "decision": "Override only minimatch@9 to 11.0.3. Keep legacy callers on callable CommonJS 3.1.5; 11 exports a namespace with a named function, so a global legacy override would change their API.",
+    "verification": "Run check-minimatch-compat.cjs, all three security guards, actual build and lint; semantic checks are bounded in-process controls, not a general resource-exhaustion benchmark."
+  },
+  "limitations": "No incident, credential, old deployment, runtime/mainnet or release clearance is implied. Recheck current advisories and exact installed identities before release.",
+  "rawAuditObservation": {
+    "observedAt": "2026-10-31",
+    "fullExit": 1,
+    "fullCounts": {
+      "info": 0,
+      "low": 0,
+      "moderate": 13,
+      "high": 0,
+      "critical": 0,
+      "total": 13
+    },
+    "productionExit": 0,
+    "productionCounts": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "primaryAffectedNodes": [
+      "node_modules/minimatch"
+    ],
+    "reportedPackages": [
+      {
+        "name": "@eslint-community/eslint-utils",
+        "nodes": [
+          "node_modules/@eslint-community/eslint-utils"
+        ],
+        "via": [
+          "eslint"
+        ]
+      },
+      {
+        "name": "@eslint/config-array",
+        "nodes": [
+          "node_modules/@eslint/config-array"
+        ],
+        "via": [
+          "minimatch"
+        ]
+      },
+      {
+        "name": "@eslint/eslintrc",
+        "nodes": [
+          "node_modules/@eslint/eslintrc"
+        ],
+        "via": [
+          "minimatch"
+        ]
+      },
+      {
+        "name": "@typescript-eslint/eslint-plugin",
+        "nodes": [
+          "node_modules/@typescript-eslint/eslint-plugin"
+        ],
+        "via": [
+          "@typescript-eslint/parser",
+          "@typescript-eslint/type-utils",
+          "@typescript-eslint/utils",
+          "eslint"
+        ]
+      },
+      {
+        "name": "@typescript-eslint/parser",
+        "nodes": [
+          "node_modules/@typescript-eslint/parser"
+        ],
+        "via": [
+          "eslint"
+        ]
+      },
+      {
+        "name": "@typescript-eslint/type-utils",
+        "nodes": [
+          "node_modules/@typescript-eslint/type-utils"
+        ],
+        "via": [
+          "@typescript-eslint/utils",
+          "eslint"
+        ]
+      },
+      {
+        "name": "@typescript-eslint/utils",
+        "nodes": [
+          "node_modules/@typescript-eslint/utils"
+        ],
+        "via": [
+          "@eslint-community/eslint-utils",
+          "eslint"
+        ]
+      },
+      {
+        "name": "eslint",
+        "nodes": [
+          "node_modules/eslint"
+        ],
+        "via": [
+          "@eslint-community/eslint-utils",
+          "@eslint/config-array",
+          "@eslint/eslintrc",
+          "minimatch"
+        ]
+      },
+      {
+        "name": "eslint-config-next",
+        "nodes": [
+          "node_modules/eslint-config-next"
+        ],
+        "via": [
+          "@typescript-eslint/eslint-plugin",
+          "@typescript-eslint/parser",
+          "eslint",
+          "eslint-plugin-import",
+          "eslint-plugin-jsx-a11y",
+          "eslint-plugin-react"
+        ]
+      },
+      {
+        "name": "eslint-plugin-import",
+        "nodes": [
+          "node_modules/eslint-plugin-import"
+        ],
+        "via": [
+          "minimatch"
+        ]
+      },
+      {
+        "name": "eslint-plugin-jsx-a11y",
+        "nodes": [
+          "node_modules/eslint-plugin-jsx-a11y"
+        ],
+        "via": [
+          "minimatch"
+        ]
+      },
+      {
+        "name": "eslint-plugin-react",
+        "nodes": [
+          "node_modules/eslint-plugin-react"
+        ],
+        "via": [
+          "minimatch"
+        ]
+      },
+      {
+        "name": "minimatch",
+        "nodes": [
+          "node_modules/minimatch"
+        ],
+        "via": [
+          "https://github.com/advisories/GHSA-g3hv-75wg-m249"
+        ]
+      }
+    ]
+  },
+  "retainedLegacyDirectConsumers": [
+    "@eslint/config-array",
+    "@eslint/eslintrc",
+    "eslint",
+    "eslint-plugin-import",
+    "eslint-plugin-jsx-a11y",
+    "eslint-plugin-react"
+  ],
+  "newDevClosure": {
+    "sucrase": "3.35.1",
+    "tinyglobby": "0.2.17",
+    "fdir": "6.5.0",
+    "picomatch": {
+      "version": "4.0.7",
+      "classification": "dev only",
+      "publishedIntegrity": "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA=="
+    },
+    "preservedRuntimePicomatch": "4.0.4"
+  }
+}

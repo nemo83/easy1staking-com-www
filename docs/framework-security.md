@@ -157,6 +157,10 @@ raw audits and candidate acceptance after integration and before release.
 
 ## Compatible development-tool dependency patch
 
+This section records the first compatible tooling patch. The new-advisory
+follow-up below supersedes its zero-full-audit observation and matcher/glob
+resolutions.
+
 The subsequent tooling repair pins ESLint 9.39.5 and resolves the previously
 listed development advisories. These are the actual repaired versions:
 
@@ -268,3 +272,109 @@ Mesh/tar/IP/elliptic graph, replace credentials, prove host compromise absent,
 retire old public deployments, verify real wallet/mainnet behavior, or establish
 launch readiness. Source/artifact inventory, integrated candidate acceptance
 and release checks remain required before cutover; repeat audits before release.
+
+
+## Newly reported matcher and glob advisories
+
+A later audit on 2026-10-31 reported two new advisory families after the initial
+patch: [`GHSA-g3hv-75wg-m249`](https://github.com/advisories/GHSA-g3hv-75wg-m249)
+for minimatch pattern amplification, and
+[`GHSA-3g3m-2fjr-6pw4`](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4)
+for glob traversal continuing after cancellation. The earlier zero report is
+retained as a historical observation; it is no longer the current full-audit
+result.
+
+The follow-up makes two scoped dependency changes:
+
+- Pin Sucrase 3.35.1 through an override. Tailwind 3.4.15 already permits this
+  patch with `^3.35.0`. Its supported patch replaces glob with tinyglobby, so no
+  glob copy remains in the lock or clean installation.
+- Override only `minimatch@9` to 11.0.3 for the existing TypeScript parser. The
+  pinned parser source imports the named `minimatch(filePath, pattern)` function
+  with default options; this API remains available. Legacy callers keep their
+  callable CommonJS minimatch 3.1.5 API. A global 3-to-11 override would change
+  that API and is deliberately excluded.
+
+The new declared development closure is:
+
+| Package/path | Resolution |
+|---|---|
+| sucrase | 3.35.1 |
+| parser's minimatch | 11.0.3 |
+| parser's brace-expansion | 5.0.12 |
+| parser's balanced-match | 4.0.4 |
+| @isaacs/nonrecursive-glob-match | 1.0.3 |
+| tinyglobby | 0.2.17 |
+| tinyglobby's fdir | 6.5.0 |
+| tinyglobby's picomatch | 4.0.7, development only |
+
+Brace-expansion 5 and balanced-match 4 are the declared closure of the explicitly
+reviewed modern matcher change. Published metadata and engines were checked
+against Node 24. Runtime picomatch 4.0.4 retains its complete original lock
+entry; the guard recognizes 4.0.7 only with `dev: true` and rejects it as a
+runtime replacement. No other runtime, SDK, crypto, framework or application
+entry changes.
+
+Removing glob also removes its now-unused development closure: @isaacs/cliui,
+@pkgjs/parseargs, foreground-child, jackspeak, minipass, path-scurry, lru-cache,
+package-json-from-dist, signal-exit, eastasianwidth, is-fullwidth-code-point,
+root ansi-regex/strip-ansi/string-width, string-width-cjs, strip-ansi-cjs,
+wrap-ansi and wrap-ansi-cjs, their nested ansi-regex/emoji-regex/strip-ansi/
+string-width/ansi-styles copies, and glob's nested minimatch/brace-expansion.
+The complete follow-up lock delta is 38 entry changes, all explained by the
+two declared development closures and removals above.
+
+The source assessment for retained minimatch 3.1.5 is specific to
+`GHSA-g3hv-75wg-m249`: **vulnerable code not present**. The reported mechanism
+uses `optimizationLevel >= 2`, `firstPhasePreProcess` pattern-list amplification
+and `secondPhasePreProcess` pairwise comparisons. The exact legacy implementation
+has none of that pipeline; its `make` function maps brace-expanded strings to
+slash-separated components and parses each component directly. Its installed
+`minimatch.js` is byte-identical to
+[pinned source commit 7bba978](https://github.com/isaacs/minimatch/blob/7bba97888a27a6162983056bcce2a6e28f668712/minimatch.js),
+SHA-256 `746849f267c4868a53729225bd85c7dccd387712136fb305fcc0a3eadd4a3d9d`.
+The guard requires this exact version, registry integrity and installed source
+hash. It rejects older legacy versions, modern 9/10 copies, prereleases,
+unreviewed majors, missing reviewed API families, glob copies and legacy
+source drift. This assessment requires independent source/artifact review; it
+is neither a blanket legacy/development exception nor a general safety claim.
+
+The modern 9.x implementation does contain the affected preprocessing pipeline;
+glob 10.5.0 explicitly enabled level 2. Those copies were repaired or removed.
+The pinned 11.0.3 source caps first-phase growth with `braceExpandMax` and skips
+quadratic second-phase optimization for sets larger than 1000. The public
+[machine-readable advisory record](tooling-advisories.json) preserves exact
+source pins, artifact identity, rationale, limitations and raw scanner inventory.
+
+Run `node scripts/check-minimatch-compat.cjs` in addition to the reproduction
+commands above. It exercises both actual installed APIs with 42 positive,
+negative, parser-shaped and bounded-growth/expansion assertions in-process.
+It also checks that the parser resolves the modern named function. Inputs,
+time and RSS growth are bounded; this is a small semantic control, not a general
+exhaustion benchmark. No child benchmark or real provider/wallet action is used.
+
+Current measured scanner result on 2026-10-31: **raw full audit exit 1, 13 moderate
+reported package names; raw production audit exit 0, zero findings**. The only
+remaining primary advisory is `GHSA-g3hv-75wg-m249` at the exact root minimatch
+3.1.5 copy. The other 12 names are inherited findings: @eslint-community/eslint-utils,
+@eslint/config-array, @eslint/eslintrc, @typescript-eslint/eslint-plugin,
+@typescript-eslint/parser, @typescript-eslint/type-utils, @typescript-eslint/utils,
+eslint, eslint-config-next, eslint-plugin-import, eslint-plugin-jsx-a11y and
+eslint-plugin-react. Every inherited chain reaches that same source-assessed
+copy. No glob finding, modern minimatch finding or other primary advisory
+remains. The raw scanner output is preserved separately from this assessment.
+
+A clean install, actual production build/type checks and lint passed, with no
+lint warnings or errors. All three installed security guards, the new direct
+API controls and all 10 existing pool tests passed. Application and public asset
+trees, as well as every existing runtime lock entry, remain unchanged. Independent
+review of the complete change and the source-based disposition remains required.
+All credential, incident, legacy deployment, wallet/mainnet and release limits
+listed above still apply.
+
+The follow-up clean install added 505 packages. The rebuilt artifact
+`Lgu4H34Mb54EiXFObq37l` passed the unchanged 273-check offline browser suite,
+nine HTML route checks and an actual native Sharp 64×64 image response.
+Mobile 390px and desktop 1440px screenshots were inspected against the preceding
+unchanged application; live pool facts remain unavailable without configuration.
+The owned local verification server exited and was awaited.
