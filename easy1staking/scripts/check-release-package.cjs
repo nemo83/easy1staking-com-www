@@ -58,6 +58,10 @@ function built() {
   file(root, 'node_modules/@img/sharp-linux-x64/lib/sharp.node', 'synthetic-native-not-executed');
   file(root, '.next/BUILD_ID', 'synthetic-build');
   file(root, '.next/server/app/page.js', '// inert compiled fixture\n');
+  for (const [name, kind, extensions] of [['about', 'APP_PAGE', ['html', 'rsc']], ['robots.txt', 'APP_ROUTE', ['body']]]) {
+    file(root, '.next/server/app/' + name + '.meta', JSON.stringify({ status: 200, headers: { 'content-type': kind === 'APP_PAGE' ? 'text/html' : 'text/plain' }, routeCache: { key: '/route-cache/' + kind + '/' + 'a'.repeat(64) + '/$/' + name, owner: { kind, sourceRoute: '/' + name + (kind === 'APP_PAGE' ? '/page' : '/route') }, isFallback: false } }));
+    for (const extension of extensions) file(root, '.next/server/app/' + name + '.' + extension, 'synthetic-' + extension + '-payload');
+  }
   file(source.source, '.next/static/chunks/app.js', '// inert browser fixture\n');
   return { ...source, root };
 }
@@ -71,6 +75,17 @@ function forged(runtime, modify) {
   const filename = path.join(scratch, 'forged-' + ++serial + '.json');
   const bytes = Buffer.from(JSON.stringify(inventory, null, 2) + '\n'); fs.writeFileSync(filename, bytes);
   return { runtime: runtime.runtime, manifest: filename, expect: sha(bytes) };
+}
+function populate(runtime, names = ['about.html', 'about.rsc', 'about.meta', 'robots.txt.body', 'robots.txt.meta']) {
+  const generated = [];
+  for (const name of names) {
+    const stem = name.replace(/\.(html|rsc|body|meta)$/, '');
+    const meta = JSON.parse(fs.readFileSync(path.join(runtime.runtime, '.next/server/app/' + stem + '.meta')));
+    const extension = path.extname(name), destination = '.next/server' + meta.routeCache.key + extension;
+    const bytes = extension === '.meta' ? Buffer.from(JSON.stringify({ ...meta, routeCacheLastModified: 123456 })) : fs.readFileSync(path.join(runtime.runtime, '.next/server/app/' + name));
+    file(runtime.runtime, destination, bytes); generated.push(destination);
+  }
+  return generated;
 }
 check('immutable-source', () => {
   file(app, 'src/app/page.tsx', 'dirty content ignored'); file(app, 'public/untracked.txt', 'ignored');
@@ -146,8 +161,8 @@ check('runtime-boundaries', () => {
   }
   const build = built(); fs.symlinkSync('/etc', path.join(build.root, 'node_modules/escape'));
   invoke('pack', { source: build.source, 'source-manifest': build.manifest, 'source-expect': build.expect, runtime: path.join(scratch, 'escape'), manifest: path.join(scratch, 'escape.json') }, false);
-  const safe = built(); fs.symlinkSync('app/page.js', path.join(safe.root, '.next/server/local.js'));
-  const runtime = packed(safe); assert(!fs.lstatSync(path.join(runtime.runtime, '.next/server/local.js')).isSymbolicLink()); invoke('verify', runtime);
+  const safe = built(); fs.symlinkSync('../../.next/server/app/page.js', path.join(safe.root, 'node_modules/next/local.js'));
+  const runtime = packed(safe); assert(!fs.lstatSync(path.join(runtime.runtime, 'node_modules/next/local.js')).isSymbolicLink()); invoke('verify', runtime);
 });
 check('arguments-overwrite', () => {
   const source = exported(); invoke('export', { repo, commit: base, source: source.source, manifest: source.manifest }, false);
@@ -156,6 +171,60 @@ check('arguments-overwrite', () => {
   const attack = forged(runtime, inventory => inventory.files[0].path = '../escape'); invoke('verify', attack, false);
   const link = path.join(scratch, 'link'); fs.symlinkSync(source.source, link);
   invoke('export', { repo, commit: base, source: path.join(link, 'child'), manifest: path.join(scratch, 'link.json') }, false);
+});
+check('cache-valid', () => {
+  const runtime = packed(); assert.equal(invoke('verify', runtime).schema, 2);
+  populate(runtime, ['about.html']); assert.equal(invoke('verify', runtime).generated.routeCache.length, 1);
+  populate(runtime); file(runtime.runtime, '.next/cache/images/synthetic/image.webp', 'synthetic image bytes');
+  const report = invoke('verify', runtime); assert.equal(report.generated.routeCache.length, 5); assert.equal(report.generated.imageCache.length, 1);
+  for (const entry of report.generated.routeCache) assert(entry.immutableOriginal && entry.sha256 && entry.size > 0 && entry.mode === (fs.statSync(path.join(runtime.runtime, entry.path)).mode & 0o777) && (entry.mode & 0o111) === 0);
+  const build = built(), staged = { runtime: build.root }; populate(staged);
+  const output = packed(build); assert.equal(invoke('verify', output).generated.routeCache.length, 0);
+  assert(!fs.existsSync(path.join(output.runtime, '.next/server/route-cache')));
+});
+check('cache-payload', () => {
+  for (const name of ['about.html', 'about.rsc', 'robots.txt.body']) {
+    const runtime = packed(), [destination] = populate(runtime, [name]); invoke('verify', runtime);
+    const original = fs.readFileSync(path.join(runtime.runtime, destination));
+    file(runtime.runtime, destination, Buffer.concat([Buffer.from('X'), original.subarray(1)]));
+    invoke('verify', runtime, false);
+    file(runtime.runtime, destination, original); invoke('verify', runtime);
+  }
+});
+check('cache-metadata', () => {
+  const runtime = packed(), [destination] = populate(runtime, ['about.meta']); invoke('verify', runtime);
+  const original = fs.readFileSync(path.join(runtime.runtime, destination));
+  for (const mutate of [m => m.headers['content-type'] = 'text/javascript', m => m.status = 500, m => m.extra = true, m => m.routeCacheLastModified = '123', m => m.routeCacheLastModified = -1, m => delete m.routeCacheLastModified, m => m.routeCache.owner.kind = 'APP_ROUTE', m => m.routeCache.key = m.routeCache.key.replace('a', 'b')]) {
+    const meta = JSON.parse(original); mutate(meta); file(runtime.runtime, destination, JSON.stringify(meta)); invoke('verify', runtime, false);
+  }
+  file(runtime.runtime, destination, original); invoke('verify', runtime);
+});
+check('cache-boundaries', () => {
+  for (const name of ['about.html.js', 'unknown.html', 'fixtures/private.html']) {
+    const runtime = packed(), [valid] = populate(runtime, ['about.html']);
+    file(runtime.runtime, valid.replace('about.html', name), 'synthetic'); invoke('verify', runtime, false);
+  }
+  for (const mutate of ['key', 'canary', 'symlink', 'executable']) {
+    const runtime = packed(), [destination] = populate(runtime, ['about.html']); invoke('verify', runtime);
+    const filename = path.join(runtime.runtime, destination);
+    if (mutate === 'key') { const other = filename.replace('a'.repeat(64), 'b'.repeat(64)); fs.mkdirSync(path.dirname(other), { recursive: true }); fs.renameSync(filename, other); }
+    if (mutate === 'canary') file(runtime.runtime, destination, 'EASY1_RELEASE_PRIVATE_CANARY');
+    if (mutate === 'symlink') { fs.unlinkSync(filename); fs.symlinkSync(path.join(runtime.runtime, '.next/server/app/about.html'), filename); }
+    if (mutate === 'executable') fs.chmodSync(filename, 0o755);
+    invoke('verify', runtime, false);
+  }
+  for (const original of ['.next/server/app/about.html', '.next/server/app/about.meta']) {
+    const runtime = packed(); populate(runtime); file(runtime.runtime, original, 'changed original'); invoke('verify', runtime, false);
+    const originalDigest = runtime.expect, bytes = fs.readFileSync(path.join(runtime.runtime, original));
+    const changed = forged(runtime, inventory => Object.assign(inventory.files.find(x => x.path === original), { size: bytes.length, sha256: sha(bytes) }));
+    invoke('verify', { ...changed, expect: originalDigest }, false);
+  }
+  const weak = packed(); const old = forged(weak, inventory => inventory.schema = 1); invoke('verify', old, false);
+  const build = built(), [destination] = populate({ runtime: build.root }, ['about.html']); file(build.root, destination, 'different cached body');
+  invoke('pack', { source: build.source, 'source-manifest': build.manifest, 'source-expect': build.expect, runtime: path.join(scratch, 'bad-preexisting-cache'), manifest: path.join(scratch, 'bad-preexisting-cache.json') }, false);
+  const linked = built(), [link] = populate({ runtime: linked.root }, ['about.html']); fs.unlinkSync(path.join(linked.root, link)); fs.symlinkSync(path.join(linked.root, '.next/server/app/about.html'), path.join(linked.root, link));
+  invoke('pack', { source: linked.source, 'source-manifest': linked.manifest, 'source-expect': linked.expect, runtime: path.join(scratch, 'bad-cache-link'), manifest: path.join(scratch, 'bad-cache-link.json') }, false);
+  const image = packed(); file(image.runtime, '.next/cache/images/script.js', 'synthetic'); invoke('verify', image, false);
 });
 assert(results.length > 0, 'no controls selected');
 console.log(JSON.stringify({ passed: results.length, failed: 0, controls: results }));

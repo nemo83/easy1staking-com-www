@@ -5,9 +5,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { spawnSync } = require('node:child_process');
 const inputs = ['package.json', 'package-lock.json', '.nvmrc', '.eslintrc.json', 'next.config.mjs', 'postcss.config.mjs', 'tailwind.config.ts', 'tsconfig.json'];
 const markers = ['EASY1_RELEASE_PRIVATE_CANARY', 'Fabbrica-Contract:', '<!-- fabbrica:begin -->'];
+const cachePolicy = { version: 1, image: '.next/cache/images/**', route: 'anchored-original-companions-v1' };
+const cached = name => name.startsWith('.next/cache/') || name.startsWith('.next/server/route-cache/');
 const sha = data => crypto.createHash('sha256').update(data).digest('hex');
 const json = data => Buffer.from(JSON.stringify(data, null, 2) + '\n');
 function insist(condition, message) { if (!condition) throw Error(message); }
@@ -92,7 +95,7 @@ function manifestRead(filename, expected, kind) {
   const bytes = fs.readFileSync(filename);
   insist(sha(bytes) === expected, 'manifest identity mismatch'); // RELEASE_INVENTORY_GUARD
   const manifest = JSON.parse(bytes);
-  insist(manifest.schema === 1 && manifest.kind === kind && /^[a-f0-9]{40}$/.test(manifest.commit) && Array.isArray(manifest.files) && manifest.files.length > 0, 'invalid manifest');
+  insist(manifest.schema === (kind === 'runtime' ? 2 : 1) && manifest.kind === kind && /^[a-f0-9]{40}$/.test(manifest.commit) && Array.isArray(manifest.files) && manifest.files.length > 0, 'invalid manifest');
   const names = new Set();
   for (const file of manifest.files) {
     relative(file.path);
@@ -113,7 +116,7 @@ function walk(root, visit, symlinks = false, directoryCheck = () => {}) {
       const name = relative(prefix + entry.name), filename = path.join(directory, entry.name);
       let info = fs.lstatSync(filename);
       if (info.isSymbolicLink()) {
-        insist(symlinks, 'symlink in inventory');
+        insist(symlinks && name.startsWith('node_modules/'), 'symlink in inventory');
         const target = fs.realpathSync(filename);
         insist(target === rootReal || target.startsWith(rootReal + path.sep), 'symlink escapes copy root');
         info = fs.statSync(filename);
@@ -174,9 +177,6 @@ function runtimeInventory(runtime) {
   walk(runtime, (name, filename, info) => {
     insist(runtimePath(name) && !forbidden(name), 'forbidden runtime path: ' + name); // RELEASE_RUNTIME_PATH_GUARD
     const bytes = fs.readFileSync(filename); content(bytes, name);
-    // Image optimization is the sole documented mutable subtree. It is scanned,
-    // but its legitimate generated entries do not change the retained identity.
-    if (name.startsWith('.next/cache/')) return;
     const record = { path: name, size: bytes.length, sha256: sha(bytes), mode: info.mode & 0o777 };
     files.push(record);
     if (name.endsWith('/package.json') || name === 'package.json') {
@@ -189,6 +189,51 @@ function runtimeInventory(runtime) {
   insist(files.some(file => file.path.startsWith('public/')) && files.some(file => file.path.startsWith('.next/static/')), 'missing runtime assets');
   insist(native.some(file => file.path.endsWith('.node')), 'missing native runtime addon');
   return { files, packages, native };
+}
+function generatedCache(originals, observed, read) {
+  const original = new Map(originals.map(file => [file.path, file]));
+  insist(originals.every(file => !cached(file.path)), 'cache cannot be an immutable baseline');
+  const allowed = new Map();
+  for (const file of originals) {
+    const match = /^\.next\/server\/app\/(.+)\.meta$/.exec(file.path);
+    if (!match) continue;
+    const meta = JSON.parse(read(file.path));
+    if (!meta.routeCache) continue;
+    const route = meta.routeCache, key = /^\/route-cache\/(APP_PAGE|APP_ROUTE)\/([a-f0-9]{64})\/\$\/(.+)$/.exec(route.key || '');
+    insist(key && key[3] === relative(match[1]) && route.owner?.kind === key[1] && route.isFallback === false && isDeepStrictEqual(Object.keys(route).sort(), ['isFallback', 'key', 'owner']) && isDeepStrictEqual(Object.keys(route.owner).sort(), ['kind', 'sourceRoute']) && !Object.hasOwn(meta, 'routeCacheLastModified'), 'invalid original route metadata');
+    const suffix = key[1] === 'APP_PAGE' ? '/page' : '/route';
+    const owner = route.owner.sourceRoute;
+    insist(typeof owner === 'string' && owner.startsWith('/') && owner.endsWith(suffix), 'invalid route owner');
+    const segments = relative(owner.slice(1, -suffix.length)).split('/'), concrete = match[1].split('/');
+    insist(segments.length === concrete.length && segments.every((segment, i) => segment === concrete[i] || /^\[[a-zA-Z0-9_]+\]$/.test(segment)), 'route owner/path mismatch');
+    const extensions = key[1] === 'APP_PAGE' ? ['.html', '.rsc', '.meta'] : ['.body', '.meta'];
+    for (const extension of extensions) {
+      const source = '.next/server/app/' + match[1] + extension;
+      insist(original.has(source), 'missing original cache companion');
+      const name = relative('.next/server' + route.key + extension);
+      insist(!allowed.has(name), 'duplicate cache authorization');
+      allowed.set(name, source);
+    }
+  }
+  const imageCache = [], routeCache = [];
+  for (const file of observed.filter(file => cached(file.path))) {
+    insist((file.mode & 0o111) === 0, 'executable cache file');
+    const bytes = read(file.path); content(bytes, file.path);
+    if (file.path.startsWith('.next/cache/')) {
+      insist(file.path.startsWith('.next/cache/images/') && /\.(?:webp|avif|png|jpe?g|gif|ico)$/i.test(file.path), 'unexpected image cache file');
+      imageCache.push(file); continue;
+    }
+    const source = allowed.get(file.path);
+    insist(source, 'unanchored route cache file');
+    if (file.path.endsWith('.meta')) {
+      const meta = JSON.parse(bytes), baseline = JSON.parse(read(source));
+      insist(Object.hasOwn(meta, 'routeCacheLastModified') && Number.isSafeInteger(meta.routeCacheLastModified) && meta.routeCacheLastModified >= 0, 'invalid route cache timestamp');
+      delete meta.routeCacheLastModified;
+      insist(isDeepStrictEqual(meta, baseline), 'changed route cache metadata'); // RELEASE_CACHE_METADATA_GUARD
+    } else insist(bytes.equals(read(source)), 'changed route cache payload'); // RELEASE_CACHE_PAYLOAD_GUARD
+    routeCache.push({ ...file, immutableOriginal: source });
+  }
+  return { imageCache, routeCache };
 }
 function pack({ source, sourceManifest, sourceExpect, runtime, manifest }) {
   source = absolute(source); runtime = absolute(runtime); manifest = absolute(manifest);
@@ -203,7 +248,6 @@ function pack({ source, sourceManifest, sourceExpect, runtime, manifest }) {
       name = prefix + name;
       insist(runtimePath(name) && !forbidden(name), 'forbidden runtime path: ' + name); // RELEASE_PACK_PATH_GUARD
       const bytes = fs.readFileSync(filename); content(bytes, name);
-      if (name.startsWith('.next/cache/')) return;
       insist(!staged.has(name), 'duplicate runtime destination');
       staged.set(name, { bytes, mode: info.mode & 0o777 });
     }, symlinks, name => insist(runtimePath(prefix + name + '/') && !forbidden(prefix + name), 'forbidden packaged directory')); // RELEASE_PACK_DIRECTORY_GUARD
@@ -211,23 +255,31 @@ function pack({ source, sourceManifest, sourceExpect, runtime, manifest }) {
   collect(standalone, '', true);
   collect(path.join(source, 'public'), 'public/', false);
   collect(path.join(source, '.next/static'), '.next/static/', false);
+  const observations = [...staged].map(([name, file]) => ({ path: name, size: file.bytes.length, sha256: sha(file.bytes), mode: file.mode }));
+  // Validate preexisting caches against the build's immutable originals before
+  // omitting them. They can never become trusted original package content.
+  const omittedCache = generatedCache(observations.filter(file => !cached(file.path)), observations, name => staged.get(name).bytes);
   fs.mkdirSync(runtime, { mode: 0o700 });
-  for (const [name, file] of staged) writeFile(runtime, name, file.bytes, file.mode);
+  for (const [name, file] of staged) if (!cached(name)) writeFile(runtime, name, file.bytes, file.mode);
   const entries = runtimeInventory(runtime);
   const buildId = fs.readFileSync(path.join(runtime, '.next/BUILD_ID'), 'utf8').trim();
   insist(/^[a-zA-Z0-9_-]+$/.test(buildId), 'invalid BUILD_ID');
-  const inventory = { schema: 1, kind: 'runtime', commit: input.commit, sourceManifestSHA256: sourceExpect, lockSHA256: input.lockSHA256, buildId, mutable: ['.next/cache/**'], ...entries };
-  return { commit: input.commit, buildId, files: entries.files.length, packages: entries.packages.length, native: entries.native.length, manifestSHA256: manifestWrite(manifest, inventory) };
+  const inventory = { schema: 2, kind: 'runtime', commit: input.commit, sourceManifestSHA256: sourceExpect, lockSHA256: input.lockSHA256, buildId, cachePolicy, ...entries };
+  return { schema: 2, commit: input.commit, buildId, files: entries.files.length, packages: entries.packages.length, native: entries.native.length, omittedCache, manifestSHA256: manifestWrite(manifest, inventory) };
 }
 function verify({ runtime, manifest, expect }) {
   runtime = absolute(runtime);
   insist(outside(path.resolve(manifest), runtime), 'manifest inside runtime');
   const inventory = manifestRead(manifest, expect, 'runtime');
-  insist(JSON.stringify(inventory.mutable) === JSON.stringify(['.next/cache/**']), 'unexpected mutable boundary');
+  insist(isDeepStrictEqual(inventory.cachePolicy, cachePolicy), 'unexpected cache policy');
   const actual = runtimeInventory(runtime);
+  const observed = actual.files;
+  actual.files = observed.filter(file => !cached(file.path));
   insist(JSON.stringify(actual.files) === JSON.stringify(inventory.files) && JSON.stringify(actual.packages) === JSON.stringify(inventory.packages) && JSON.stringify(actual.native) === JSON.stringify(inventory.native), 'runtime inventory mismatch'); // RELEASE_RUNTIME_INVENTORY_GUARD
+  // The externally anchored original comparison above must precede derivation.
+  const generated = generatedCache(inventory.files, observed, name => fs.readFileSync(path.join(runtime, name)));
   insist(fs.readFileSync(path.join(runtime, '.next/BUILD_ID'), 'utf8').trim() === inventory.buildId && /^[a-f0-9]{64}$/.test(inventory.sourceManifestSHA256) && /^[a-f0-9]{64}$/.test(inventory.lockSHA256), 'runtime lineage mismatch');
-  return { commit: inventory.commit, buildId: inventory.buildId, files: actual.files.length, packages: actual.packages.length, native: actual.native.length, manifestSHA256: expect, mutable: inventory.mutable };
+  return { schema: 2, commit: inventory.commit, buildId: inventory.buildId, files: actual.files.length, packages: actual.packages.length, native: actual.native.length, manifestSHA256: expect, cachePolicy, generated };
 }
 const commands = {
   export: { required: ['repo', 'commit', 'source', 'manifest'], run: exportSource },
