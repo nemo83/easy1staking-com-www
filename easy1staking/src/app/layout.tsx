@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { SiteNav } from "@/components/site/SiteNav";
 import { SiteFooter } from "@/components/site/SiteFooter";
+import { LegacyFragments } from "@/components/site/LegacyFragments";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://easy1staking.com"),
@@ -13,5 +14,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="en"><body className="bg-bg font-sans text-ink-high antialiased"><a className="skip-link" href="#main-content">Skip to content</a><SiteNav />{children}<SiteFooter /></body></html>;
+  return <html lang="en"><body className="bg-bg font-sans text-ink-high antialiased"><a className="skip-link" href="#main-content">Skip to content</a><SiteNav />{children}<SiteFooter /><LegacyFragments /></body></html>;
 }

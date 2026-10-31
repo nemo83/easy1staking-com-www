@@ -1,0 +1,23 @@
+.article{width:calc(100% - 40px);max-width:46rem;margin:0 auto;padding-block:3.5rem;color:#f6f5f1;overflow-wrap:anywhere;font-family:Arial,Helvetica,system-ui,sans-serif}
+.header{padding-bottom:2rem;border-bottom:1px solid #52607d;margin-bottom:2rem}
+.article .header h1{font-family:Poppins,Arial,sans-serif;font-weight:600;font-size:clamp(2rem,4vw,3.5rem);line-height:1.2;letter-spacing:-.04em;margin:0 0 1.5rem}
+.article .meta{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;color:#bac6da;font-size:.875rem;line-height:1.8;margin:0}
+.content{font-size:1.0625rem;line-height:1.9;min-width:0}
+.article .content>p,.article .content>ul,.article .content>ol,.article .content>blockquote,.article .content>figure,.article .content>pre{margin:1.5rem 0}
+.article .content h2,.article .content h3{font-family:Poppins,Arial,sans-serif;line-height:1.35;margin:2.5rem 0 1rem;letter-spacing:-.025em}
+.article .content h2{font-size:1.75rem}
+.article .content h3{font-size:1.375rem}
+.content ul,.content ol{padding-left:1.5rem}
+.content ul{list-style:disc}
+.content ol{list-style:decimal}
+.content a{color:#bdb5ff;text-decoration:underline;text-underline-offset:.2em}
+.content a:focus-visible,.content pre:focus-visible{outline:3px solid #35d5da;outline-offset:4px}
+.content blockquote{border-left:3px solid #35d5da;padding-left:1.25rem;color:#bac6da}
+.content pre{max-width:100%;overflow-x:auto;padding:1rem;background:#142036;border:1px solid #52607d;border-radius:.5rem;font-size:.875em;line-height:1.7;white-space:pre}
+.content code{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.content :not(pre)>code{background:#142036;padding:.125em .3em;border-radius:.25rem;white-space:break-spaces}
+.content img,.content video{display:block;max-width:100%;height:auto;border-radius:.5rem}
+.content figure{min-width:0}
+.content figcaption{font-size:.875em;line-height:1.7;color:#bac6da;margin-top:.75rem}
+@media(min-width:768px){.article{width:calc(100% - 56px);padding-block:5rem}}
+@media(prefers-reduced-motion:reduce){.article,.article *{scroll-behavior:auto;animation:none;transition:none}}
