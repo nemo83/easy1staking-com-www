@@ -96,11 +96,12 @@ async function verify() {
       if (url.pathname.startsWith("/_next/static/") && url.pathname.endsWith(".js")) pending.push((async () => {
         const bytes = await response.body(), name = url.pathname.replace("/_next/", ""), disk = fs.readFileSync(path.join(target, ".next", name));
         assert(bytes.equals(disk), "CLIENT_CHUNK_IDENTITY"); report.chunks.push({ path: name, bytes: bytes.length, sha256: sha(bytes) });
-      })());
+      })().catch(error => { report.errors.push("CLIENT_CHUNK_READ " + String(error)); }));
     });
     await page.goto(origin + "/browser-sdk-proof");
     try { await page.waitForFunction(() => window.proof !== undefined, {}, { timeout: 30000 }); } catch { throw Error("BROWSER_CAPABILITY: client fixture did not execute"); }
     report.actual = await page.evaluate(() => ({ proof: window.proof, monitor: window.browserSdkMonitor }));
+    page.removeAllListeners("response");
     await Promise.all(pending);
     assert(report.actual.proof.ok, "BROWSER_CAPABILITY: " + JSON.stringify(report.actual.proof));
     assert.deepEqual(report.actual.monitor.controls, ["fetch", "xhr", "socket", "events", "beacon", "wallet", "sign", "submit", "storage", "indexedDB", "analytics"], "TRIPWIRE_CONTROL");
