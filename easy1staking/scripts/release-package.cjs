@@ -82,7 +82,11 @@ function writeFile(root, name, bytes, mode = 0o644) {
   relative(name);
   const destination = path.join(root, name);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.writeFileSync(destination, bytes, { flag: 'wx', mode });
+  const descriptor = fs.openSync(destination, 'wx', mode);
+  try {
+    fs.writeFileSync(descriptor, bytes);
+    fs.fchmodSync(descriptor, mode);
+  } finally { fs.closeSync(descriptor); }
 }
 function manifestWrite(filename, manifest) {
   const bytes = json(manifest);

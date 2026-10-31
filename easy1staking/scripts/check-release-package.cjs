@@ -13,6 +13,7 @@ fs.mkdirSync(scratch, { mode: 0o700 });
 const cli = path.join(__dirname, 'release-package.cjs');
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const results = [];
+let umaskProbe;
 function command(executable, args, cwd) {
   const result = spawnSync(executable, args, { cwd, encoding: 'utf8', shell: false, maxBuffer: 16 * 1024 * 1024 });
   assert(!result.error && result.signal === null, 'child process failed');
@@ -20,7 +21,7 @@ function command(executable, args, cwd) {
 }
 function invoke(phase, options, success = true) {
   const args = Object.entries(options).flatMap(([name, value]) => ['--' + name, value]);
-  const result = command(process.execPath, [cli, phase, ...args]);
+  const result = command(process.execPath, [...(umaskProbe ? ['--require', umaskProbe] : []), cli, phase, ...args]);
   if (success) {
     assert.equal(result.status, 0, result.stderr);
     const output = JSON.parse(result.stdout); assert.equal(output.status, 'PASS'); return output;
@@ -29,6 +30,18 @@ function invoke(phase, options, success = true) {
   assert.match(result.stderr, /^FAIL release package:/); return result;
 }
 function file(root, name, data) { fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true }); fs.writeFileSync(path.join(root, name), data); }
+function withUmask(mask, action) {
+  const probe = path.join(scratch, 'umask-' + mask + '.cjs');
+  if (!fs.existsSync(probe)) fs.writeFileSync(probe, "const assert = require('node:assert/strict'); const mask = process.umask(); assert.equal(mask, " + mask + "); process.once('exit', () => assert.equal(process.umask(), mask, 'CLI changed process umask'));\n", { flag: 'wx', mode: 0o600 });
+  const previous = process.umask(mask), previousProbe = umaskProbe;
+  umaskProbe = probe;
+  try { action(); }
+  finally {
+    const observed = process.umask(); process.umask(previous); umaskProbe = previousProbe;
+    assert.equal(observed, mask, 'control changed caller umask');
+    assert.equal(process.umask(), previous, 'caller umask was not restored');
+  }
+}
 function git(args) { const r = command('git', args, repo); assert.equal(r.status, 0, r.stderr); return r.stdout.trim(); }
 function commit() { git(['add', '--', '.']); git(['-c', 'user.name=Release fixture', '-c', 'user.email=fixture@invalid.example', 'commit', '-m', 'Synthetic release fixture']); return git(['rev-parse', 'HEAD']); }
 function check(name, action) {
@@ -41,6 +54,8 @@ const app = path.join(repo, 'easy1staking');
 for (const name of ['package.json', 'package-lock.json', '.nvmrc', '.eslintrc.json', 'next.config.mjs', 'postcss.config.mjs', 'tailwind.config.ts', 'tsconfig.json']) file(app, name, fs.readFileSync(path.join(__dirname, '..', name)));
 file(app, 'src/app/page.tsx', 'export default function Page() { return null; }\n');
 file(app, 'public/good.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+file(app, 'public/executable.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+fs.chmodSync(path.join(app, 'public/executable.svg'), 0o755);
 for (const name of ['AGENTS.md', 'docs/brand-research/homepage-previews/sample.html', '.fabbrica/private.txt', 'easy1staking/.env.example', 'easy1staking/scripts/dev.cjs', 'easy1staking/fixtures/sample.txt']) file(repo, name, 'EASY1_RELEASE_PRIVATE_CANARY');
 const base = commit();
 let serial = 0;
@@ -95,6 +110,36 @@ check('immutable-source', () => {
   assert.deepEqual(fs.readdirSync(output.source).sort(), ['.eslintrc.json', '.nvmrc', 'next.config.mjs', 'package-lock.json', 'package.json', 'postcss.config.mjs', 'public', 'src', 'tailwind.config.ts', 'tsconfig.json'].sort());
   invoke('verify-source', { ...output, repo, commit: base });
 });
+check('source-modes', () => {
+  for (const mask of [0o022, 0o077]) withUmask(mask, () => {
+    const output = exported(); invoke('verify-source', { ...output, repo, commit: base });
+    const inventory = JSON.parse(fs.readFileSync(output.manifest));
+    assert.equal(fs.statSync(output.manifest).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(output.source).mode & 0o777, 0o700);
+    for (const [name, mode] of [['public/good.svg', 0o644], ['public/executable.svg', 0o755]]) {
+      assert.equal(inventory.files.find(x => x.path === name).mode, '100' + mode.toString(8));
+      assert.equal(fs.statSync(path.join(output.source, name)).mode & 0o777, mode);
+    }
+    for (const record of inventory.files) {
+      const filename = path.join(output.source, record.path), bytes = fs.readFileSync(filename);
+      assert.equal(bytes.length, record.size); assert.equal(sha(bytes), record.sha256);
+      assert.equal(fs.statSync(filename).mode & 0o777, parseInt(record.mode, 8) & 0o777);
+    }
+  });
+});
+check('source-mode-tamper', () => {
+  for (const mask of [0o022, 0o077]) withUmask(mask, () => {
+    const output = exported(), manifest = fs.readFileSync(output.manifest);
+    for (const [name, mode] of [['public/good.svg', 0o644], ['public/executable.svg', 0o755]]) {
+      const filename = path.join(output.source, name), bytes = fs.readFileSync(filename);
+      fs.chmodSync(filename, mode & 0o700);
+      const refused = invoke('verify-source', { ...output, repo, commit: base }, false);
+      assert.equal(refused.stderr.trim(), 'FAIL release package: source mode mismatch');
+      assert.deepEqual(fs.readFileSync(filename), bytes); assert.deepEqual(fs.readFileSync(output.manifest), manifest);
+      fs.chmodSync(filename, mode); invoke('verify-source', { ...output, repo, commit: base });
+    }
+  });
+});
 check('source-private', () => {
   file(app, 'src/fixtures/private.txt', 'synthetic private fixture'); const bad = commit();
   invoke('export', { repo, commit: bad, source: path.join(scratch, 'bad-private'), manifest: path.join(scratch, 'bad-private.json') }, false);
@@ -125,6 +170,57 @@ check('valid-runtime', () => {
   const runtime = packed(); invoke('verify', runtime);
   assert(fs.existsSync(path.join(runtime.runtime, 'public/good.svg')));
   file(runtime.runtime, '.next/cache/images/synthetic/cache.webp', 'legitimate mutable image cache'); invoke('verify', runtime);
+});
+check('runtime-modes', () => {
+  for (const mask of [0o022, 0o077]) {
+    const build = built();
+    fs.chmodSync(path.join(build.root, 'server.js'), 0o644);
+    file(build.root, 'node_modules/next/command.js', '// inert executable asset, never executed\n');
+    fs.chmodSync(path.join(build.root, 'node_modules/next/command.js'), 0o755);
+    const originals = new Map();
+    function remember(root, prefix = '') {
+      for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+        const filename = path.join(root, entry.name), name = prefix + entry.name;
+        if (entry.isDirectory()) remember(filename, name + '/');
+        else originals.set(name, { bytes: fs.readFileSync(filename), mode: fs.statSync(filename).mode & 0o777 });
+      }
+    }
+    remember(build.root); remember(path.join(build.source, 'public'), 'public/'); remember(path.join(build.source, '.next/static'), '.next/static/');
+    withUmask(mask, () => {
+      const runtime = packed(build); invoke('verify', runtime);
+      const inventory = JSON.parse(fs.readFileSync(runtime.manifest));
+      assert.equal(inventory.files.length, originals.size);
+      assert.equal(fs.statSync(runtime.manifest).mode & 0o777, 0o600);
+      assert.equal(fs.statSync(runtime.runtime).mode & 0o777, 0o700);
+      for (const record of inventory.files) {
+        const original = originals.get(record.path), filename = path.join(runtime.runtime, record.path);
+        assert(original); assert.equal(record.mode, original.mode); assert.equal(record.sha256, sha(original.bytes));
+        assert.equal(record.size, original.bytes.length); assert.deepEqual(fs.readFileSync(filename), original.bytes);
+        assert.equal(fs.statSync(filename).mode & 0o777, original.mode);
+      }
+      fs.renameSync(build.source, build.source + '-unavailable');
+      assert(!fs.existsSync(build.source)); invoke('verify', runtime);
+      // Only the ordinary-mode inert server is loaded; executable assets stay data.
+      const benign = command(process.execPath, [path.join(runtime.runtime, 'server.js')], runtime.runtime);
+      assert.equal(benign.status, 0, benign.stderr); assert.equal(benign.stdout, '');
+    });
+  }
+});
+check('runtime-mode-tamper', () => {
+  for (const mask of [0o022, 0o077]) withUmask(mask, () => {
+    const build = built(); fs.chmodSync(path.join(build.root, 'server.js'), 0o644);
+    file(build.root, 'node_modules/next/command.js', '// inert executable asset, never executed\n');
+    fs.chmodSync(path.join(build.root, 'node_modules/next/command.js'), 0o755);
+    const runtime = packed(build), manifest = fs.readFileSync(runtime.manifest);
+    for (const [name, mode] of [['server.js', 0o644], ['node_modules/next/command.js', 0o755]]) {
+      const filename = path.join(runtime.runtime, name), bytes = fs.readFileSync(filename);
+      fs.chmodSync(filename, mode & 0o700);
+      const refused = invoke('verify', runtime, false);
+      assert.equal(refused.stderr.trim(), 'FAIL release package: runtime inventory mismatch');
+      assert.deepEqual(fs.readFileSync(filename), bytes); assert.deepEqual(fs.readFileSync(runtime.manifest), manifest);
+      fs.chmodSync(filename, mode); invoke('verify', runtime);
+    }
+  });
 });
 check('runtime-private', () => {
   const runtime = packed(); file(runtime.runtime, 'public/fixtures/private.txt', 'private fixture');
