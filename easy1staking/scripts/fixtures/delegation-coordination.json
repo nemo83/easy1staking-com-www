@@ -1,0 +1,15 @@
+{
+  "provenance": "Synthetic valueless transaction identifiers only; no wallet, address, key, witness or transaction bytes.",
+  "record": {
+    "schemaVersion": 1,
+    "networkId": 1,
+    "poolId": "pool1yr0cv3dtmhcfgqa6yetvmf769ngk89e6tepecmjrmjl2jzcw2lm",
+    "txId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "invalidHereafterSlot": "200000600",
+    "inputRefs": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#0"
+    ],
+    "createdAt": 1793404800000,
+    "stage": "prepared"
+  }
+}

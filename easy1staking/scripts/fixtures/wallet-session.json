@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "purpose": "Public synthetic valueless wallet observations; no real accounts or keys.",
+  "payment": "11111111111111111111111111111111111111111111111111111111",
+  "stake": "22222222222222222222222222222222222222222222222222222222",
+  "other": "33333333333333333333333333333333333333333333333333333333",
+  "txId": "4444444444444444444444444444444444444444444444444444444444444444",
+  "policy": "55555555555555555555555555555555555555555555555555555555",
+  "resourceCases": [
+    {
+      "kind": "count", "name": "too many inputs",
+      "supported": { "count": 2048, "totalBytes": 204520, "maximumBytes": 100 },
+      "excessive": { "count": 2049, "totalBytes": 204620, "maximumBytes": 100 }
+    },
+    {
+      "kind": "bytes", "name": "per encoded limit",
+      "supported": { "count": 1, "bytes": 65536, "totalBytes": 65536, "maximumBytes": 65536 },
+      "excessive": { "count": 1, "bytes": 65537, "totalBytes": 65537, "maximumBytes": 65537 }
+    },
+    {
+      "kind": "aggregate", "name": "aggregate byte limit before parsing",
+      "supported": { "count": 256, "bytes": 65536, "totalBytes": 16777216, "maximumBytes": 65536 },
+      "excessive": { "count": 257, "bytes": 65536, "totalBytes": 16842752, "maximumBytes": 65536 }
+    },
+    {
+      "kind": "depth", "name": "depth limit",
+      "supported": { "count": 1, "arrays": 21, "totalBytes": 128, "maximumBytes": 128, "structure": { "nodes": 36, "depth": 24, "largest": 1 } },
+      "excessive": { "count": 1, "arrays": 25, "totalBytes": 133, "maximumBytes": 133, "structure": { "nodes": 40, "depth": 28, "largest": 1 } }
+    },
+    {
+      "kind": "container", "name": "container limit",
+      "supported": { "count": 1, "entries": 2048, "totalBytes": 2159, "maximumBytes": 2159, "structure": { "nodes": 2063, "depth": 4, "largest": 2048 } },
+      "excessive": { "count": 1, "entries": 2049, "totalBytes": 2160, "maximumBytes": 2160, "structure": { "nodes": 2064, "depth": 4, "largest": 2049 } }
+    },
+    {
+      "kind": "nodes", "name": "node limit",
+      "supported": { "count": 1, "groups": [1700, 1700, 1700, 1700, 1372], "totalBytes": 8296, "maximumBytes": 8296, "structure": { "nodes": 8192, "depth": 5, "largest": 1700 } },
+      "excessive": { "count": 1, "groups": [1700, 1700, 1700, 1700, 1700], "totalBytes": 8624, "maximumBytes": 8624, "structure": { "nodes": 8520, "depth": 5, "largest": 1700 } }
+    }
+  ],
+  "inventory": [
+    "legacy/map/indefinite outputs; uppercase raw hex; ADA zero; complete no-funds",
+    "large exact tokens; empty asset name; mixed payment and stake input addresses",
+    "datum absence/hash/inline identity; legacy-modern normalization; original inner bytes",
+    "reference script retained and builder unselectable; malformed envelope refused",
+    "count/size/aggregate/depth/container/node limits; duplicate output/policy/name/outref",
+    "otherwise-valid excessive resource cases paired with measured supported boundaries; original malformed shapes retained separately",
+    "address/network/shape/range/missing values; null snapshot; unsupported output refusal",
+    "reordered/duplicate/multiple/no-match/empty/script/foreign/malformed rewards",
+    "no implicit enable; exact no-argument calls; read-method presence; redacted errors",
+    "unchanged semantics fresh handle; semantic input changes; order-only preservation",
+    "denial/revocation/timeouts; immediate invalidation; old success and old rejection discarded",
+    "switch and disconnect during each deferred enable/network/change/rewards/utxos/final read",
+    "serialized and coalesced refresh; queued invalidation; no overlapping wallet operations",
+    "defensive frozen observations; honest step timestamps; incompatible final bracket",
+    "native browser focus/visible visibility/30s timer; hidden poll; dispose listeners/late reply",
+    "zero signTx/submitTx/signData/extensions/HTTP/storage calls",
+    "three specific neutralization consequences with healthy neighbors"
+  ]
+}
