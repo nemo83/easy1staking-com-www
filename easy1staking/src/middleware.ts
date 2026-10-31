@@ -51,7 +51,7 @@ export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname.replace(/\/$/, "");
 
   if (retiredApis.has(pathname)) {
-    return new NextResponse(request.method === "HEAD" ? "" : '{"error":"retired"}', {
+    return new NextResponse('{"error":"retired"}', {
       status: 410,
       headers: {
         "Content-Type": "application/json",
@@ -70,7 +70,7 @@ export function middleware(request: NextRequest) {
 
   const name = retiredPages[pathname];
   if (name) {
-    return new NextResponse(request.method === "HEAD" ? "" : retirementPage(name), {
+    return new NextResponse(retirementPage(name), {
       status: 410,
       headers: {
         "Content-Type": "text/html; charset=utf-8",
