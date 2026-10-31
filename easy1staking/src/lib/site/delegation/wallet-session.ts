@@ -3,7 +3,7 @@ import type { WalletBinding, WalletInputSnapshot } from "./wallet-codec";
 import { validateBeforeSigning } from "./guard";
 import type { GuardContext, Input, Review } from "./types";
 
-const invoke = Reflect.apply;
+const invoke = Reflect.apply, NativePromise = Promise, nativeThen = Promise.prototype.then;
 
 export interface ReadOnlyWallet {
   getNetworkId(): Promise<unknown>;
@@ -243,17 +243,28 @@ export function createWalletSession(resolveProvider: (walletId: string) => unkno
       // No await between the final checks and the current handle's receiver-bound call.
       const signingGeneration = state.handleGeneration;
       job.started = true;
-      let response: Promise<unknown>;
-      try {
-        const reply = invoke(sign, api, [unsignedHex, false]);
-        response = Promise.resolve(reply);
-      }
-      catch (error) { response = Promise.reject(error); }
-      const settled = response.then(value => { job.rpcSettled = true; release(); return value; }, error => {
-        job.rpcSettled = true; release();
+      let reply: unknown;
+      function rejected(error: unknown): WalletSignatureError {
         let code: unknown;
         try { code = error !== null && typeof error === "object" ? (error as { code?: unknown }).code : undefined; } catch { /* Untrusted accessor. */ }
-        throw new WalletSignatureError(code === 2 ? "DECLINED" : "REFUSED");
+        return new WalletSignatureError(code === 2 ? "DECLINED" : "REFUSED");
+      }
+      try { reply = invoke(sign, api, [unsignedHex, false]); }
+      catch (error) { job.rpcSettled = true; throw rejected(error); }
+      // Observe the original native promise; neither its own then nor the species result has authority.
+      const settled = new NativePromise<unknown>((resolve, reject) => {
+        function fulfilled(value: unknown): void {
+          job.rpcSettled = true; release();
+          // Never assimilate a wallet-controlled object into the application-owned bridge.
+          if (typeof value === "string") resolve(value);
+          else reject(new WalletSignatureError("WITNESS"));
+        }
+        function failed(error: unknown): void { job.rpcSettled = true; release(); reject(rejected(error)); }
+        if (reply !== null && (typeof reply === "object" || typeof reply === "function")) {
+          try { invoke(nativeThen, reply, [fulfilled, failed]); }
+          // Attachment failure cannot prove that an extension RPC has settled. Keep its reservation.
+          catch { reject(new WalletSignatureError("UNSUPPORTED")); }
+        } else fulfilled(reply);
       });
       const witnesses = await Promise.race([settled, stopped]);
       if (job.failure) throw new WalletSignatureError(job.failure);

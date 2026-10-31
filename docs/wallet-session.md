@@ -165,6 +165,30 @@ by the page: the owner retains its reservation until that RPC settles, even
 when logical cancellation has already returned. A settled wallet decline
 allows a new explicit attempt. No external wallet/tab/profile lock is claimed.
 
+Signing transport supports primitive synchronous witness strings and genuine native
+Promises, including standard cross-realm Promises. Before provider interaction,
+the module captures the native Promise constructor, its `prototype.then`, and
+the invocation intrinsic. The signer is invoked first. For an object/function
+return, the captured native `then` attaches reactions directly to the original
+Promise. Its own `then` is never read, and the species-derived return is ignored.
+Only original native fulfillment/rejection releases the RPC reservation. An
+independent application-owned bridge carries primitive strings or fixed errors;
+it never assimilates a wallet-controlled object. Malformed native fulfillment
+fails with `WITNESS`; native rejection keeps the fixed declined/refused mapping.
+
+Generic thenables (including otherwise healthy ones), Promise proxies, and native
+Promises with throwing or malformed constructor/species behavior are unsupported.
+Intrinsic attachment failure returns fixed `UNSUPPORTED`, publishes no witnesses,
+and retains this owner's reservation: the thrown error cannot establish that an
+RPC has settled. There is no thenable fallback or blind retry. A new owner cannot
+prove that such an extension operation ended either. Synchronous invocation
+throws, by contrast, have completed their call and permit a later explicit retry.
+This compatibility limit follows CIP-30's `Promise<transaction_witness_set>`
+return contract (bundled `cips/CIP-0030/README.md`, informed by `connect-wallet`).
+It does not establish hostile shared-realm containment or physical completion
+of an extension's internal operation. No response timestamp or controller
+post-sign deadline guarantee is added here.
+
 After the response, another fresh enable/read acquisition must preserve the
 original revision, binding and complete inputs. Unchanged focus/visibility/poll
 refreshes are allowed during approval. Returning to the same bytes after an
@@ -202,3 +226,17 @@ invocation; each requires an
 actual forbidden call or publication, exact source/index restoration and fresh
 new/wallet/builder/guard suite greens. Full controller/W1–W8, SDK Pool browser
 activation, security composition, credential rotation and release work remain open.
+
+The shared Node/native-browser settlement cases independently track the original
+native Promise before decoration. They measure publication and actual sign
+entries while it remains pending, with an ordinary `BUSY` neighbor. Cases cover
+own-then getters/methods, cross-realm promises, unrelated species returns and
+constructor switching, attachment failures including TypeError, unsupported
+thenables/proxies, reentrant cancellation, late fulfillment/rejection and fixed
+malformed-response handling. The postcommit `original-native-settlement` control
+restores only the former `Promise.resolve(reply)`/`response.then` observation:
+the own-then case must show actual premature publication with the native promise
+still pending. Restore exact committed source/index, then rerun all Node suites
+and the full native campaign with real focus/visibility and 30-second polling.
+The earlier callable-property controls and unchanged guard predicates retain
+their previous bounded evidence; this new control adds no submission authority.

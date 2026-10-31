@@ -125,11 +125,102 @@ function identity() {
 function writeEvidence(name, value) {
   if (process.env.WALLET_SIGNATURE_EVIDENCE_DIR) fs.writeFileSync(path.join(process.env.WALLET_SIGNATURE_EVIDENCE_DIR, name), JSON.stringify(value, null, 2));
 }
+// Shared scenarios execute in Node and native Chromium against each realm's production owner.
+async function settlementCase(kind, h) {
+  const { eq, pause, flush } = h, ac = new AbortController(), operation = kind.replace(/-reject$/, "");
+  const s = await h.ready(operation === "timeout" ? { signatureTimeoutMs: 30 } : {}), item = h.issued(s);
+  const nativeThen = Promise.prototype.then, invoke = Reflect.apply;
+  let resolve, reject, actualSettled = false, published = false, error, ownReads = 0, speciesCalls = 0, reentrant;
+  const remote = kind.startsWith("cross") ? h.foreign() : null;
+  const original = remote ? remote.promise : new Promise((a, b) => { resolve = a; reject = b; });
+  if (remote) { resolve = remote.resolve; reject = remote.reject; }
+  invoke(nativeThen, original, [() => { actualSettled = true; }, () => { actualSettled = true; }]);
+  const decorated = kind.startsWith("own-") || ["cross-own", "abort", "timeout", "disconnect", "reconnect"].includes(operation);
+  if (decorated) Object.defineProperty(original, "then", kind === "own-fulfill" ? { value(yes) {
+    ownReads++; yes(item.witness); return Promise.resolve(item.witness);
+  } } : { get() { ownReads++; if (kind === "own-disconnect") s.owner.disconnect(); throw Error("SECRET own then"); } });
+  if (kind.startsWith("throw-")) {
+    const failure = () => { throw kind.endsWith("type") ? new TypeError("SECRET attach") : Error("SECRET attach"); };
+    if (kind.includes("constructor")) Object.defineProperty(original, "constructor", { get: failure });
+    else Object.defineProperty(original, "constructor", { value: Object.defineProperty({}, Symbol.species, { get: failure }) });
+  }
+  if (kind === "bad-constructor") Object.defineProperty(original, "constructor", { value: 42 });
+  if (kind === "bad-species") Object.defineProperty(original, "constructor", { value: { [Symbol.species]: {} } });
+  const species = { [Symbol.species]: function(executor) {
+    speciesCalls++; executor(() => {}, () => {});
+    if (kind === "species-abort") ac.abort();
+    if (kind === "species-disconnect") s.owner.disconnect();
+    if (["species-abort", "species-disconnect"].includes(kind)) reentrant = s.owner.requestSignature(item.review, s.c).catch(e => e);
+    return Promise.resolve(item.witness);
+  } };
+  let constructorReads = 0;
+  if (kind.startsWith("species-")) Object.defineProperty(original, "constructor", kind === "species-switch" ?
+    { get() { return ++constructorReads === 1 ? Promise : species; } } : { value: species });
+  let reply = original;
+  if (kind === "thenable" || kind === "hostile-thenable") reply = { then(yes) { ownReads++; if (kind === "hostile-thenable") s.owner.disconnect(); yes(item.witness); } };
+  if (kind === "function-thenable") { reply = () => {}; reply.then = yes => { ownReads++; yes(item.witness); }; }
+  if (kind === "then-getter") reply = Object.defineProperty({}, "then", { get() { ownReads++; throw Error("SECRET thenable"); } });
+  if (kind === "proxy") reply = new Proxy(original, {});
+  s.signer(() => reply);
+  const request = s.owner.requestSignature(item.review, s.c, { signal: ac.signal });
+  const outcome = request.then(value => { published = true; return value; }, e => { error = e; return null; });
+  try {
+    await flush(); eq(s.calls.length, 1, "one actual native-pending sign entry " + kind);
+    eq(s.calls[0].args[0], item.unsignedHex, "exact ARRAY4 " + kind); eq(s.calls[0].args[1], false, "partialSign false " + kind);
+    eq(s.calls[0].receiver, 2, "current API receiver " + kind);
+    if (operation === "abort") ac.abort();
+    if (operation === "disconnect") s.owner.disconnect();
+    if (operation === "reconnect") await s.owner.connect("chosen");
+    if (operation === "timeout") await pause(45);
+    await flush();
+    eq(actualSettled, false, "independent original native promise still pending " + kind);
+    eq(published, false, "FORBIDDEN_NATIVE_PENDING_PUBLICATION " + kind);
+    await h.refused(s, item.review, "BUSY"); eq(s.calls.length, 1, "FORBIDDEN_NATIVE_PENDING_SECOND_ENTRY " + kind);
+    eq(ownReads, 0, "foreign then never consulted " + kind);
+    const unsupported = kind.startsWith("throw-") || ["thenable", "hostile-thenable", "then-getter", "function-thenable", "proxy", "bad-constructor", "bad-species"].includes(kind);
+    const cancelled = ["abort", "timeout", "disconnect", "reconnect", "species-abort", "species-disconnect"].includes(operation);
+    if (unsupported) { await outcome; h.safeError(error, "UNSUPPORTED"); }
+    if (reentrant) h.safeError(await reentrant, "BUSY");
+    if (kind === "reject" || kind === "decline" || kind.endsWith("-reject")) reject({ code: kind === "decline" ? 2 : -3, info: "SECRET native" });
+    else if (kind === "malformed") { const value = {}; resolve(value); Object.defineProperty(value, "then", { get() { ownReads++; throw Error("SECRET malformed"); } }); }
+    else resolve(item.witness);
+    await flush(); const answer = await outcome;
+    eq(actualSettled, true, "independent original native settlement observed " + kind);
+    eq(ownReads, 0, "no malformed or original then assimilation " + kind);
+    if (unsupported) { await h.refused(s, item.review, "BUSY"); eq(published, false, "unsupported cannot publish " + kind); }
+    else if (cancelled) {
+      h.safeError(error, operation === "abort" || kind === "species-abort" ? "ABORTED" : operation === "timeout" ? "TIMEOUT" : "CHANGED");
+      eq(published, false, "cancelled native cannot publish " + kind);
+    } else if (["reject", "decline", "malformed"].includes(kind)) h.safeError(error, kind === "decline" ? "DECLINED" : kind === "reject" ? "REFUSED" : "WITNESS");
+    else { eq(error, undefined, "supported native fulfillment " + kind); eq(answer.witnessHex, item.witness, "original fulfillment witnesses " + kind); }
+    if (kind.startsWith("species-")) eq(speciesCalls, kind === "species-switch" ? 0 : 1, "derived capability created once " + kind);
+    if (!unsupported) {
+      if (["disconnect", "reconnect", "species-disconnect"].includes(operation)) {
+        await s.owner.connect("chosen"); s.c.revision = s.owner.getState().revision;
+      }
+      s.signer(() => item.witness); const fresh = h.issued(s);
+      eq((await s.owner.requestSignature(fresh.review, s.c)).witnessHex, item.witness, "fresh explicit retry only after actual settlement " + kind);
+      eq(s.calls.length, 2, "one later explicit sign entry " + kind);
+    }
+    return { kind, actualSettled, published, ownReads, speciesCalls, entries: s.calls.length, error: error?.code };
+  } finally { resolve(item.witness); await flush(); s.owner.dispose(); remote?.close(); }
+}
+
 function nodeTests() {
   const { test, after } = require("node:test");
   after(() => { for (const o of owners) o.dispose(); assert.equal(forbiddenCalls, 0); globalThis.fetch = originalFetch; transportRestores.forEach(f => f());
     writeEvidence("signature-identity.json", identity()); writeEvidence("signature-compiled.json", [...graph].map(([file, m]) => ({ file, compiled: m.compiled })));
     console.log("SIGNATURE_IDENTITY", JSON.stringify({ modules: identity().modules, dependencyFiles: dependencies.size, forbiddenCalls })); hook.deregister(); });
+  for (const kind of fixture.settlementScenarios) test("original native settlement " + kind, () => settlementCase(kind, {
+    ready: runtime => ready(context(), runtime), issued: s => ({ ...issued(s), witness: "a0" }),
+    eq: (a, b, label) => assert.equal(a, b, label), pause: sleep, flush,
+    refused: (s, review, code) => refused(s, review, s.c, code), safeError,
+    foreign: () => vm.runInNewContext("(() => { let resolve,reject; const promise=new Promise((a,b)=>{resolve=a;reject=b}); return {promise,resolve,reject,close(){}}; })()"),
+  }));
+  for (const value of [undefined, true, 1, 1n, Symbol("synthetic")]) test("synchronous nonstring primitive is WITNESS " + String(value), async () => {
+    const s = await ready(), result = issued(s); s.signer(() => value); await refused(s, result.review, s.c, "WITNESS");
+    s.signer(() => "a0"); assert.equal((await s.owner.requestSignature(result.review, s.c)).witnessHex, "a0");
+  });
   test("outward instrument responds for each forbidden member", async () => {
     const before = forbiddenCalls, s = await ready(), api = s.handles[0];
     const methods = [globalThis.fetch, require("node:http").get, require("node:http").request, require("node:https").get, require("node:https").request,
@@ -228,7 +319,7 @@ function nodeTests() {
     await refused(s, result.review, s.c, "CHANGED"); assert.equal(s.calls.length, 1);
   });
   for (const response of [null, {}, "0", "gg", "00".repeat(65537)]) test("bounded malformed witness " + (typeof response === "string" ? response.length : String(response)), async () => {
-    const s = await ready(), result = issued(s); s.signer(() => response); await refused(s, result.review, s.c, "WITNESS"); assert.equal(s.calls.length, 1);
+    const s = await ready(), result = issued(s); s.signer(() => response); await refused(s, result.review, s.c, response !== null && typeof response === "object" ? "UNSUPPORTED" : "WITNESS"); assert.equal(s.calls.length, 1);
   });
   test("reviewed absolute expiry suppresses a settled response", async () => {
     const s = await ready(), result = issued(s); s.signer(() => { s.c.now = Number(s.c.slotConfig.zeroTime + (result.review.invalidHereafter - s.c.slotConfig.zeroSlot) * 1000n); return "a0"; });
@@ -291,7 +382,8 @@ async function browserMain() {
   for (const [file, m] of browserModules) asset("/production/" + path.basename(file, ".ts") + ".js", `globalThis.factories[${JSON.stringify("./" + path.basename(file, ".ts"))}]=function(require,module,exports){${m.compiled}\n};`);
   const nobleDir = path.join(root, "node_modules/@noble/hashes");
   for (const file of ["blake2.js", "_blake.js", "_md.js", "_u64.js", "utils.js"]) asset("/noble/" + file, fs.readFileSync(path.join(nobleDir, file)));
-  asset("/", "<!doctype html><html><head><link rel=icon href=data:,></head><body>Private offline signature harness<script>globalThis.factories={};</script><script type=module>import * as noble from '/noble/blake2.js'; globalThis.noble=noble; for (const name of " + JSON.stringify(browserModules.map(([file]) => path.basename(file, ".ts"))) + ") await import('/production/'+name+'.js'); globalThis.moduleReady=true;</script></body></html>", "text/html");
+  asset("/settlement-cases.js", "globalThis.settlementCase=" + settlementCase.toString() + ";");
+  asset("/", "<!doctype html><html><head><link rel=icon href=data:,></head><body>Private offline signature harness<script>globalThis.factories={};</script><script type=module>import * as noble from '/noble/blake2.js'; globalThis.noble=noble; await import('/settlement-cases.js'); for (const name of " + JSON.stringify(browserModules.map(([file]) => path.basename(file, ".ts"))) + ") await import('/production/'+name+'.js'); globalThis.moduleReady=true;</script></body></html>", "text/html");
   const server = http.createServer((req, res) => {
     const file = served.get(req.url); if (!file) { res.writeHead(404); res.end(); return; }
     assert.equal(req.method, "GET"); res.writeHead(200, { "Content-Type": file.type, "Cache-Control": "no-store" }); res.end(file.content);
@@ -326,7 +418,7 @@ async function browserMain() {
     const live = { c: liveContext, ...liveBuilt, witness: witnesses(liveBuilt.review) };
     result = await page.evaluate(async serialized => {
       const data = JSON.parse(serialized, (_k, v) => v && typeof v === "object" && Object.keys(v).length === 1 && "bigint" in v ? BigInt(v.bigint) : v);
-      const { payload, live } = data;
+      const { payload, live, settlementScenarios } = data;
       const records = [], cache = {};
       const ok = (condition, label) => { if (!condition) throw Error(label); records.push(label); };
       const eq = (a, b, label) => ok(a === b, label);
@@ -404,6 +496,17 @@ async function browserMain() {
           await reject(() => s.owner.requestSignature(review, s.c), "CHANGED", "native API sign getter disconnect refuses");
           eq(entries.length, 0, "native API sign getter disconnect zero actual entries");
         }
+        const settlement = [];
+        for (const kind of settlementScenarios) settlement.push(await globalThis.settlementCase(kind, {
+          async ready(runtime) { const s = setup(payload[0], runtime); await s.owner.connect("chosen"); return s; },
+          issued(s) { return { review: guard.reviewBody(payload[0].review.bodyHex, s.c), unsignedHex: payload[0].unsignedHex, witness: payload[0].witness }; },
+          eq, pause, async flush() { for (let i = 0; i < 100; i++) await Promise.resolve(); },
+          refused: (s, review, code) => reject(() => s.owner.requestSignature(review, s.c), code, "native explicit refusal " + kind),
+          safeError(error, code) { eq(error?.code, code, "native fixed error " + kind); ok(Object.isFrozen(error) && !error.message.includes("SECRET") && !("cause" in error), "native error redaction " + kind); },
+          foreign() { const frame = document.createElement("iframe"); document.body.append(frame); let resolve, reject;
+            const promise = new frame.contentWindow.Promise((a, b) => { resolve = a; reject = b; });
+            return { promise, resolve, reject, close() { frame.remove(); } }; },
+        }));
         const item = payload[0], s = setup(item), ac = new AbortController(); await s.owner.connect("chosen"); const review = guard.reviewBody(item.review.bodyHex, s.c);
         let approve; s.signer(() => new Promise(resolve => { approve = resolve; }));
         const pending = s.owner.requestSignature(review, s.c, { signal: ac.signal }); const caught = pending.catch(e => e); while (!approve) await pause(1);
@@ -423,9 +526,9 @@ async function browserMain() {
         document.addEventListener("visibilitychange", e => { eventCounts.visibility++; if (e.isTrusted) eventCounts.trusted++; });
         globalThis.eventHarness = eventOwner; globalThis.eventReview = guard.reviewBody(live.review.bodyHex, { ...eventOwner.c, now: Date.now() }); globalThis.eventItem = live;
         for (const owner of owners) if (owner !== eventOwner.owner) owner.dispose();
-        return { records, loaded: Object.keys(cache), forbiddenCalls, eventStart: { generation: eventOwner.owner.getState().handleGeneration, time: performance.now() }, bodies: [...payload, live].map(x => ({ bodyHex: x.review.bodyHex, txId: x.review.txId })) };
+        return { records, settlement, loaded: Object.keys(cache), forbiddenCalls, eventStart: { generation: eventOwner.owner.getState().handleGeneration, time: performance.now() }, bodies: [...payload, live].map(x => ({ bodyHex: x.review.bodyHex, txId: x.review.txId })) };
       } finally { restore.forEach(fn => fn()); }
-    }, JSON.stringify({ payload, live }, (_k, v) => typeof v === "bigint" ? { bigint: v.toString() } : v));
+    }, JSON.stringify({ payload, live, settlementScenarios: fixture.settlementScenarios }, (_k, v) => typeof v === "bigint" ? { bigint: v.toString() } : v));
     // Native tab visibility/focus changes, then a real visible 30-second timer during unchanged approval.
     await page.evaluate(() => { const s = eventHarness; s.signer(() => new Promise(resolve => { globalThis.eventApprove = resolve; })); globalThis.eventPending = s.owner.requestSignature(eventReview, s.c); });
     await page.waitForFunction(() => typeof globalThis.eventApprove === "function");
