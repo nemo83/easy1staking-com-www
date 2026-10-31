@@ -1,0 +1,37 @@
+{
+  "notice": "Public valueless synthetic contexts. Expected outputs remain host-only; accepted original bodies are in stake-builder.json.",
+  "cases": [
+    {
+      "input": {
+        "name": "registered",
+        "registered": true,
+        "addressHex": "015ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da1e8a8dd8db193fb3f0c2c1df5cb94620cd86be43e4e05539fc678b1b5",
+        "stakeKeyHash": "e8a8dd8db193fb3f0c2c1df5cb94620cd86be43e4e05539fc678b1b5",
+        "inputId": "3333333333333333333333333333333333333333333333333333333333333333",
+        "funding": "100000000",
+        "constructionSlot": "201835488"
+      },
+      "expected": {
+        "txId": "389aa08d5fefbe84c939b7243b6477a0c716fc66609dc66cbde49c64f2ed0d38",
+        "fee": "172937",
+        "deposit": "0"
+      }
+    },
+    {
+      "input": {
+        "name": "unregistered",
+        "registered": false,
+        "addressHex": "015ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da1e8a8dd8db193fb3f0c2c1df5cb94620cd86be43e4e05539fc678b1b5",
+        "stakeKeyHash": "e8a8dd8db193fb3f0c2c1df5cb94620cd86be43e4e05539fc678b1b5",
+        "inputId": "3333333333333333333333333333333333333333333333333333333333333333",
+        "funding": "100000000",
+        "constructionSlot": "201835488"
+      },
+      "expected": {
+        "txId": "e28a9dadcdfff8f04040672e228ebe623a6b4e6466bdf0e6c08c41ded8486fdb",
+        "fee": "173157",
+        "deposit": "2000000"
+      }
+    }
+  ]
+}
