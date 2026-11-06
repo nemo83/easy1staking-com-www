@@ -211,7 +211,7 @@ async function main(){
     }
     record.passed=true;console.log("PASS actual /pool "+name);
    }finally{
-    if(page&&!page.isClosed()){try{record.terminal=await page.evaluate(()=>({text:document.querySelector('#delegate')?.textContent||document.body.textContent,signCalls:window.synthetic?.signCalls,tripwires:window.synthetic?.tripwires}));}catch{}}
+    if(page&&!page.isClosed()){try{record.terminal=await page.evaluate(()=>({text:document.querySelector('#delegate')?.textContent||document.body.textContent,signCalls:window.synthetic?.signCalls,tripwires:window.synthetic?.tripwires,replyAt:window.synthetic?.replyAt??null,attemptAt:window.synthetic?.attemptAt??null,enableCalls:window.synthetic?.enableCalls??null,visibility:document?.visibilityState??null,visibilityTransition:window.synthetic?.visibilityTransition??null}));}catch{}}
     report.chromium.pids=[...new Set([...report.chromium.pids,...descendants(process.pid).filter(pid=>pid!==server.pid&&!descendants(server.pid).includes(pid))])];
     await context.close();
     assert.deepEqual(record.errors,[],"NO_PAGE_ERRORS "+name);
