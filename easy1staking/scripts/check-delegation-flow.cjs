@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 "use strict";
-// Explicit CLI: node scripts/check-delegation-flow.cjs --evidence-dir /absolute/owned/temp [--preload /absolute/ssr-tripwire.cjs] [--cases first|all] [--case name] [--prepare-only yes]
+// Explicit CLI: node scripts/check-delegation-flow.cjs --evidence-dir /absolute/owned/temp --playwright /absolute/playwright --chromium /absolute/chrome [--preload /absolute/ssr-tripwire.cjs] [--cases first|all] [--case name] [--prepare-only yes]
 // Requires a caller-built actual application; starts Next directly, never installs or builds.
 const fs=require("node:fs"),path=require("node:path"),assert=require("node:assert/strict"),net=require("node:net");
 const {spawn,spawnSync}=require("node:child_process"),{once}=require("node:events"),crypto=require("node:crypto");
@@ -12,6 +12,11 @@ const output=options["evidence-dir"],app=path.resolve(__dirname,".."),root=path.
 assert(output.startsWith(process.env.TMPDIR+path.sep),"Evidence must be in exclusively owned scratch");fs.mkdirSync(output,{recursive:true,mode:0o700});
 if(!options.preload){options.preload=path.join(output,"ssr-preload.cjs");fs.writeFileSync(options.preload,`const fs=require('node:fs');global.fetch=async(input,init)=>{const url=String(typeof input==='string'?input:input.url||input);fs.appendFileSync(${JSON.stringify(path.join(output,"server-http.jsonl"))},JSON.stringify({url,method:init?.method||'GET',intercepted:true})+'\\n');if(url.startsWith('https://cardano-mainnet.blockfrost.io/api/v0/')&&(!init?.method||init.method==='GET'))return new Response('{}',{status:503,headers:{'content-type':'application/json'}});throw Error('FORBIDDEN_SERVER_HTTP');};for(const name of ['node:https','node:http','node:tls','node:net','node:dgram']){const m=require(name);for(const key of ['connect','createConnection','request','get','createSocket'])if(typeof m[key]==='function')m[key]=()=>{throw Error('FORBIDDEN_SERVER_SOCKET');};}`);}
 if(options["prepare-only"]==="yes"){console.log("PREPARED_SSR_TRIPWIRE "+options.preload);process.exit(0);}
+for(const name of ["playwright","chromium"])assert(typeof options[name]==="string"&&path.isAbsolute(options[name]),"Expected absolute --"+name);
+assert(fs.statSync(options.playwright).isDirectory(),"Playwright must be an existing package directory");
+const playwrightMetadata=path.join(options.playwright,"package.json");
+assert.equal(JSON.parse(fs.readFileSync(playwrightMetadata,"utf8")).name,"playwright","Expected the Playwright package");
+assert(fs.statSync(options.chromium).isFile(),"Chromium must be an existing executable file");fs.accessSync(options.chromium,fs.constants.X_OK);
 const sdk=loadDelegationSource(),raw=sdk.load("source-cbor"),address=raw.addressBech32(chain.addressHex),account=chain.accountBech32;
 const baseSlot=BigInt(chain.slot),baseTime=1596059091000+Number(baseSlot-4492800n)*1000;
 const id=n=>n.toString(16).padStart(64,"0"),clone=structuredClone;
@@ -44,7 +49,8 @@ async function main(){
  try{
   const log=fs.openSync(path.join(output,"server.log"),"w");server=spawn(process.execPath,[path.join(app,"node_modules/next/dist/bin/next"),"start","--hostname","127.0.0.1","--port",String(port)],{cwd:app,env,stdio:["ignore",log,log]});fs.closeSync(log);report.serverPid=server.pid;
   let ready=false;for(let i=0;i<120;i++){assert.equal(server.exitCode,null,"SERVER_EXIT");try{const r=await fetch(origin+"/pool");if(r.status===200){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}assert(ready,"SERVER_READY");
-  const {chromium}=require("/tmp/easy1-homepage-browser-tools/node_modules/playwright");const executable="/home/giovanni/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
+  const {chromium}=require(options.playwright);const executable=options.chromium;
+  report.tools={playwright:options.playwright,playwrightPackageSha256:sha(fs.readFileSync(playwrightMetadata)),chromium:executable};
   report.chromium={path:executable,sha256:sha(fs.readFileSync(executable))};browser=await chromium.launch({executablePath:executable,headless:true,env:{PATH:env.PATH,HOME:output,TMPDIR:process.env.TMPDIR},args:["--no-sandbox","--disable-background-networking","--disable-component-update","--no-first-run"]});report.chromium.version=browser.version();
   report.chromium.pids=descendants(process.pid).filter(pid=>pid!==server.pid&&!descendants(server.pid).includes(pid));
   for(const name of options.case?[options.case]:options.cases==="all"?fixture.allCases:fixture.firstCases){

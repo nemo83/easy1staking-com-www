@@ -73,8 +73,10 @@ or asset actions are prohibited.
 Use Node **24.22.1**, the unchanged committed lockfile, and the repository's
 safe-source checks before every npm command. Install with lifecycle scripts
 disabled. Supply a fresh owned absolute `TMPDIR`; all generated browser profiles,
-server logs and test artifacts belong there. The external pinned Playwright and
-Chromium tools must already exist; the runner never installs tools or dependencies.
+server logs and test artifacts belong there. Use a short temporary root so Chromium's
+Unix socket path fits the operating-system limit. The external pinned Playwright and
+Chromium tools must already exist. Pass their absolute package-directory and executable
+paths explicitly; the runner validates them and never searches for or installs tools.
 
 The developer script has two explicit modes:
 
@@ -93,7 +95,9 @@ NODE_OPTIONS="--require=$TMPDIR/build-input/ssr-preload.cjs" \
 NEXT_PUBLIC_BLOCKFROST_PROJECT_ID=SYNTHETIC_PUBLIC_INVALID_IDENTIFIER \
 NEXT_TELEMETRY_DISABLED=1 npm run build
 node scripts/check-delegation-flow.cjs \
-  --evidence-dir "$TMPDIR/browser" --cases all
+  --evidence-dir "$TMPDIR/browser" \
+  --playwright /absolute/path/to/node_modules/playwright \
+  --chromium /absolute/path/to/chrome --cases all
 ```
 
 The second mode explicitly starts the existing production Next server on a fresh
