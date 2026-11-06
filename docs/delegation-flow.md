@@ -154,4 +154,5 @@ lease/intent, duplicate dispatch, and Unknown ID display retention. Controls run
 only against a committed candidate, restore exact source/index, rebuild any
 served mutant, and rerun the full flow after each restoration. A failure must
 show its named forbidden effect; compiler failures and earlier vetoes are
-reported separately.
+reported separately. A case's first failure is its verdict; later cleanup
+failures are recorded separately and never replace it.

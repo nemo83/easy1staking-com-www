@@ -39,6 +39,7 @@ function pythonHash(hex,size=32){const r=spawnSync("python3",["-c",`import sys,h
 const signers=[keys.paymentSeed,keys.stakeSeed].map(seed=>{const privateKey=crypto.createPrivateKey({key:Buffer.from("302e020100300506032b657004220420"+seed,"hex"),format:"der",type:"pkcs8"});const publicHex=crypto.createPublicKey(privateKey).export({format:"der",type:"spki"}).subarray(-32).toString("hex");return{privateKey,publicHex,hash:pythonHash(publicHex,28)};}).sort((a,b)=>a.hash.localeCompare(b.hash));
 
 async function freePort(port=0){const s=net.createServer();s.listen(port,"127.0.0.1");await once(s,"listening");const p=s.address().port;await new Promise(r=>s.close(r));return p;}
+function failureText(error){return error instanceof assert.AssertionError&&!error.generatedMessage?error.message:String(error?.name||"Error")+": "+String(error?.message??error).split("\n")[0];}
 function descendants(pid){try{return fs.readFileSync(`/proc/${pid}/task/${pid}/children`,"utf8").trim().split(/\s+/).filter(Boolean).map(Number).flatMap(p=>[p,...descendants(p)]);}catch{return[];}}
 const report={runnerSha256:sha(fs.readFileSync(__filename)),fixtureSha256:sha(fs.readFileSync(path.join(__dirname,'fixtures/delegation-flow.json'))),node:process.version,source:{},cases:[],chunks:[],unexpected:[],errors:[],cleanup:{},buildId:fs.readFileSync(path.join(app,".next/BUILD_ID"),"utf8").trim()};
 for(const name of ["controller","wallet-session","coordination","builder","guard","crypto","chain-context","wallet-codec","source-cbor","blockfrost-reader","provider-json","cbor","types"])report.source[name]=sha(fs.readFileSync(path.join(app,"src/lib/site/delegation",name+".ts")));
@@ -62,7 +63,7 @@ async function main(){
    }
    if(name==="contradictory-account")s.routes.get("/accounts/"+account).registered=false;
    const pageOrigin=name==="approved-origin"?"https://easy1staking.com":name==="preview-origin"?"https://preview.easy1staking.com":origin;
-   const context=await browser.newContext({viewport:{width:360,height:800},serviceWorkers:"block"});let page;try{
+   const context=await browser.newContext({viewport:{width:360,height:800},serviceWorkers:"block"});let page,primary;try{
     await context.exposeFunction("syntheticSign",unsigned=>{
      const tips=record.http.filter(x=>x.path==="/blocks/latest");assert(tips.length>=6,"SOURCE_ASSESSMENTS");assert.equal(tips[2].slot,Number(baseSlot),"ORIGINAL_CONSTRUCTION_SLOT");
      const expectedBody=golden.bodyHex,expectedId=golden.txId;assert.equal(pythonHash(expectedBody),expectedId,"LITERAL_GOLDEN_ID");
@@ -200,12 +201,13 @@ async function main(){
      await page.getByText("Submission outcome is unknown.",{exact:false}).waitFor({timeout:65000});assert.equal(record.posts.length,1,"ONE_POSSIBLE_TRANSMISSION");const text=await page.locator('#delegate').innerText();assert(text.includes(record.signatures[0].txId),"UNKNOWN_RETAINS_DERIVED_ID");assert(!text.includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR");await page.waitForTimeout(name==="submit-timeout"?1000:200);assert.equal(record.posts.length,1,"NO_AUTOMATIC_RETRY");record.unknownRetained=true;
     }else{
      await page.getByText("Submitted to Blockfrost.",{exact:false}).waitFor({timeout:name==="long-consent"?45000:name==="post-reply-timely-hidden"?35000:15000});
+     await page.waitForTimeout(1500); // Fixed settle window: a late duplicate dispatch is intercepted asynchronously.
      if(name==="long-consent"){record.realConsentElapsedMs=await page.evaluate(()=>window.synthetic.replyAt-window.synthetic.signAt);assert(record.realConsentElapsedMs>=31000,'CONSENT_MAY_EXCEED_30_SECONDS');}assert.equal(record.posts.length,1,"ONE_POST");assert.equal(await page.evaluate(()=>window.synthetic.signCalls),1);const retained=await page.evaluate(()=>JSON.parse(localStorage.getItem("easy1staking:delegation-recovery")));assert.equal(retained.txId,record.signatures[0].txId);assert.equal(retained.stage,"submitted");record.recovery=retained;
      if(name==="origin-recovery"){await page.reload();await page.getByText('A prior operation is unresolved',{exact:false}).waitFor();assert.equal(await page.getByRole('button',{name:'Connect selected wallet'}).count(),0);assert.equal(record.posts.length,1);}
      if(name==="isolated-context"){const isolated=await browser.newContext();const p=await isolated.newPage();await p.route('**/*',route=>{const u=new URL(route.request().url());return u.origin===origin?route.continue():route.abort();});await p.goto(origin+'/pool');assert.equal(await p.evaluate(()=>localStorage.getItem('easy1staking:delegation-recovery')),null,'ORIGIN_CONTEXTS_DO_NOT_SHARE');await isolated.close();}
      const signed=record.signatures[0];assert.equal(pythonHash(signed.bodyHex),signed.txId,"INDEPENDENT_ID");assert.deepEqual(Object.keys(retained),["schemaVersion","networkId","poolId","txId","invalidHereafterSlot","inputRefs","createdAt","stage"]);
     }
-    record.actual=await page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,replyAt:window.synthetic.replyAt,attemptAt:window.synthetic.attemptAt??null,visibilityTransition:window.synthetic.visibilityTransition??null,visibility:document.visibilityState,faultAt:window.synthetic.faultAt??null,faultKind:window.synthetic.faultKind??null,retainedAtAttempt:window.synthetic.retainedAtAttempt??null,tripwires:window.synthetic.tripwires,phaseText:document.querySelector('#delegate [role="status"]').textContent}));assert.deepEqual(record.actual.tripwires,[]);assert.deepEqual(record.errors,[]);assert(!(await page.locator('body').innerText()).includes('SYNTHETIC_PRIVATE_CANARY'),"ERROR_REDACTION");if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(name)){
+    record.actual=await page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,replyAt:window.synthetic.replyAt,attemptAt:window.synthetic.attemptAt??null,visibilityTransition:window.synthetic.visibilityTransition??null,visibility:document.visibilityState,faultAt:window.synthetic.faultAt??null,faultKind:window.synthetic.faultKind??null,retainedAtAttempt:window.synthetic.retainedAtAttempt??null,tripwires:window.synthetic.tripwires,phaseText:document.querySelector('#delegate [role="status"]').textContent}));assert.deepEqual(record.actual.tripwires,[]);assert.deepEqual(record.errors,[],"NO_PAGE_ERRORS_BEFORE_CLOSE");assert(!(await page.locator('body').innerText()).includes('SYNTHETIC_PRIVATE_CANARY'),"ERROR_REDACTION");if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(name)){
      assert.equal(record.actual.visibility,"hidden","CONTROLLED_HIDDEN_DOCUMENT");assert.equal(record.actual.visibilityTransition?.after,"hidden");assert(record.actual.visibilityTransition.at>=record.actual.replyAt,"HIDDEN_AFTER_AUTHENTIC_REPLY");assert.equal(record.actual.signCalls,1);assert.equal(record.actual.enableCalls,5,"NO_VISIBLE_POLL_REACQUISITION");
      record.constructionSlot=Number(baseSlot);record.currentSlots=record.http.filter(x=>x.path==="/blocks/latest").map(x=>x.slot);
      if(name==="post-reply-timely-hidden"){record.realPostReplyElapsedMs=record.actual.attemptAt-record.actual.replyAt;assert(record.realPostReplyElapsedMs>=fixture.postReplyReadDelayMs*3&&record.realPostReplyElapsedMs<30000,"TIMELY_HIDDEN_EXACT_POST_WITHIN_TOTAL_BUDGET");}
@@ -214,12 +216,18 @@ async function main(){
      assert(Number.isFinite(record.actual.faultAt)&&record.actual.faultAt>=0&&record.actual.faultAt>=record.actual.replyAt,"INDEPENDENT_STORAGE_FAULT_OCCURRED");assert.equal(record.actual.faultKind,name,"EXACT_STORAGE_FAULT_KIND");assert.equal(record.actual.attemptAt,null,"GUARDED_STORAGE_FAULT_NO_ATTEMPT");assert.equal(record.actual.retainedAtAttempt,"not-attempted","GUARDED_STORAGE_FAULT_PRECEDES_IO");
     }
     record.passed=true;console.log("PASS actual /pool "+name);
-   }finally{
+   }catch(error){primary=error;record.failure=failureText(error);throw error;}finally{
     if(page&&!page.isClosed()){try{record.terminal=await page.evaluate(()=>({text:document.querySelector('#delegate')?.textContent||document.body.textContent,signCalls:window.synthetic?.signCalls,tripwires:window.synthetic?.tripwires,replyAt:window.synthetic?.replyAt??null,attemptAt:window.synthetic?.attemptAt??null,enableCalls:window.synthetic?.enableCalls??null,visibility:document?.visibilityState??null,visibilityTransition:window.synthetic?.visibilityTransition??null,faultAt:window.synthetic?.faultAt??null,faultKind:window.synthetic?.faultKind??null,retainedAtAttempt:window.synthetic?.retainedAtAttempt??null}));}catch{}}
     report.chromium.pids=[...new Set([...report.chromium.pids,...descendants(process.pid).filter(pid=>pid!==server.pid&&!descendants(server.pid).includes(pid))])];
+    const later=[],check=fn=>{try{fn();}catch(error){later.push(error);}};
+    check(()=>assert(record.posts.length<=1,"ONE_POST_AT_CLOSE"));
     await context.close();
-    assert.deepEqual(record.errors,[],"NO_PAGE_ERRORS "+name);
-    assert(!(record.terminal?.text||'').includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR "+name);
+    check(()=>assert.deepEqual(record.errors,[],"NO_PAGE_ERRORS "+name));
+    check(()=>assert(!(record.terminal?.text||'').includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR "+name));
+    // A case's first failure is its verdict; later cleanup failures never replace it.
+    if(!primary&&later.length){record.passed=false;record.failure=failureText(later[0]);}
+    if(later.length>(primary?0:1))record.secondaryFailures=later.slice(primary?0:1).map(failureText);
+    if(!primary&&later.length)throw later[0];
    }
   }
   await Promise.all(pending);assert.deepEqual(report.unexpected,[]);report.passed=true;
