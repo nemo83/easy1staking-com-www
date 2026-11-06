@@ -103,7 +103,7 @@ node scripts/check-delegation-flow.cjs \
 The second mode explicitly starts the existing production Next server on a fresh
 loopback port, exercises its real `/pool` route, then closes browser/server and
 proves port reuse. `--cases first` runs the registered/unregistered/cancellation/
-real deadline discriminator; `--case NAME` runs one named case from the JSON
+visible deadline regression plus the controlled hidden late/timely discriminator; `--case NAME` runs one named case from the JSON
 fixture. `--preload /absolute/path` can select an independently reviewed external
 server tripwire. No fixture application route or production policy override is
 created. Rebuild without the synthetic identifier before any ordinary artifact
@@ -120,10 +120,22 @@ tip stays that fixture's original tip; post-reply current tips may advance while
 the prior context preserves construction/TTL. Browser wall time advances with
 real elapsed time under a fixed archived offset.
 
-The deadline discriminator combines 24 seconds of sequential wallet reacquisition
-with one bounded eight-second source delay. Fresh wallet/source observations and
-advancing current tips isolate the total post-reply budget. A long wallet-consent
-neighbor remains valid. Output records source/lock/loaded SDK/crypto hashes,
+The two hidden-document cases combine 24 seconds of sequential wallet
+reacquisition (eight seconds each for enable, first network and first change read)
+with either one bounded eight-second source delay or prompt source work. The late
+case must stop with zero POSTs; the timely neighbor must send one exact original
+transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
+after the authentic synthetic wallet reply, recording that transition, reply and
+attempt times, enable/sign counts, construction/current tips and real elapsed time.
+The unchanged visible deadline regression remains among the original 54 cases;
+`--cases all` now executes 56 cases and `--cases first` executes six.
+
+Only browser test input supplies the visibility simulation. Production lifecycle,
+source, timers and guards are unchanged, and isolated context cleanup removes it.
+This isolates the deadline test from the legitimate visible-only 30-second wallet
+refresh without claiming physical background scheduling or mobile support. Fresh
+wallet/source observations and advancing current tips preserve the original body
+and TTL. A long wallet-consent neighbor remains valid. Output records source/lock/loaded SDK/crypto hashes,
 served chunk/build identities, every external URL/method, synthetic signed-body
 identity, actual posts, recovery fields and cleanup. Logs contain only synthetic
 public test data. Scripts/fixtures and private evidence remain outside exported

@@ -5,7 +5,9 @@
     "registered",
     "unregistered",
     "cancel-approval",
-    "post-reply-deadline"
+    "post-reply-deadline",
+    "post-reply-deadline-hidden",
+    "post-reply-timely-hidden"
   ],
   "postReplyReadDelayMs": 8000,
   "controls": [
@@ -21,6 +23,8 @@
     "unregistered",
     "cancel-approval",
     "post-reply-deadline",
+    "post-reply-deadline-hidden",
+    "post-reply-timely-hidden",
     "no-wallet",
     "wrong-network",
     "unsupported-account",

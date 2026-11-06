@@ -91,14 +91,15 @@ async function main(){
       return value;
      };
      const deny=name=>(...args)=>{state.tripwires.push(name);throw Error("FORBIDDEN_"+name);};
-     const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const u=new URL(typeof input==="string"?input:input.url,location.href);if(u.origin===location.origin)return nativeFetch(input,init);if(u.origin!=="https://cardano-mainnet.blockfrost.io")return deny("unexpected-fetch")();if(init?.credentials!=="omit"||init?.redirect!=="error"||init?.cache!=="no-store")return deny("transport-options")();return nativeFetch(input,init);};
+     const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const u=new URL(typeof input==="string"?input:input.url,location.href);if(u.origin===location.origin)return nativeFetch(input,init);if(u.origin!=="https://cardano-mainnet.blockfrost.io")return deny("unexpected-fetch")();if(init?.method==="POST")state.attemptAt=performance.now();if(init?.credentials!=="omit"||init?.redirect!=="error"||init?.cache!=="no-store")return deny("transport-options")();return nativeFetch(input,init);};
      window.XMLHttpRequest=function(){return deny("xhr")();};window.WebSocket=function(){return deny("socket")();};window.EventSource=function(){return deny("events")();};navigator.sendBeacon=deny("beacon");window.gtag=deny("analytics");
      navigator.storage.persist=deny("persist-prompt");
      // Responding tripwire controls are exercised without outward I/O.
      try{navigator.sendBeacon("https://invalid.example");}catch{}state.control=state.tripwires.pop();
-     async function read(value){if(state.replyAt!==null&&mode==="post-reply-deadline"&&state.postReadIndex++<3)await new Promise(r=>setTimeout(r,delay));return value;}
+     async function read(value){if(state.replyAt!==null&&["post-reply-deadline","post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)&&state.postReadIndex++<3)await new Promise(r=>setTimeout(r,delay));return value;}
      const api={getNetworkId:()=>read(state.network),getChangeAddress:()=>read(state.address),getRewardAddresses:()=>read([]),getUtxos:()=>read([state.utxo]),async signTx(unsigned,partial){state.signCalls++;state.signAt=performance.now();if(partial!==false)throw Error("PARTIAL_FLAG");if(["cancel-approval","account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","same-account-focus"].includes(mode))await new Promise(r=>state.release=r);
       if(mode==="long-consent")await new Promise(r=>setTimeout(r,31000));const witness=await window.syntheticSign(unsigned);state.replyAt=performance.now();
+      if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)){const before=document.visibilityState;Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});state.visibilityTransition={before,after:document.visibilityState,at:performance.now()};document.dispatchEvent(new Event("visibilitychange"));}
       if(mode.startsWith("presubmit-"))state.clockDeltaMs+=baseTime+(600-Number(mode.slice(10)))*1000-Date.now();
       return witness;},signData:deny("signData"),submitTx:deny("wallet-submit")};
      window.cardano=mode==="no-wallet"?{}:{synthetic:{enable:async()=>{state.enableCalls++;return read(api);}}};
@@ -129,7 +130,7 @@ async function main(){
       record.afterReplyVeto=true;
       if(name==="dispose-postreply")await page.goto(origin+'/');else await page.getByRole('button',{name:name==="cancel-postreply"?'Cancel here':'Disconnect wallet'}).click();
      }
-     if(name==="post-reply-deadline"&&p==="/pools/"+chain.poolHash+"/metadata"&&await page.evaluate(()=>window.synthetic.replyAt!==null))await new Promise(r=>setTimeout(r,8000));
+     if(["post-reply-deadline","post-reply-deadline-hidden"].includes(name)&&p==="/pools/"+chain.poolHash+"/metadata"&&await page.evaluate(()=>window.synthetic.replyAt!==null))await new Promise(r=>setTimeout(r,8000));
      if(p==="/blocks/latest"){
       const observed=await page.evaluate(()=>({now:Date.now(),afterReply:window.synthetic.replyAt!==null,jump:window.synthetic.clockDeltaMs}));
       const slot=observed.afterReply||observed.jump>0?baseSlot+BigInt(Math.floor((observed.now-baseTime)/1000)):baseSlot;
@@ -190,20 +191,25 @@ async function main(){
     }
     if(name==="cancel-approval"){
      await page.getByRole("button",{name:"Cancel here"}).click();await page.evaluate(()=>window.synthetic.release());await page.waitForFunction(()=>window.synthetic.replyAt!==null);await page.waitForTimeout(300);assert.equal(record.posts.length,0,"CANCEL_APPROVAL_ZERO_POST");
-    }else if(name==="post-reply-deadline"){
+    }else if(["post-reply-deadline","post-reply-deadline-hidden"].includes(name)){
      await page.waitForFunction(()=>window.synthetic.replyAt!==null);const reply=await page.evaluate(()=>window.synthetic.replyAt);await page.waitForTimeout(32500);record.realPostReplyElapsedMs=await page.evaluate(reply=>performance.now()-reply,reply);assert(record.realPostReplyElapsedMs>30000,"REAL_TOTAL_REPLY_WINDOW");assert.equal(record.posts.length,0,"POST_REPLY_DEADLINE_ZERO_POST");
     }else if(["account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","partial-witness","foreign-witness","invalid-signature","storage-prepare-fail","storage-readback-fail","storage-final-loss","storage-final-replaced","presubmit-119"].includes(name)){
      await page.waitForFunction(()=>/Delegation stopped before sending|Submitted to Blockfrost|Submission outcome is unknown/.test(document.querySelector('#delegate [role="status"]')?.textContent||''),{},{timeout:15000});assert.equal(record.posts.length,0,"FORBIDDEN_POST_SIGN_VETO "+name);
     }else if(name.startsWith("submit-")||name==="cancel-transmission"||name==="storage-after-transmission"){
      await page.getByText("Submission outcome is unknown.",{exact:false}).waitFor({timeout:65000});assert.equal(record.posts.length,1,"ONE_POSSIBLE_TRANSMISSION");const text=await page.locator('#delegate').innerText();assert(text.includes(record.signatures[0].txId),"UNKNOWN_RETAINS_DERIVED_ID");assert(!text.includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR");await page.waitForTimeout(name==="submit-timeout"?1000:200);assert.equal(record.posts.length,1,"NO_AUTOMATIC_RETRY");record.unknownRetained=true;
     }else{
-     await page.getByText("Submitted to Blockfrost.",{exact:false}).waitFor({timeout:name==="long-consent"?45000:15000});
+     await page.getByText("Submitted to Blockfrost.",{exact:false}).waitFor({timeout:name==="long-consent"?45000:name==="post-reply-timely-hidden"?35000:15000});
      if(name==="long-consent"){record.realConsentElapsedMs=await page.evaluate(()=>window.synthetic.replyAt-window.synthetic.signAt);assert(record.realConsentElapsedMs>=31000,'CONSENT_MAY_EXCEED_30_SECONDS');}assert.equal(record.posts.length,1,"ONE_POST");assert.equal(await page.evaluate(()=>window.synthetic.signCalls),1);const retained=await page.evaluate(()=>JSON.parse(localStorage.getItem("easy1staking:delegation-recovery")));assert.equal(retained.txId,record.signatures[0].txId);assert.equal(retained.stage,"submitted");record.recovery=retained;
      if(name==="origin-recovery"){await page.reload();await page.getByText('A prior operation is unresolved',{exact:false}).waitFor();assert.equal(await page.getByRole('button',{name:'Connect selected wallet'}).count(),0);assert.equal(record.posts.length,1);}
      if(name==="isolated-context"){const isolated=await browser.newContext();const p=await isolated.newPage();await p.route('**/*',route=>{const u=new URL(route.request().url());return u.origin===origin?route.continue():route.abort();});await p.goto(origin+'/pool');assert.equal(await p.evaluate(()=>localStorage.getItem('easy1staking:delegation-recovery')),null,'ORIGIN_CONTEXTS_DO_NOT_SHARE');await isolated.close();}
      const signed=record.signatures[0];assert.equal(pythonHash(signed.bodyHex),signed.txId,"INDEPENDENT_ID");assert.deepEqual(Object.keys(retained),["schemaVersion","networkId","poolId","txId","invalidHereafterSlot","inputRefs","createdAt","stage"]);
     }
-    record.actual=await page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,replyAt:window.synthetic.replyAt,tripwires:window.synthetic.tripwires,phaseText:document.querySelector('#delegate [role="status"]').textContent}));assert.deepEqual(record.actual.tripwires,[]);assert.deepEqual(record.errors,[]);assert(!(await page.locator('body').innerText()).includes('SYNTHETIC_PRIVATE_CANARY'),"ERROR_REDACTION");record.passed=true;console.log("PASS actual /pool "+name);
+    record.actual=await page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,replyAt:window.synthetic.replyAt,attemptAt:window.synthetic.attemptAt??null,visibilityTransition:window.synthetic.visibilityTransition??null,visibility:document.visibilityState,tripwires:window.synthetic.tripwires,phaseText:document.querySelector('#delegate [role="status"]').textContent}));assert.deepEqual(record.actual.tripwires,[]);assert.deepEqual(record.errors,[]);assert(!(await page.locator('body').innerText()).includes('SYNTHETIC_PRIVATE_CANARY'),"ERROR_REDACTION");if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(name)){
+     assert.equal(record.actual.visibility,"hidden","CONTROLLED_HIDDEN_DOCUMENT");assert.equal(record.actual.visibilityTransition?.after,"hidden");assert(record.actual.visibilityTransition.at>=record.actual.replyAt,"HIDDEN_AFTER_AUTHENTIC_REPLY");assert.equal(record.actual.signCalls,1);assert.equal(record.actual.enableCalls,5,"NO_VISIBLE_POLL_REACQUISITION");
+     record.constructionSlot=Number(baseSlot);record.currentSlots=record.http.filter(x=>x.path==="/blocks/latest").map(x=>x.slot);
+     if(name==="post-reply-timely-hidden"){record.realPostReplyElapsedMs=record.actual.attemptAt-record.actual.replyAt;assert(record.realPostReplyElapsedMs>=fixture.postReplyReadDelayMs*3&&record.realPostReplyElapsedMs<30000,"TIMELY_HIDDEN_EXACT_POST_WITHIN_TOTAL_BUDGET");}
+    }
+    record.passed=true;console.log("PASS actual /pool "+name);
    }finally{
     if(page&&!page.isClosed()){try{record.terminal=await page.evaluate(()=>({text:document.querySelector('#delegate')?.textContent||document.body.textContent,signCalls:window.synthetic?.signCalls,tripwires:window.synthetic?.tripwires}));}catch{}}
     report.chromium.pids=[...new Set([...report.chromium.pids,...descendants(process.pid).filter(pid=>pid!==server.pid&&!descendants(server.pid).includes(pid))])];
