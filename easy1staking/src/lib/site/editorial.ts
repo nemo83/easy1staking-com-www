@@ -84,7 +84,7 @@ export const editorialSocials = {
   github: "https://github.com/easy1staking-com",
 } as const;
 export const easy1PoolId = "pool1yr0cv3dtmhcfgqa6yetvmf769ngk89e6tepecmjrmjl2jzcw2lm";
-export const poolPreviewNotice = "Read-only pool overview. In-site delegation is not included in this preview.";
+export const poolPreviewNotice = "Pool facts and a staged stake-only wallet flow. Public activation awaits recovery and release checks.";
 
 
 export type ProjectOverview = {

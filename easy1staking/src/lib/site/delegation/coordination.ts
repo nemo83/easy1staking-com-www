@@ -94,6 +94,8 @@ export interface DelegationCoordinator {
   withRecoveryOperation<T>(txId: string, callback: (lease: DelegationLease) => Promise<T>, options?: { signal?: AbortSignal }): Promise<T>;
   prepare(lease: DelegationLease, details: IntentDetails): DelegationIntent;
   recoverUnattempted(lease: DelegationLease): DelegationIntent;
+  assertActive(lease: DelegationLease): void;
+  assertAttempt(lease: DelegationLease, intent: DelegationIntent): void;
   beginAttempt(lease: DelegationLease, intent: DelegationIntent): RecoveryRecord;
   markOutcome(lease: DelegationLease, intent: DelegationIntent, stage: "submitted" | "unknown"): RecoveryRecord;
   cancelUnattempted(lease: DelegationLease, intent: DelegationIntent): void;
@@ -262,6 +264,11 @@ export function createDelegationCoordinator(): DelegationCoordinator {
       const record = read();
       insist(candidate && !candidate.attempted && record && JSON.stringify(record) === JSON.stringify(candidate.record), "INTENT");
       return issue(lease, candidate);
+    },
+    assertActive(lease: DelegationLease): void { active(lease); read(); },
+    assertAttempt(lease: DelegationLease, intent: DelegationIntent): void {
+      const current = matching(lease, intent);
+      insist(current.attempted && current.record.stage === "submitting", "INTENT");
     },
     beginAttempt(lease: DelegationLease, intent: DelegationIntent): RecoveryRecord {
       insist(active(lease).mode === "new", "LEASE");

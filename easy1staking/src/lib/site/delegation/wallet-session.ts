@@ -85,9 +85,12 @@ export function createWalletSession(resolveProvider: (walletId: string) => unkno
   let completion: Promise<void> | null = null, complete: (() => void) | null = null, cancelStep: (() => void) | null = null;
   let detach: (() => void) | null = null;
   let signature: SignatureJob | null = null;
+  const listeners = new Set<() => void>();
+  const receipts = new WeakMap<WalletSignature, { receivedAt: number; deadlineAt: number; fingerprint: string }>();
   function update(patch: Partial<WalletSessionState>): void {
     state = Object.freeze({ ...state, ...patch });
     if (signature && signature.revision !== state.revision) signature.stop("CHANGED");
+    for (const listener of listeners) { try { listener(); } catch { /* Observers grant no authority. */ } }
   }
   function invalidate(): void { generation++; handle = null; cancelStep?.(); }
   function timestamp(): number {
@@ -182,7 +185,7 @@ export function createWalletSession(resolveProvider: (walletId: string) => unkno
       } };
     signature = job;
     let timer: ReturnType<typeof globalThis.setTimeout> | undefined, signal: AbortSignal | undefined;
-    let listening = false, expiresAt = 0, responseDeadline = 0;
+    let listening = false, expiresAt = 0, responseDeadline = 0, receivedAt = 0;
     const abort = () => job.stop("ABORTED");
     function release(): void { if (job.finished && (!job.started || job.rpcSettled) && signature === job) signature = null; }
     function current(): void {
@@ -255,6 +258,15 @@ export function createWalletSession(resolveProvider: (walletId: string) => unkno
       const settled = new NativePromise<unknown>((resolve, reject) => {
         function fulfilled(value: unknown): void {
           job.rpcSettled = true; release();
+          // Timestamp the authentic original native fulfillment before reacquiring the wallet.
+          try {
+            receivedAt = timestamp();
+            responseDeadline = Math.min(responseDeadline, receivedAt + 30000);
+            if (!job.finished && !job.failure) {
+              if (timer !== undefined) cancel(timer);
+              timer = schedule(() => job.stop("TIMEOUT"), Math.max(0, responseDeadline - receivedAt));
+            }
+          } catch { reject(new WalletSignatureError("UNSUPPORTED")); return; }
           // Never assimilate a wallet-controlled object into the application-owned bridge.
           if (typeof value === "string") resolve(value);
           else reject(new WalletSignatureError("WITNESS"));
@@ -274,7 +286,9 @@ export function createWalletSession(resolveProvider: (walletId: string) => unkno
       binding(); clock();
       // Only now may untrusted witnesses leave the owner. Provider and final guard checks are still owed.
       cleanup(); current(); clock();
-      return Object.freeze({ witnessHex: witnesses.toLowerCase(), revision: job.revision, handleGeneration: signingGeneration });
+      const result = Object.freeze({ witnessHex: witnesses.toLowerCase(), revision: job.revision, handleGeneration: signingGeneration });
+      receipts.set(result, { receivedAt, deadlineAt: responseDeadline, fingerprint: job.fingerprint });
+      return result;
     } catch (error) {
       let code: SignatureCode = "REFUSED";
       // New errors are immutable, but never trust a foreign same-class message or payload.
@@ -308,8 +322,15 @@ export function createWalletSession(resolveProvider: (walletId: string) => unkno
   }
   function dispose(): void {
     if (state.phase === "disposed") return;
-    detach?.(); disconnect(); update({ phase: "disposed" });
+    detach?.(); disconnect(); update({ phase: "disposed" }); listeners.clear();
   }
   return Object.freeze({ connect, disconnect, recheck: request, requestSignature, attachBrowser, dispose, getState: () => state,
+    subscribe(listener: () => void): () => void { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    signatureReceipt(result: WalletSignature): Readonly<{ receivedAt: number; deadlineAt: number }> {
+      const receipt = receipts.get(result);
+      if (!receipt || state.phase !== "observed" || state.revision !== result.revision || !state.observation ||
+        semantic(state.observation) !== receipt.fingerprint || timestamp() >= receipt.deadlineAt) throw new WalletSignatureError("CHANGED");
+      return Object.freeze({ receivedAt: receipt.receivedAt, deadlineAt: receipt.deadlineAt });
+    },
     hasCurrentHandle: () => handle !== null && state.phase === "observed" });
 }
