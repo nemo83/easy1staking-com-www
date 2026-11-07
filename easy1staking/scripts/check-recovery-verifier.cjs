@@ -251,6 +251,13 @@ outcome("a later event at T2's slot in another block", s => { laterDelegation(s,
 outcome("original-vs-later same-height fork: a later delegation at the inclusion height, 5 slots on", s => { laterDelegation(s, { slot: s.p.slot + 5, point: { height: s.p.height } }); }, "inconsistent", "POINT_PAIR");
 outcome("later-vs-later fork at one height", s => { laterDelegation(s, { hash: id(0xb1), slot: s.p.slot + 5 }); laterDelegation(s, { hash: id(0xb2), slot: s.p.slot + 7, point: { height: s.p.height + 5 } }); }, "inconsistent", "POINT_PAIR");
 outcome("later-vs-later same slot in different blocks", s => { laterDelegation(s, { hash: id(0xb3), slot: s.p.slot + 5 }); laterDelegation(s, { hash: id(0xb4), slot: s.p.slot + 5, index: 1, point: { hash: id(0xf5) } }); }, "inconsistent", "POINT_PAIR");
+// One block hash names one block, among historical points and against T2. Transaction indexes differ, so only the hash rule can fail.
+outcome("original/later: a later event reuses the inclusion hash 5 slots and 5 heights on", s => { laterDelegation(s, { slot: s.p.slot + 5, index: INDEX + 1, point: { hash: s.p.hash } }); }, "inconsistent", "POINT_PAIR");
+outcome("later/later: two later events share one hash at different coordinates", s => {
+  laterDelegation(s, { hash: id(0xc1), slot: s.p.slot + 5, index: 0 }); laterDelegation(s, { hash: id(0xc2), slot: s.p.slot + 7, index: 1, point: { hash: id(s.p.slot + 5) } });
+}, "inconsistent", "POINT_PAIR");
+outcome("inclusion/T2: the inclusion block reports T2's hash at a lower slot and height", () => {}, "inconsistent", "POINT_RELATION", "2", { scenario: () => scenario("2", { point: { hash: id(S0 + BigInt(fixture.tipOffset)) } }) });
+test("one hash at one point: a later event in the inclusion block at another transaction index confirms", async () => { const s = scenario(); laterDelegation(s, { slot: s.p.slot, index: INDEX + 1, point: { hash: s.p.hash } }); await confirmed(s, "other-pool"); });
 function sharedBlock(s, index) {
   // Two later transactions in one block: the second also carries another account's certificate first, so cert_index alone keeps the events ordered.
   laterDelegation(s, { hash: id(0xb5), slot: s.p.slot + 5, index: 2 }); laterDelegation(s, { hash: id(0xb6), slot: s.p.slot + 5, index, pools: [chain.poolId] });
@@ -259,7 +266,7 @@ function sharedBlock(s, index) {
 }
 outcome("two transactions at one block and transaction index", s => { sharedBlock(s, 2); }, "inconsistent", "POINT_PAIR");
 test("two transactions in one block at different transaction indexes confirm", async () => { const s = scenario(); sharedBlock(s, 3); await confirmed(s, "EASY1"); });
-test("historicalPairs is pure: one block per height and slot, ordered heights, distinct placements", () => {
+test("historicalPairs is pure: one block per height, slot and hash, ordered heights, distinct placements", () => {
   const at = (slot, height, hash, txId, index = 0n) => ({ point: { slot, height, time: BigInt(timeAt(slot) / 1000), hash }, txId, index });
   const code = list => { try { verifierModule.historicalPairs(list); return "OK"; } catch (e) { return e.reason; } }, base = 4492800n + 2000000n, x = at(base, 50n, id(1), id(0x11), 3n);
   assert.equal(code([x, at(base + 5n, 55n, id(2), id(0x12))]), "OK"); assert.equal(code([x, at(base, 50n, id(1), id(0x12), 4n)]), "OK", "same block, another index");
@@ -267,6 +274,7 @@ test("historicalPairs is pure: one block per height and slot, ordered heights, d
   assert.equal(code([x, at(base, 50n, id(1), id(0x12), 3n)]), "POINT_PAIR", "two transactions at one block and index"); assert.equal(code([x, at(base + 5n, 49n, id(2), id(0x12))]), "POINT_PAIR", "later slot at a lower height");
   assert.equal(code([x, at(base - 5n, 51n, id(2), id(0x12))]), "POINT_PAIR", "earlier slot at a higher height"); assert.equal(code([x, at(base + 5n, 55n, id(2), id(0x11))]), "POINT_PAIR", "one transaction at two points");
   assert.equal(code([x, at(base + 5n, 55n, id(2), id(0x12)), at(base + 9n, 55n, id(3), id(0x13))]), "POINT_PAIR", "later-vs-later at one height");
+  assert.equal(code([x, at(base + 5n, 55n, id(1), id(0x12), 4n)]), "POINT_PAIR", "one hash at two coordinates");
 });
 test("historicalPoint is pure: fields, then every relation against T2", () => {
   const t = { slot: 2000000n + 4492800n, hash: id(1), epoch: 212n, observedAt: 0, height: 50n, time: BigInt(timeAt(2000000n + 4492800n) / 1000) };
@@ -274,6 +282,7 @@ test("historicalPoint is pure: fields, then every relation against T2", () => {
   assert.equal(code(ok), "OK"); assert.equal(code({ ...ok, time: ok.time + 1n }), "POINT_FIELDS"); assert.equal(code({ ...ok, hash: "x" }), "POINT_FIELDS");
   assert.equal(code({ ...ok, height: 51n }), "POINT_RELATION"); assert.equal(code({ ...ok, height: 50n }), "POINT_RELATION"); assert.equal(code({ ...t }), "OK");
   assert.equal(code({ ...t, hash: id(3) }), "POINT_RELATION"); assert.equal(code({ ...ok, slot: t.slot + 1n, time: t.time + 1n, height: 49n }), "POINT_RELATION");
+  assert.equal(code({ ...ok, hash: t.hash }), "POINT_RELATION", "T2's hash at a lower slot and height");
   assert.equal(code({ ...ok, confirmations: 10n, floor: 50n }), "OK"); assert.equal(code({ ...ok, confirmations: 11n, floor: 50n }), "POINT_RELATION"); assert.equal(code({ ...ok, confirmations: 9n, floor: 50n }), "POINT_RELATION");
   assert.equal(code({ ...ok, slot: ok.slot - 432000n * 3n, time: ok.time - 432000n * 3n }), "OK", "old prior-epoch historical point");
 });

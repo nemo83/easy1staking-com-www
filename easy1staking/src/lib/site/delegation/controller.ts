@@ -29,7 +29,7 @@ export interface DelegationConfirmation {
 }
 export interface DelegationView {
   readonly phase: "disconnected" | "connecting" | "assessing" | "ready" | "building" | "review" | "signing" | "checking" | "submitting" | "submitted" | "unknown" | "already-EASY1" | "refused" |
-    "confirmed" | "check-later" | "inconsistent" | "changed";
+    "confirmed" | "check-later" | "inconsistent" | "changed" | "other-pending";
   readonly message: string;
   readonly walletId: string | null;
   readonly account: string | null;
@@ -63,6 +63,7 @@ interface StatusWork {
   resolved: Extract<StatusOutcome, { status: "confirmed" }> | null;
 }
 type StatusStep = { readonly kind: "confirmed"; readonly outcome: Extract<StatusOutcome, { status: "confirmed" }> } | { readonly kind: "continue" | "busy" | "inconsistent" | "changed" };
+const OTHER_PENDING = "Another delegation from this browser is pending. Keep its transaction ID and check its status.";
 const APOLOGY = "Sorry, we couldn't confirm your delegation yet. Confirmation usually takes about 20 seconds but can take longer. Please check again here in a few minutes, or check later in your wallet.";
 /** The page receives display data and deliberate actions; handles, reviews and bytes stay private. */
 export function createDelegationController(projectId: string) {
@@ -71,7 +72,7 @@ export function createDelegationController(projectId: string) {
   }), coordinator = createDelegationCoordinator(), verifier = createRecoveryVerifier(projectId, coordinator);
   const listeners = new Set<() => void>();
   let disposed = false, serial = 0, operation: Operation | null = null, coordinationReady = false;
-  // The confirmed result is held apart from the wallet/action phase; only a new operation's transaction ID supersedes it.
+  // The confirmed result is held apart from the wallet/action phase; it is shown only while its ID is the active one.
   let status: StatusWork | null = null, resolved: DelegationConfirmation | null = null, statusReason: string | null = null;
   let phase: DelegationView["phase"] = "disconnected", message = "Choose a wallet to connect.", review: DelegationReview | null = null;
   let txId: string | null = null;
@@ -79,13 +80,15 @@ export function createDelegationController(projectId: string) {
   function recovery(): RecoveryState { return coordinator.getState(); }
   function view(): DelegationView {
     const state = owner.getState(), prior = recovery();
+    // The active ID is the newest operation known to this page: its own attempt, then the recovery record (pending, or kept after it changed), then the retained confirmation.
+    const active = (operation?.attempted ? operation.txId : null) ?? prior.txId ?? txId;
     const origin = window.location.origin;
     const browse = coordinationReady && !disposed && phase === "disconnected" && !operation && state.walletId === null && prior.status === "absent" &&
       (origin === "https://easy1staking.com" || origin === "https://preview.easy1staking.com");
     return Object.freeze({ phase, message, walletId: state.walletId, account: state.observation?.binding.stakeKeyHash ?? null,
-      review, txId: txId ?? prior.txId, recovery: prior,
+      review, txId: active, recovery: prior,
       walletBrowseHref: browse ? "web+cardano://browse/v1?uri=" + encodeURIComponent(origin + "/pool") : null,
-      statusRunning: status !== null, statusUntil: status?.deadline ?? null, confirmation: resolved !== null && resolved.txId === txId ? resolved : null, statusReason,
+      statusRunning: status !== null, statusUntil: status?.deadline ?? null, confirmation: resolved !== null && resolved.txId === active ? resolved : null, statusReason,
       canCheckStatus: !disposed && !status && !operation && prior.status === "pending" && prior.record !== null });
   }
   function emit(): void { if (!disposed) for (const listener of listeners) { try { listener(); } catch { /* Display only. */ } } }
@@ -108,7 +111,12 @@ export function createDelegationController(projectId: string) {
     else emit();
   });
   owner.attachBrowser(window, document);
-  const onStorage = () => emit();
+  const onStorage = () => {
+    // Another tab's pending record for a different ID supersedes this page's last ID, and any confirmation it holds.
+    const prior = recovery();
+    if (!disposed && !operation && txId !== null && phase !== "other-pending" && prior.status === "pending" && prior.txId !== txId) show("other-pending", OTHER_PENDING);
+    else emit();
+  };
   window.addEventListener("storage", onStorage);
   void coordinator.withNewOperation(async lease => { coordinator.assertActive(lease); }).then(() => {
     coordinationReady = true; emit();

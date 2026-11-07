@@ -97,7 +97,11 @@
     "confirm-resumed-after-deadline",
     "confirm-then-disconnect",
     "confirm-then-refresh-failure",
-    "status-visible-refresh"
+    "status-visible-refresh",
+    "confirm-later-hash-reuse",
+    "confirm-tip-hash-reuse",
+    "confirm-then-other-tab-pending",
+    "confirm-then-second-operation"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -406,6 +410,22 @@
     "status-visible-refresh": {
       "submitDispatches": 1,
       "posts": 1
+    },
+    "confirm-later-hash-reuse": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-tip-hash-reuse": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-then-other-tab-pending": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-then-second-operation": {
+      "submitDispatches": 2,
+      "posts": 2
     }
   },
   "statusPlans": {
@@ -476,6 +496,42 @@
     "status-visible-refresh": {
       "notFound": 1,
       "visibleRefresh": true
+    },
+    "confirm-later-hash-reuse": {
+      "notFound": 0,
+      "laterHashReuse": true
+    },
+    "confirm-tip-hash-reuse": {
+      "notFound": 0,
+      "tipHashReuse": true
+    },
+    "confirm-then-other-tab-pending": {
+      "notFound": 0,
+      "otherTab": true
+    },
+    "confirm-then-second-operation": {
+      "notFound": 0,
+      "laterOther": true,
+      "secondOperation": true
     }
+  },
+  "otherTabRecord": {
+    "schemaVersion": 1,
+    "networkId": 1,
+    "poolId": "pool1yr0cv3dtmhcfgqa6yetvmf769ngk89e6tepecmjrmjl2jzcw2lm",
+    "txId": "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+    "invalidHereafterSlot": "201836088",
+    "inputRefs": [
+      "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1#0"
+    ],
+    "createdAt": 1793404800000,
+    "stage": "submitted"
+  },
+  "secondOperation": {
+    "notice": "The accepted registered stake-builder vector with only its TTL bytes (body key 3) changed for a construction tip 300 slots after the original: 031a0c07c638 -> 031a0c07c764. Same input, fee, change and certificate; the runner recomputes this substitution and the BLAKE2b ID.",
+    "constructionSlot": "201835788",
+    "ttl": "201836388",
+    "bodyHex": "a600d90102818258203333333333333333333333333333333333333333333333333333333333333333000181825839015ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da1e8a8dd8db193fb3f0c2c1df5cb94620cd86be43e4e05539fc678b1b51a05f33d77021a0002a389031a0c07c76404d901028183028200581ce8a8dd8db193fb3f0c2c1df5cb94620cd86be43e4e05539fc678b1b5581c20df8645abddf09403ba2656cda7da2cd163973a5e439c6e43dcbea90f01",
+    "txId": "479f961830a0142b38bb266b4c2eeb1ab8d316b478115addcc50f87a433ea3c3"
   }
 }

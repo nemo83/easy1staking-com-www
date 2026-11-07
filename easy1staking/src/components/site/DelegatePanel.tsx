@@ -39,8 +39,8 @@ export function DelegatePanel() {
   }, []);
   const busy = !!view && busyPhases.includes(view.phase);
   const prior = view?.recovery.status !== "absent";
-  // A confirmed result keeps its own label whatever the wallet/action phase shows; other IDs are labelled by phase.
-  const confirmed = view?.confirmation ?? null;
+  // A confirmed result keeps its own label whatever the wallet/action phase shows, but only while its ID is the active one; other IDs are labelled by phase.
+  const confirmed = view?.confirmation && view.confirmation.txId === view.txId ? view.confirmation : null;
   return <section id="delegate" className={`wrap section ${styles.authored}`} aria-labelledby="delegate-title">
     <div className="eyebrow">Stake-only delegation / staged candidate</div>
     <h2 id="delegate-title">Stake with <em>EASY1.</em></h2>

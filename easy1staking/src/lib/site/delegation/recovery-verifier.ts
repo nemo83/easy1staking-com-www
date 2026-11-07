@@ -51,7 +51,7 @@ function progress(points: readonly LiveTip[]): void {
     ensure(current.slot === previous.slot ? current.height === previous.height : current.height > previous.height, "COHERENCE");
   }
 }
-/** A historical point may be old or from a prior epoch: no freshness or same-epoch rule. It owns every relation against T2. */
+/** A historical point may be old or from a prior epoch: no freshness or same-epoch rule. It owns every relation against T2, including one hash naming one block. */
 export function historicalPoint(point: HistoricalPoint, tip: LiveTip): void {
   contradict(typeof point.slot === "bigint" && typeof point.height === "bigint" && typeof point.time === "bigint" && /^[0-9a-f]{64}$/.test(point.hash) &&
     point.slot >= ZERO_SLOT && point.height >= ZERO && timeAt(point.slot) === point.time * THOUSAND &&
@@ -60,6 +60,7 @@ export function historicalPoint(point: HistoricalPoint, tip: LiveTip): void {
     return point.height <= tip.height && point.slot <= tip.slot &&
       (point.height !== tip.height || point.hash === tip.hash && point.slot === tip.slot && point.time === tip.time) &&
       (point.slot !== tip.slot || point.hash === tip.hash && point.height === tip.height && point.time === tip.time) &&
+      (point.hash !== tip.hash || point.slot === tip.slot && point.height === tip.height && point.time === tip.time) &&
       (point.slot >= tip.slot || point.height < tip.height) &&
       (point.confirmations === undefined || point.confirmations <= tip.height - point.height && point.confirmations >= point.floor! - point.height);
   };
@@ -67,11 +68,12 @@ export function historicalPoint(point: HistoricalPoint, tip: LiveTip): void {
 }
 /** A historical point with the transaction placed at it. */
 export interface PlacedPoint { readonly point: HistoricalPoint; readonly txId: string; readonly index: bigint }
-/** Historical points must also agree with one another, not only with T2: one block per height and slot, ordered heights, distinct placements. */
+/** Historical points must also agree with one another, not only with T2: one block per height, slot and hash, ordered heights, distinct placements. */
 export function historicalPairs(points: readonly PlacedPoint[]): void {
   for (let i = 0; i < points.length; i++) for (let j = i + 1; j < points.length; j++) {
     const a = points[i].point, b = points[j].point, block = a.hash === b.hash && a.slot === b.slot && a.height === b.height && a.time === b.time;
     contradict((a.height !== b.height || block) && (a.slot !== b.slot || block) &&
+      (a.hash !== b.hash || block) &&
       (a.slot < b.slot) === (a.height < b.height) && (a.slot > b.slot) === (a.height > b.height) &&
       points[i].txId !== points[j].txId && (a.hash !== b.hash || points[i].index !== points[j].index), "POINT_PAIR");
   }

@@ -42,6 +42,8 @@ function scenario(registered){
  return{txs,routes,history};
 }
 function pythonHash(hex,size=32){const r=spawnSync("python3",["-c",`import sys,hashlib;print(hashlib.blake2b(bytes.fromhex(sys.stdin.read()),digest_size=${size}).hexdigest())`],{input:hex,encoding:"utf8"});assert.equal(r.status,0);return r.stdout.trim();}
+// The second operation's reviewed body is a literal; it must equal the accepted registered vector with only its TTL bytes substituted.
+{const v=vectors.find(x=>x.registered),b=fixture.secondOperation,hex=n=>BigInt(n).toString(16).padStart(8,"0");assert.equal(BigInt(b.ttl),BigInt(b.constructionSlot)+600n,"SECOND_TTL_RULE");assert.equal(v.bodyHex.split("031a"+hex(v.ttl)).length,2,"UNIQUE_TTL_SEGMENT");assert.equal(b.bodyHex,v.bodyHex.replace("031a"+hex(v.ttl),"031a"+hex(b.ttl)),"SECOND_BODY_IS_TTL_SUBSTITUTION");assert.equal(pythonHash(b.bodyHex),b.txId,"SECOND_LITERAL_ID");assert.notEqual(b.txId,v.txId);}
 const signers=[keys.paymentSeed,keys.stakeSeed].map(seed=>{const privateKey=crypto.createPrivateKey({key:Buffer.from("302e020100300506032b657004220420"+seed,"hex"),format:"der",type:"pkcs8"});const publicHex=crypto.createPublicKey(privateKey).export({format:"der",type:"spki"}).subarray(-32).toString("hex");return{privateKey,publicHex,hash:pythonHash(publicHex,28)};}).sort((a,b)=>a.hash.localeCompare(b.hash));
 
 async function freePort(port=0){const s=net.createServer();s.listen(port,"127.0.0.1");await once(s,"listening");const p=s.address().port;await new Promise(r=>s.close(r));return p;}
@@ -69,18 +71,23 @@ async function main(){
    const routeStep=async step=>{try{await step();}catch(error){record.routeHandlerErrors.push(String(error?.message??error).split("\n")[0]);}};const s=scenario(name!=="unregistered"),golden=vectors.find(v=>v.registered===(name!=="unregistered"));
    // Status reads for the submitted ID: 404 unless the case's plan includes it; an included transaction is one coherent synthetic chain point.
    const plan=fixture.statusPlans[name]||{notFound:null},otherPool=raw.poolBech32(chain.otherHash),st={lookups:0,inclusion:null,lastTip:null,pinned:null,cborReads:0,historyReads:0,reloaded:false,trace:[]},NOT_FOUND=Symbol("404");
+   // Another tab's pending record and a second operation's transaction are not on chain: their status lookups answer 404.
+   const unseen=new Set([plan.otherTab&&"/txs/"+fixture.otherTabRecord.txId,plan.secondOperation&&"/txs/"+fixture.secondOperation.txId].filter(Boolean));
    const statusPath=p=>p==="/txs/"+golden.txId||p.startsWith("/txs/"+golden.txId+"/")||!!st.inclusion&&(p==="/blocks/"+st.inclusion.hash||plan.lag&&p==="/accounts/"+account+"/delegations");
    function include(){
     const t=st.lastTip;let slot=BigInt(t.slot)-2n,height=slot-100000000n,hash=id(Number(slot));
     if(plan.above){slot=BigInt(t.slot)+1n;height=slot-100000000n;hash=id(Number(slot));}
     if(plan.fork){st.pinned=t;slot=BigInt(t.slot)-5n;height=BigInt(t.height);hash="f0".repeat(32);}
     // Later fork: the inclusion sits 10 slots back; a later delegation elsewhere is in a different block at the same height, 5 slots on.
-    if(plan.laterFork){slot=BigInt(t.slot)-10n;height=slot-100000000n;hash=id(Number(slot));}
+    if(plan.laterFork||plan.laterHashReuse){slot=BigInt(t.slot)-10n;height=slot-100000000n;hash=id(Number(slot));}
+    // Tip hash reuse: T1 = T2 is pinned and the inclusion block reports that tip's hash 5 slots and 5 heights lower.
+    if(plan.tipHashReuse){st.pinned=t;slot=BigInt(t.slot)-5n;height=slot-100000000n;hash=t.hash;}
     const time=(1596059091000+Number(slot-4492800n)*1000)/1000,acc=s.routes.get("/accounts/"+account);st.inclusion={slot:Number(slot),height:Number(height),time,hash,index:0};
     acc.pool_id=plan.unreconciled?otherPool:chain.poolId;acc.active=true;
     st.ownHistory={active_epoch:666,tx_hash:golden.txId,amount:"100000000",pool_id:chain.poolId,tx_slot:Number(slot),block_time:time,block_height:Number(height)};
     if(!plan.lag)s.routes.get("/accounts/"+account+"/delegations").push(st.ownHistory);
-    if(plan.laterOther||plan.laterFork){const later=id(0x5a5a),q=plan.laterFork?{...point(slot+5n),block_height:Number(height)}:point(slot+1n);s.txs[later]={hash:later,valid_contract:true,...q,stake_cert_count:0,delegation_count:1,pool_update_count:0,pool_retire_count:0};
+    // Later hash reuse: the later delegation elsewhere reports the inclusion block's hash at another index, 5 slots and 5 heights on.
+    if(plan.laterOther||plan.laterFork||plan.laterHashReuse){const later=id(0x5a5a),q=plan.laterFork?{...point(slot+5n),block_height:Number(height)}:plan.laterHashReuse?{...point(slot+5n),block:hash,index:1}:point(slot+1n);s.txs[later]={hash:later,valid_contract:true,...q,stake_cert_count:0,delegation_count:1,pool_update_count:0,pool_retire_count:0};
      s.routes.set(`/txs/${later}/delegations`,[{cert_index:0,index:0,address:account,pool_id:otherPool,active_epoch:667}]);
      s.routes.get("/accounts/"+account+"/delegations").push({active_epoch:667,tx_hash:later,amount:"100000000",pool_id:otherPool,tx_slot:q.slot,block_time:q.block_time,block_height:q.block_height});acc.pool_id=otherPool;}
    }
@@ -113,7 +120,7 @@ async function main(){
    const context=await browser.newContext({viewport:{width:360,height:800},serviceWorkers:"block"});let page,primary,closing=false,onResponse;try{
     await context.exposeFunction("syntheticSign",unsigned=>{
      const tips=record.http.filter(x=>x.path==="/blocks/latest");assert(tips.length>=6,"SOURCE_ASSESSMENTS");assert.equal(tips[2].slot,Number(baseSlot),"ORIGINAL_CONSTRUCTION_SLOT");
-     const expectedBody=golden.bodyHex,expectedId=golden.txId;assert.equal(pythonHash(expectedBody),expectedId,"LITERAL_GOLDEN_ID");
+     const second=!!plan.secondOperation&&record.signatures.length===1,expectedBody=second?fixture.secondOperation.bodyHex:golden.bodyHex,expectedId=second?fixture.secondOperation.txId:golden.txId;assert.equal(pythonHash(expectedBody),expectedId,"LITERAL_GOLDEN_ID");
      assert.equal(unsigned,"84"+expectedBody+"a0f5f6","EXACT_REVIEWED_UNSIGNED_WRAPPER");
      let witness="a10082"+signers.map(key=>"825820"+key.publicHex+"5840"+crypto.sign(null,Buffer.from(expectedId,"hex"),key.privateKey).toString("hex")).join("");
      if(name==="partial-witness")witness="a10081"+witness.slice(6,208);
@@ -168,7 +175,7 @@ async function main(){
      if(u.origin!=="https://cardano-mainnet.blockfrost.io"||!u.pathname.startsWith("/api/v0/")){report.unexpected.push({url:request.url(),method:request.method()});return route.abort();}
      const p=u.pathname.slice(7),entry={url:request.url(),method:request.method(),path:p,at:Date.now()};record.http.push(entry);
      if(request.method()==="POST"){
-      assert.equal(p,"/tx/submit");const bytes=request.postDataBuffer(),expected=record.signatures[0];assert(expected,"SIGN_BEFORE_POST");assert.equal(bytes.toString("hex"),expected.signedHex,"EXACT_GUARDED_POST_BYTES");assert.equal(request.headers()["content-type"],"application/cbor");record.posts.push({txId:expected.txId,hex:bytes.toString("hex"),at:Date.now()});
+      assert.equal(p,"/tx/submit");const bytes=request.postDataBuffer(),expected=record.signatures[record.signatures.length-1];assert(expected,"SIGN_BEFORE_POST");assert.equal(bytes.toString("hex"),expected.signedHex,"EXACT_GUARDED_POST_BYTES");assert.equal(request.headers()["content-type"],"application/cbor");record.posts.push({txId:expected.txId,hex:bytes.toString("hex"),at:Date.now()});
       if(name==="submit-timeout"||name==="confirm-unknown-outcome")await new Promise(r=>setTimeout(r,61000));
       // The tab "resumes" after the POST is dispatched and before status starts: the existing synthetic page clock moves past dispatch + 180 s.
       if(name==="confirm-resumed-after-deadline"||plan.visibleRefresh)await routeStep(async()=>{record.walletAtPost=await page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,walletReads:window.synthetic.walletReads||0,throwing:window.synthetic.throwingWalletCalls}));});
@@ -199,6 +206,7 @@ async function main(){
        const before=await counts();await page.evaluate(()=>window.dispatchEvent(new Event("focus")));await page.waitForFunction(n=>window.synthetic.enableCalls>n,before.enableCalls,{timeout:5000,polling:50});await page.waitForTimeout(500);st.refresh={before,after:await counts(),at:Date.now()};});
       value=statusValue(p);entry.status=value===NOT_FOUND?404:200;
       if(value===NOT_FOUND)return route.fulfill({status:404,contentType:"application/json",body:'{"status_code":404,"error":"Not Found","message":"The requested component has not been found."}',headers:{"access-control-allow-origin":"*"}});
+     }else if(unseen.has(p)){entry.status=404;return route.fulfill({status:404,contentType:"application/json",body:'{"status_code":404,"error":"Not Found","message":"The requested component has not been found."}',headers:{"access-control-allow-origin":"*"}});
      }else if(p==="/blocks/latest"){
       // A navigation or reload can destroy the page context mid-read; that read then fails as transport, never as a handler crash.
       const observed=await page.evaluate(()=>({now:Date.now(),afterReply:window.synthetic.replyAt!==null,jump:window.synthetic.clockDeltaMs})).catch(()=>null);if(!observed)return route.abort();
@@ -272,6 +280,7 @@ async function main(){
      // Status cases: identical registered submission, then read-only status work. Each waits on a terminal state or a fixed real-time observation.
      const apology="Sorry, we couldn't confirm your delegation yet. Confirmation usually takes about 20 seconds but can take longer. Please check again here in a few minutes, or check later in your wallet.";
      const inconsistentText="We found this transaction but couldn't verify it consistently. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.";
+     const otherPendingText="Another delegation from this browser is pending. Keep its transaction ID and check its status.";
      const changedText="This operation's saved status changed in another tab of this browser. Keep the transaction ID and check it in your wallet or a chain explorer.";
      const statusText=()=>page.evaluate(()=>document.querySelector('#delegate [role="status"]')?.textContent||""),stored=()=>page.evaluate(()=>localStorage.getItem("easy1staking:delegation-recovery"));
      const terminal="^Your delegation transaction was confirmed on chain|couldn't verify it consistently|saved status changed in another tab|^Sorry, we couldn't confirm";
@@ -325,11 +334,11 @@ async function main(){
       assert.equal(text,apology,"APOLOGY_AT_THREE_MINUTES");assert(raw&&JSON.parse(raw).txId===golden.txId,"RECORD_RETAINED_AT_TIMEOUT");assert(body.includes(golden.txId),"ID_SHOWN_AT_TIMEOUT");
       assert.equal(await page.getByRole("button",{name:"Check status"}).count(),1,"CHECK_STATUS_OFFERED");assert(st.trace.every(x=>x.found===false),"ONLY_404_TICKS");
       assert.equal(record.http.filter(x=>x.method==="GET"&&x.at>postAt+181000&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/"))).length,0,"NO_READS_AFTER_BUDGET");
-     }else if(["confirm-wrong-body","confirm-same-height-fork","confirm-unreconciled-account","confirm-later-fork"].includes(name)){
+     }else if(["confirm-wrong-body","confirm-same-height-fork","confirm-unreconciled-account","confirm-later-fork","confirm-later-hash-reuse","confirm-tip-hash-reuse"].includes(name)){
       // Victims wait for either terminal state, then check retained storage before any expected text.
       await waitTerminal(60000);const raw=await stored();record.victimTerminal={text:await statusText(),raw};
-      assert(raw!==null&&JSON.parse(raw).txId===golden.txId,{"confirm-wrong-body":"RECORD_RETAINED_ON_MISMATCH","confirm-same-height-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-unreconciled-account":"RECORD_RETAINED_ON_ACCOUNT_MISMATCH","confirm-later-fork":"RECORD_RETAINED_ON_INCOHERENCE"}[name]);
-      assert.equal(await statusText(),inconsistentText,"INCONSISTENT_MESSAGE");record.statusReason=(await viewOf()).statusReason;assert.equal(record.statusReason,{"confirm-wrong-body":"inconsistent:BODY_ID","confirm-same-height-fork":"inconsistent:POINT_RELATION","confirm-unreconciled-account":"inconsistent:ACCOUNT","confirm-later-fork":"inconsistent:POINT_PAIR"}[name],"INCONSISTENT_REASON_CODE");assert((await page.locator('#delegate').innerText()).includes(golden.txId),"INCONSISTENT_KEEPS_ID");
+      assert(raw!==null&&JSON.parse(raw).txId===golden.txId,{"confirm-wrong-body":"RECORD_RETAINED_ON_MISMATCH","confirm-same-height-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-unreconciled-account":"RECORD_RETAINED_ON_ACCOUNT_MISMATCH","confirm-later-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-later-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE","confirm-tip-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE"}[name]);
+      assert.equal(await statusText(),inconsistentText,"INCONSISTENT_MESSAGE");record.statusReason=(await viewOf()).statusReason;assert.equal(record.statusReason,{"confirm-wrong-body":"inconsistent:BODY_ID","confirm-same-height-fork":"inconsistent:POINT_RELATION","confirm-unreconciled-account":"inconsistent:ACCOUNT","confirm-later-fork":"inconsistent:POINT_PAIR","confirm-later-hash-reuse":"inconsistent:POINT_PAIR","confirm-tip-hash-reuse":"inconsistent:POINT_RELATION"}[name],"INCONSISTENT_REASON_CODE");assert((await page.locator('#delegate').innerText()).includes(golden.txId),"INCONSISTENT_KEEPS_ID");
       const lookups=st.lookups;await page.waitForTimeout(11000);assert.equal(st.lookups,lookups,"INCONSISTENT_STOPS_POLL");
      }else if(name==="confirm-resumed-after-deadline"){
       // Either terminal-looking text, then a fixed settle; the apology is the first expected text asserted.
@@ -354,6 +363,44 @@ async function main(){
       await page.waitForFunction(()=>/wallet changed or became unavailable/.test(document.querySelector('#delegate [role="status"]')?.textContent||""),{},{timeout:15000,polling:100});
       record.refreshFailure=await walletAt();assert.equal(record.refreshFailure.enableCalls,baseline.enableCalls+1,"VISIBLE_REFRESH_RAN");assert.equal((await viewOf()).walletId,"synthetic","WALLET_STILL_SELECTED");
       await kept("CONFIRMED_LABEL_KEPT");
+     }else if(name==="confirm-then-other-tab-pending"){
+      await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");
+      // A second same-origin tab writes a well-formed pending record for B under the origin lock (the step its own prepare would take); the first tab only observes.
+      const other=fixture.otherTabRecord,raw=JSON.stringify(other),second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
+      await second.evaluate(r=>navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},async()=>{localStorage.setItem("easy1staking:delegation-recovery",r);}),raw);
+      record.otherTab={written:await second.evaluate(()=>localStorage.getItem("easy1staking:delegation-recovery"))};await second.close();assert.equal(record.otherTab.written,raw,"OTHER_TAB_RECORD_WRITTEN");
+      // A fixed settle; the active ID is asserted before any expected text.
+      await page.waitForTimeout(1000);const v=await viewOf(),codes=await page.locator('#delegate code').allInnerTexts(),body=await page.locator('#delegate').innerText();
+      record.otherTab.view={txId:v.txId,phase:v.phase,message:v.message,confirmation:v.confirmation,canCheckStatus:v.canCheckStatus,recovery:v.recovery.status,codes};
+      assert(v.txId===other.txId&&codes.includes(other.txId),"ACTIVE_ID_SHOWN");
+      assert.equal(await statusText(),otherPendingText,"OTHER_PENDING_MESSAGE");
+      assert(v.confirmation===null&&await page.locator('[aria-label="Delegation confirmation"]').count()===0&&!body.includes("confirmed on chain")&&!body.includes(record.confirmedText)&&!body.includes(golden.txId),"PRIOR_CONFIRMATION_HIDDEN");
+      assert(body.includes("Transaction ID — outcome pending or unknown")&&!body.includes("submitted, confirmation pending"),"PENDING_CAPTION");
+      assert(v.canCheckStatus&&v.recovery.status==="pending"&&await page.getByRole("button",{name:"Check status"}).count()===1,"CHECK_STATUS_OFFERED");
+      // Check status applies to B: one bounded check reads B's transaction (404 here), never A's.
+      const clickAt=Date.now();await page.getByRole("button",{name:"Check status"}).click();await page.getByText(apology,{exact:true}).waitFor({timeout:35000});
+      const reads=record.http.filter(x=>x.at>=clickAt&&x.method==="GET"&&x.path.startsWith("/txs/"));record.otherTab.checkReads=reads.map(x=>x.path+" "+x.status);
+      assert(reads.length===1&&reads[0].path==="/txs/"+other.txId&&reads[0].status===404,"CHECK_STATUS_APPLIES_TO_ACTIVE_ID");
+      assert.equal(await stored(),raw,"OTHER_RECORD_RETAINED");const after=await viewOf();assert(after.txId===other.txId&&after.confirmation===null,"ACTIVE_ID_AFTER_CHECK");
+     }else if(name==="confirm-then-second-operation"){
+      await waitTerminal(60000);await confirmedState("This stake account has since delegated to another pool.");record.statusCutoff=Date.now();assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+      // A fixed construction tip for the separately reviewed second body: the page clock moves to it and the tip is held there until the review shows.
+      const B=fixture.secondOperation,X=BigInt(B.constructionSlot);st.pinned={slot:Number(X),epoch:664,hash:id(Number(X)),height:Number(X-100000000n),time:(baseTime+Number(X-baseSlot)*1000)/1000};
+      await page.evaluate(target=>{window.synthetic.clockDeltaMs+=target-Date.now();},baseTime+Number(X-baseSlot)*1000+1000);
+      await page.getByLabel("Wallet",{exact:true}).selectOption("synthetic");await page.getByRole("button",{name:"Connect selected wallet"}).click();
+      await page.waitForFunction(()=>/eligibility checked/.test(document.querySelector('#delegate [role="status"]')?.textContent||""),{},{timeout:20000,polling:100});
+      await kept("CONFIRMED_LABEL_KEPT_AFTER_CONNECT");
+      await page.getByRole("button",{name:"Build delegation review"}).click();await page.getByRole("button",{name:"Approve and sign in wallet"}).waitFor({timeout:20000});
+      await kept("CONFIRMED_LABEL_KEPT_AFTER_REVIEW");st.pinned=null;
+      await page.getByRole("button",{name:"Approve and sign in wallet"}).click();await page.getByText("Submitted to Blockfrost.",{exact:false}).waitFor({timeout:30000});await page.waitForTimeout(1500);
+      const v=await viewOf(),codes=await page.locator('#delegate code').allInnerTexts(),body=await page.locator('#delegate').innerText(),raw=await stored();
+      record.secondOperation={txId:v.txId,phase:v.phase,confirmation:v.confirmation,codes,raw,constructionTips:record.http.filter(x=>x.path==="/blocks/latest"&&x.slot===Number(X)).length};
+      assert(v.txId===B.txId&&codes.includes(B.txId),"ACTIVE_ID_SHOWN");
+      assert(v.confirmation===null&&await page.locator('[aria-label="Delegation confirmation"]').count()===0&&!body.includes("confirmed on chain")&&!body.includes(record.confirmedText)&&!body.includes(golden.txId),"NO_INHERITED_CONFIRMATION");
+      assert(body.includes("Transaction ID — submitted, confirmation pending")&&!body.includes("outcome pending or unknown"),"OWN_CAPTION");
+      assert(record.signatures.length===2&&record.signatures[1].txId===B.txId&&record.posts.length===2&&record.posts[1].hex===record.signatures[1].signedHex&&record.posts[1].txId!==record.posts[0].txId,"SECOND_EXACT_REVIEWED_POST");
+      assert(raw&&JSON.parse(raw).txId===B.txId&&JSON.parse(raw).stage==="submitted"&&JSON.parse(raw).invalidHereafterSlot===B.ttl,"SECOND_RECORD");
+      assert.equal(await page.evaluate(()=>window.synthetic.submitDispatches),2,"TWO_DISPATCHES");
      }else if(name==="status-visible-refresh"){
       await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");record.statusCutoff=Date.now();
       // Counted from the POST: the refresh may land before the settle-window baseline.
@@ -385,9 +432,9 @@ async function main(){
       await page.getByRole("button",{name:"Check status"}).click();await waitTerminal(35000);await confirmedState("This stake account currently delegates to EASY1.");
       const w=await walletAt();record.afterReload.wallet=w;assert.deepEqual(w,{enableCalls:0,signCalls:0,walletReads:0,throwing:0},"ZERO_WALLET_CALLS_AFTER_RELOAD");
      }
-     // Cases that act after confirmation (disconnect, reconnect, refresh) check status-work wallet effects at their cutoff.
-     if(!["check-status-after-reload","confirm-then-disconnect","confirm-then-refresh-failure","status-visible-refresh"].includes(name))assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
-     assert.equal(record.posts.length,1,"STATUS_ZERO_POST");
+     // Cases that act after confirmation (disconnect, reconnect, refresh, a second operation) check status-work wallet effects at their cutoff.
+     if(!["check-status-after-reload","confirm-then-disconnect","confirm-then-refresh-failure","status-visible-refresh","confirm-then-second-operation"].includes(name))assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+     assert.equal(record.posts.length,fixture.expectedCounts[name].posts,"STATUS_ZERO_POST");
      const foreign=record.http.filter(x=>x.at>postAt&&x.at<=(record.statusCutoff??Infinity)&&!(x.method==="GET"&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/")||x.path.startsWith("/blocks/")||x.path.startsWith("/accounts/"+account))));
      assert.deepEqual(foreign.map(x=>x.method+" "+x.path),[],"STATUS_READ_ONLY_NO_BUILD_READS");
      record.statusTrace=st.trace;

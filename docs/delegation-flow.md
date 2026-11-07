@@ -77,12 +77,15 @@ inputs, a body that hashes to the ID, and only the stake-only certificate shapes
 deposit. The stake credential comes only from those bytes. Live tips keep the
 existing freshness and progress checks; the inclusion block and later events are
 historical points with their own coherence check against T2, so an old or
-prior-epoch inclusion is legitimate. The historical points are also checked
-against one another: across the inclusion and every reconstructed later event,
-one height or one slot names one block (hash, slot, height and time), a lower
-slot has a lower height and the converse, two transactions never share one
-block and transaction index, and one transaction never appears at two points.
-A violation is `inconsistent:POINT_PAIR`. The account view must equal the
+prior-epoch inclusion is legitimate. One block hash names one block: a
+historical point that reports T2's hash must be T2 itself (same slot, height
+and time), otherwise the result is `inconsistent:POINT_RELATION`. The historical
+points are also checked against one another: across the inclusion and every
+reconstructed later event, one height, one slot or one block hash names one
+block (hash, slot, height and time), a lower slot has a lower height and the
+converse, two transactions never share one block and transaction index, and one
+transaction never appears at two points. A violation is
+`inconsistent:POINT_PAIR`. The account view must equal the
 effect of the last reconstructed certificate, so a later delegation elsewhere,
 a later deregistration, or a re-registration without a new delegation is shown
 as information only when a verified certificate explains it. The page names
@@ -106,10 +109,22 @@ a different connected wallet. The confirmed result (block, confirmations,
 credential, account state, its ID and the "confirmed on chain" caption) is held
 apart from the wallet and action state: Disconnect, a new Connect, a new review,
 a cancellation with no operation in progress and a failed visible wallet
-refresh never relabel it or caption its ID as pending or unknown. Only a new
-operation's own transaction ID supersedes it, with its own label. The result
+refresh never relabel it or caption its ID as pending or unknown. The result
 lives in page memory only; after a reload the record is already removed and the
 page shows no prior operation.
+
+The page always shows the active transaction ID: the newest operation known to
+this page, taken first from this page's own attempted operation, then from the
+browser's recovery record, then from the retained confirmation. A stale local ID
+never hides a record that names a different one. The retained confirmation, its
+caption and its message are shown only while its ID is the active one. A local
+attempt supersedes it as soon as its record is written, and the new ID carries
+its own caption ("submitted, confirmation pending" or "outcome pending or
+unknown"). When another tab of this browser creates a pending record for a
+different ID and this page has no operation of its own, the page shows that ID
+with the "outcome pending or unknown" caption and the message "Another
+delegation from this browser is pending. Keep its transaction ID and check its
+status.", and Check status checks that ID.
 
 When the budget ends without confirmation the page apologises, keeps the record
 and the ID and offers Check status. If the budget has already ended when status
@@ -197,20 +212,21 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 75 cases and `--cases first` executes six. Selectors
-are strict: `--case` must name one registered case (the 75 plus
+`--cases all` now executes 79 cases and `--cases first` executes six. Selectors
+are strict: `--case` must name one registered case (the 79 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
 
 Every registered case declares its exact page dispatches and intercepted POSTs
-in the fixture: 0 for veto and refusal cases, 1 for single-attempt cases. Page
+in the fixture: 0 for veto and refusal cases, 1 for single-attempt cases and 2
+for `confirm-then-second-operation`. Page
 dispatches accumulate across the tab's navigations and reloads; both counts are
 asserted on success and recorded on failure. Served-chunk identity reads are
 settled in each case before its verdict; a mismatch or failed read while the
 case is active disqualifies the case, and any control run on it, without
 replacing its primary failure.
 
-Nineteen status cases follow an identical registered submission:
+Twenty-three status cases follow an identical registered submission:
 `confirm-after-poll`, `confirm-new-inclusion`, `confirm-index-lag`,
 `confirm-unknown-outcome` (deadline measured from dispatch), `confirm-timeout`
 (observed 185 seconds after dispatch), `confirm-wrong-body`,
@@ -223,17 +239,33 @@ in another block at the inclusion height; only the pairwise check fails),
 dispatch plus 180 seconds after the POST and before status starts; the apology,
 record, ID and Check status show with zero status reads), `confirm-then-disconnect`
 (Disconnect, then a new Connect, after confirmation), `confirm-then-refresh-failure`
-(the page becomes visible after confirmation and the wallet refresh read throws)
-and `status-visible-refresh` (a visible wallet refresh during an in-flight check;
-polling continues to confirmation). Each declares one dispatch and one POST and
-asserts that status work caused no wallet call and no read outside the status
-paths, up to the point where a case deliberately disconnects, reconnects or
-refreshes. The browser test input hides the document after submission so the
+(the page becomes visible after confirmation and the wallet refresh read throws),
+`status-visible-refresh` (a visible wallet refresh during an in-flight check;
+polling continues to confirmation), `confirm-later-hash-reuse` (a later
+delegation elsewhere reports the inclusion block's hash at another transaction
+index, 5 slots and 5 heights on; only the pairwise hash rule fails),
+`confirm-tip-hash-reuse` (T1 = T2 is pinned and the inclusion block reports that
+tip's hash 5 slots and 5 heights lower, with consistent block content and
+confirmations; only the hash rule against T2 fails),
+`confirm-then-other-tab-pending` (after confirmation a second same-origin tab
+writes a well-formed pending record for another ID under the origin lock; the
+first tab shows that ID with its pending caption and message, hides the
+confirmation, and its Check status reads only that ID) and
+`confirm-then-second-operation` (A confirms with the account since delegated to
+another pool; a new Connect and review keep A confirmed; a deliberate second
+operation then signs a separately reviewed body, a literal that equals the
+accepted registered vector with only its TTL bytes changed for a fixed
+construction tip 300 slots later, and POSTs it; B shows as submitted with its
+own caption and never inherits A's confirmation). Each declares one dispatch
+and one POST, except `confirm-then-second-operation` (two), and asserts that
+status work caused no wallet call and no read outside the status paths, up to
+the point where a case deliberately disconnects, reconnects, refreshes or
+starts a second operation. The browser test input hides the document after submission so the
 wallet owner's visible-only refresh is idle while status work runs, except in
 `status-visible-refresh`, where every wallet enable must come from a visible
 refresh (the runner's focus event or an instrumented 30-second tick) with its
 seven wallet reads and no signature. Every other case answers status reads for
-its ID with 404. The per-run source hashes include `recovery-verifier.ts`.
+its ID with 404, as it does for the other tab's record and the second operation. The per-run source hashes include `recovery-verifier.ts`.
 
 Only browser test input supplies the visibility simulation. Production lifecycle,
 source, timers and guards are unchanged, and isolated context cleanup removes it.
@@ -263,11 +295,16 @@ point identity (`confirm-same-height-fork`), account reconciliation
 (`confirm-unreconciled-account`), the three-minute poll budget
 (`confirm-timeout`), pairwise historical identity (`confirm-later-fork`), the
 resumed-after-deadline apology (`confirm-resumed-after-deadline`) and the
-protected confirmed status (`confirm-then-disconnect`), each with
-`confirm-after-poll` as its passing neighbor. The recovery-verifier and
-coordination Node suites also carry mutation evidence for the per-event
-historical-point loop, the 16-transaction limit, the later-event row count and
-the resolution's lease identity. Controls run
+protected confirmed status (`confirm-then-disconnect`). Three more target the
+block-hash and active-ID rules: pairwise hash identity
+(`confirm-later-hash-reuse`), hash identity against T2
+(`confirm-tip-hash-reuse`) and the active ID (`confirm-then-other-tab-pending`,
+whose mutant restores the earlier local-ID precedence and same-ID confirmation
+gate). Each control has `confirm-after-poll` as its passing neighbor. The
+recovery-verifier and coordination Node suites also carry mutation evidence for
+the per-event historical-point loop, the 16-transaction limit, the later-event
+row count, the resolution's lease identity and each of the two hash-identity
+clauses (original/later and later/later pairs; inclusion against T2). Controls run
 only against a committed candidate, restore exact source/index, rebuild any
 served mutant, and rerun the full flow after each restoration. A failure must
 show its named forbidden effect; compiler failures and earlier vetoes are
