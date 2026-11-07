@@ -75,5 +75,238 @@
     "storage-final-replaced",
     "locks-unavailable",
     "same-account-postreply-focus"
-  ]
+  ],
+  "additionalCases": [
+    "missing-configuration"
+  ],
+  "expectedCounts": {
+    "registered": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "unregistered": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "cancel-approval": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "post-reply-deadline": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "post-reply-deadline-hidden": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "post-reply-timely-hidden": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "no-wallet": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "wrong-network": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "unsupported-account": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "provider-404": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "provider-error": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "contradictory-account": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "already-EASY1": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "cancel-review": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "disconnect-review": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "dispose-review": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "cloned-approval": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "double-approval": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "same-account-focus": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "account-change": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "network-change": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "input-change": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "registration-change": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "parameters-change": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "eligibility-change": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "partial-witness": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "foreign-witness": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "invalid-signature": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "storage-unavailable": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "storage-prepare-fail": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "storage-readback-fail": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "storage-final-loss": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "two-tab-lock": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "submit-bad-status": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "submit-missing-body": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "submit-malformed": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "submit-mismatch": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "submit-interrupted-body": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "submit-timeout": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "cancel-transmission": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "storage-after-transmission": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "presign-180": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "presign-179": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "presubmit-120": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "presubmit-119": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "long-consent": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "approved-origin": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "preview-origin": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "origin-recovery": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "isolated-context": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "cancel-postreply": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "disconnect-postreply": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "dispose-postreply": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "storage-final-replaced": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "locks-unavailable": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "same-account-postreply-focus": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "missing-configuration": {
+      "submitDispatches": 0,
+      "posts": 0
+    }
+  }
 }

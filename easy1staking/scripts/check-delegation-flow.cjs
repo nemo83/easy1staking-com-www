@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 "use strict";
-// Explicit CLI: node scripts/check-delegation-flow.cjs --evidence-dir /absolute/owned/temp --playwright /absolute/playwright --chromium /absolute/chrome [--preload /absolute/ssr-tripwire.cjs] [--cases first|all] [--case name] [--prepare-only yes]
+// Explicit CLI: node scripts/check-delegation-flow.cjs --evidence-dir /absolute/owned/temp --playwright /absolute/playwright --chromium /absolute/chrome [--preload /absolute/ssr-tripwire.cjs] (--cases first|all | --case registered-name) [--prepare-only yes]
 // Requires a caller-built actual application; starts Next directly, never installs or builds.
 const fs=require("node:fs"),path=require("node:path"),assert=require("node:assert/strict"),net=require("node:net");
 const {spawn,spawnSync}=require("node:child_process"),{once}=require("node:events"),crypto=require("node:crypto");
 const {loadDelegationSource}=require("./lib/load-delegation-source.cjs");
 const fixture=require("./fixtures/delegation-flow.json"),chain=require("./fixtures/chain-context.json"),vectors=require("./fixtures/stake-builder.json").vectors,keys=require("./fixtures/wallet-signature.json");
-const args=process.argv.slice(2),options={};while(args.length){const key=args.shift();assert(key.startsWith("--")&&args.length,"Expected --option value");options[key.slice(2)]=args.shift();}
+const args=process.argv.slice(2),options={};while(args.length){const key=args.shift();assert(key.startsWith("--")&&args.length,"Expected --option value");assert(["evidence-dir","playwright","chromium","preload","cases","case","prepare-only"].includes(key.slice(2)),"Unknown option "+key);assert(!Object.prototype.hasOwnProperty.call(options,key.slice(2)),"Repeated option "+key);options[key.slice(2)]=args.shift();}
+// Every registered case declares its exact page dispatches and intercepted POSTs; selectors are strict and checked before any build or browser.
+const registered=Object.keys(fixture.expectedCounts);assert.deepEqual([...registered].sort(),[...new Set([...fixture.allCases,...fixture.additionalCases])].sort(),"Every registered case declares counts");assert(fixture.firstCases.every(name=>fixture.allCases.includes(name)),"First cases are registered");
+for(const name of registered){const c=fixture.expectedCounts[name];assert.deepEqual(Object.keys(c).sort(),["posts","submitDispatches"],"Count declaration shape "+name);assert(Number.isSafeInteger(c.posts)&&Number.isSafeInteger(c.submitDispatches)&&c.posts>=0&&c.submitDispatches>=0,"Count declaration values "+name);}
+if(options["prepare-only"]!==undefined)assert.equal(options["prepare-only"],"yes","Expected --prepare-only yes");
+else if(options.case!==undefined){assert.equal(options.cases,undefined,"Use exactly one of --case or --cases");assert(registered.includes(options.case),"Unknown case "+options.case);}
+else assert(options.cases==="all"||options.cases==="first","Expected --cases all|first or one registered --case");
 assert.match(process.version,/^v24\.22\.1$/);for(const key of ["evidence-dir"])assert(options[key]&&path.isAbsolute(options[key]),"Expected absolute --"+key);
 const output=options["evidence-dir"],app=path.resolve(__dirname,".."),root=path.dirname(app),sha=b=>crypto.createHash("sha256").update(b).digest("hex");
 assert(output.startsWith(process.env.TMPDIR+path.sep),"Evidence must be in exclusively owned scratch");fs.mkdirSync(output,{recursive:true,mode:0o700});
@@ -58,7 +64,7 @@ async function main(){
   report.chromium={path:executable,sha256:sha(fs.readFileSync(executable))};browser=await chromium.launch({executablePath:executable,headless:true,env:{PATH:env.PATH,HOME:output,TMPDIR:process.env.TMPDIR},args:["--no-sandbox","--disable-background-networking","--disable-component-update","--no-first-run"]});report.chromium.version=browser.version();
   report.chromium.pids=descendants(process.pid).filter(pid=>pid!==server.pid&&!descendants(server.pid).includes(pid));
   for(const name of options.case?[options.case]:options.cases==="all"?fixture.allCases:fixture.firstCases){
-   const record={name,http:[],posts:[],signatures:[],tripwires:[],errors:[],routeHandlerErrors:[],chunkReadErrors:[],chunkReadsAbandonedAtClose:0};report.cases.push(record);
+   const record={name,http:[],posts:[],signatures:[],tripwires:[],errors:[],routeHandlerErrors:[],chunkReadErrors:[],chunkIdentityFailures:[],chunkReadsAbandonedAtClose:0};report.cases.push(record);const caseReads=[];
    // Route-handler page actions may race case teardown; record their failures instead of throwing.
    const routeStep=async step=>{try{await step();}catch(error){record.routeHandlerErrors.push(String(error?.message??error).split("\n")[0]);}};const s=scenario(name!=="unregistered"),golden=vectors.find(v=>v.registered===(name!=="unregistered"));
    if(name==="already-EASY1"){
@@ -83,6 +89,8 @@ async function main(){
      const NativeDate=Date,realStart=NativeDate.now();class ObservedDate extends NativeDate{constructor(...args){if(args.length)super(...args);else super(baseTime+NativeDate.now()-realStart+(window.synthetic?.clockDeltaMs||0));}static now(){return baseTime+NativeDate.now()-realStart+(window.synthetic?.clockDeltaMs||0);}}window.Date=ObservedDate;
      const state=window.synthetic={realStart,submitDispatches:0,enableCalls:0,signCalls:0,replyAt:null,signAt:null,mode,release:null,tripwires:[],postReadIndex:0,clockDeltaMs:0,network:mode==="wrong-network"?0:1,address:mode==="unsupported-account"?"61"+"aa".repeat(28):chain.addressHex,utxo:"82825820"+chain.fundingId+"00825839"+chain.addressHex+"1a05f5e100"};
      const nativeGet=Storage.prototype.getItem,nativeSet=Storage.prototype.setItem,nativeRemove=Storage.prototype.removeItem;let submittingReads=0;
+     // Page-level dispatches accumulate across navigations and reloads of this tab through native session storage.
+     try{state.submitDispatches=Number(nativeGet.call(sessionStorage,"synthetic:submitDispatches")||0);}catch{}
      if(mode==="locks-unavailable")Object.defineProperty(navigator,'locks',{value:undefined});
      if(mode==="same-account-postreply-focus"){const verify=crypto.subtle.verify.bind(crypto.subtle);crypto.subtle.verify=async(...args)=>{state.verifying=true;const result=await verify(...args);await new Promise(r=>setTimeout(r,300));return result;};}
      Storage.prototype.setItem=function(key,value){
@@ -98,7 +106,7 @@ async function main(){
       return value;
      };
      const deny=name=>(...args)=>{state.tripwires.push(name);throw Error("FORBIDDEN_"+name);};
-     const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const u=new URL(typeof input==="string"?input:input.url,location.href);if(u.origin==="https://cardano-mainnet.blockfrost.io"&&init?.method==="POST")state.submitDispatches++;if(u.origin===location.origin)return nativeFetch(input,init);if(u.origin!=="https://cardano-mainnet.blockfrost.io")return deny("unexpected-fetch")();if(init?.method==="POST"){state.attemptAt=performance.now();if(["storage-final-loss","storage-final-replaced"].includes(mode))state.retainedAtAttempt=nativeGet.call(localStorage,"easy1staking:delegation-recovery");}if(init?.credentials!=="omit"||init?.redirect!=="error"||init?.cache!=="no-store")return deny("transport-options")();return nativeFetch(input,init);};
+     const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const u=new URL(typeof input==="string"?input:input.url,location.href);if(u.origin==="https://cardano-mainnet.blockfrost.io"&&init?.method==="POST"){state.submitDispatches++;try{nativeSet.call(sessionStorage,"synthetic:submitDispatches",String(state.submitDispatches));}catch{}}if(u.origin===location.origin)return nativeFetch(input,init);if(u.origin!=="https://cardano-mainnet.blockfrost.io")return deny("unexpected-fetch")();if(init?.method==="POST"){state.attemptAt=performance.now();if(["storage-final-loss","storage-final-replaced"].includes(mode))state.retainedAtAttempt=nativeGet.call(localStorage,"easy1staking:delegation-recovery");}if(init?.credentials!=="omit"||init?.redirect!=="error"||init?.cache!=="no-store")return deny("transport-options")();return nativeFetch(input,init);};
      window.XMLHttpRequest=function(){return deny("xhr")();};window.WebSocket=function(){return deny("socket")();};window.EventSource=function(){return deny("events")();};navigator.sendBeacon=deny("beacon");window.gtag=deny("analytics");
      navigator.storage.persist=deny("persist-prompt");
      // Responding tripwire controls are exercised without outward I/O.
@@ -147,8 +155,8 @@ async function main(){
      return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(value),headers:{"access-control-allow-origin":"*"}});
     });
     page=await context.newPage();page.on("pageerror",e=>record.errors.push(String(e)));
-    // Each served-chunk read is handled when created: a failed read while active is recorded, one cut off by teardown is counted.
-    onResponse=response=>{const u=new URL(response.url());if(u.pathname.startsWith("/_next/static/")&&u.pathname.endsWith(".js")){const read=response.body().then(bytes=>{const file=path.join(app,".next",u.pathname.replace("/_next/",""));assert.equal(sha(bytes),sha(fs.readFileSync(file)),"SERVED_CHUNK_IDENTITY");report.chunks.push({path:u.pathname,sha256:sha(bytes),bytes:bytes.length});},error=>{if(closing)record.chunkReadsAbandonedAtClose++;else record.chunkReadErrors.push(failureText(error));});read.catch(()=>{});pending.push(read);}};page.on("response",onResponse);
+    // Each served-chunk read is handled when created and settled in this case's finally: a mismatch or failed read while active disqualifies the case; one cut off by teardown is counted.
+    onResponse=response=>{const u=new URL(response.url());if(u.pathname.startsWith("/_next/static/")&&u.pathname.endsWith(".js")){const read=response.body().then(bytes=>{try{const file=path.join(app,".next",u.pathname.replace("/_next/","")),actual=sha(bytes),expected=sha(fs.readFileSync(file));report.chunks.push({path:u.pathname,sha256:actual,bytes:bytes.length});if(actual!==expected)record.chunkIdentityFailures.push({kind:"mismatch",path:u.pathname,actual,expected});}catch(error){record.chunkIdentityFailures.push({kind:"identity-error",path:u.pathname,failure:failureText(error)});}},error=>{if(closing)record.chunkReadsAbandonedAtClose++;else{record.chunkReadErrors.push(failureText(error));record.chunkIdentityFailures.push({kind:"read-error",path:u.pathname,failure:failureText(error)});}});read.catch(()=>{});caseReads.push(read);pending.push(read);}};page.on("response",onResponse);
     await page.goto(pageOrigin+"/pool?uri=https%3A%2F%2Finvalid.example");await page.locator('#delegate [role="status"]').waitFor();
     await page.getByLabel("Wallet",{exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.synthetic.enableCalls),0,"NO_AUTO_ENABLE");assert.equal(await page.evaluate(()=>window.synthetic.control),"beacon","TRIPWIRE_RESPONDS");assert.deepEqual(await page.evaluate(()=>window.synthetic.controls),['unexpected-fetch','xhr','socket','events','beacon','signData','wallet-submit','persist-prompt','analytics'],'ALL_TRIPWIRES_RESPOND');
     assert(await page.getByText("On mobile, open this exact page",{exact:false}).isVisible());if(pageOrigin===origin)assert.equal(await page.locator('a[href^="web+cardano:"]').count(),0,"LOCAL_ORIGIN_NO_HOP");
@@ -224,16 +232,20 @@ async function main(){
     }
     record.passed=true;console.log("PASS actual /pool "+name);
    }catch(error){primary=error;record.failure=failureText(error);throw error;}finally{
+    // Settle this case's served-chunk identity reads before any verdict; an unsettled read also disqualifies.
+    if(!await Promise.race([Promise.allSettled(caseReads).then(()=>true),new Promise(r=>setTimeout(()=>r(false),10000))]))record.chunkIdentityFailures.push({kind:"unsettled",reads:caseReads.length});
     if(page&&!page.isClosed()){try{record.terminal=await page.evaluate(()=>({text:document.querySelector('#delegate')?.textContent||document.body.textContent,submitDispatches:window.synthetic?.submitDispatches??null,signCalls:window.synthetic?.signCalls,tripwires:window.synthetic?.tripwires,replyAt:window.synthetic?.replyAt??null,attemptAt:window.synthetic?.attemptAt??null,enableCalls:window.synthetic?.enableCalls??null,visibility:document?.visibilityState??null,visibilityTransition:window.synthetic?.visibilityTransition??null,faultAt:window.synthetic?.faultAt??null,faultKind:window.synthetic?.faultKind??null,retainedAtAttempt:window.synthetic?.retainedAtAttempt??null}));}catch{}}
     report.chromium.pids=[...new Set([...report.chromium.pids,...descendants(process.pid).filter(pid=>pid!==server.pid&&!descendants(server.pid).includes(pid))])];
     const later=[],check=fn=>{try{fn();}catch(error){later.push(error);}};
-    check(()=>assert(record.posts.length<=1,"ONE_POST_AT_CLOSE"));
-    if(page&&!page.isClosed())check(()=>assert(!(record.terminal?.submitDispatches>1),"ONE_DISPATCH_AT_CLOSE"));
+    // Exact declared counts: page dispatches accumulate across this tab's navigations/reloads; intercepted POSTs across the whole context.
+    const expected=fixture.expectedCounts[name];record.counts={expected,actual:{submitDispatches:record.terminal?.submitDispatches??null,posts:null}};
+    check(()=>assert.equal(record.counts.actual.submitDispatches,expected.submitDispatches,"EXACT_DISPATCH_COUNT "+name));
     // Teardown begins: later chunk-read failures are abandoned at close, not case failures.
     closing=true;if(page&&onResponse)page.off("response",onResponse);
     // Unrouted requests must not reach the network before the context closes.
     await context.setOffline(true);await context.unrouteAll({behavior:"ignoreErrors"});
     await context.close();
+    record.counts.actual.posts=record.posts.length;check(()=>assert.equal(record.counts.actual.posts,expected.posts,"EXACT_POST_COUNT "+name));
     check(()=>assert.deepEqual(record.routeHandlerErrors,[],"NO_ROUTE_HANDLER_ERRORS"));
     check(()=>assert.deepEqual(record.chunkReadErrors,[],"NO_CHUNK_READ_ERRORS"));
     check(()=>assert.deepEqual(record.errors,[],"NO_PAGE_ERRORS "+name));
@@ -241,7 +253,10 @@ async function main(){
     // A case's first failure is its verdict; later cleanup failures never replace it.
     if(!primary&&later.length){record.passed=false;record.failure=failureText(later[0]);}
     if(later.length>(primary?0:1))record.secondaryFailures=later.slice(primary?0:1).map(failureText);
+    // Chunk identity is recorded separately; it disqualifies the case (and any control run on it) without replacing a primary failure.
+    const disqualified=record.chunkIdentityFailures.length>0;if(disqualified){record.passed=false;record.disqualified="SERVED_CHUNK_IDENTITY";if(!primary&&!later.length)record.failure="SERVED_CHUNK_IDENTITY_DISQUALIFIED";}
     if(!primary&&later.length)throw later[0];
+    if(!primary&&disqualified)throw Error("SERVED_CHUNK_IDENTITY_DISQUALIFIED "+name);
    }
   }
   await Promise.all(pending);assert.deepEqual(report.unexpected,[]);report.passed=true;
