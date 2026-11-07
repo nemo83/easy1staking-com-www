@@ -8,12 +8,13 @@ Only its original display object can authorize approval. No voting action is
 available. The legacy combined staking/voting helper has been removed.
 
 This is a local candidate. Public activation still requires the remaining
-recovery, mobile, operator and release gates. The current page can retain and
-show Submitted or Unknown with a known ID; it cannot confirm, clear an unresolved
-record or retry. Submitted means that the provider returned the matching ID,
-not chain confirmation. Use the originating browser and an independent wallet
-or explorer to check an unresolved operation. Do not delete recovery storage to
-make a new attempt.
+recovery, mobile, operator and release gates. The page retains and shows
+Submitted or Unknown with a known ID, then checks chain status read-only and
+confirms the delegation when every check agrees. It cannot yet clear an
+unconfirmed record or retry. Submitted means that the provider returned the
+matching ID, not chain confirmation. Use the originating browser and an
+independent wallet or explorer to check an unresolved operation. Do not delete
+recovery storage to make a new attempt.
 
 ## Ownership and submission
 
@@ -52,6 +53,55 @@ origin. They do not provide crash-durable exactly-once behavior, atomic wallet o
 provider observations, or coordination across apps, deployments, profiles and
 devices. Consistently lagged indexes and undetectable loss across restart remain
 limitations. Source/guard resource and supported-key-account limits still apply.
+
+## Status and confirmation
+
+After the first attempt returns Submitted or Unknown and the new-operation lock
+is released, the page checks Blockfrost by transaction hash right away and then
+about every 10 seconds. The budget is 180 seconds measured from the outward
+dispatch time that the final barrier recorded, not from when polling started;
+at that deadline an in-flight check is aborted and its result revoked. Status
+work has its own cancellation and generation authority: disconnecting the wallet
+does not stop it, while leaving the page does, and a late completion has no
+effect. Checks are serialized and each takes the recovery lock only if it is
+free; a busy lock skips that tick.
+
+One check is one bounded read session (10 seconds per read, 30 seconds in
+total) in a fixed order: latest block (T1), transaction content, the exact
+on-chain transaction bytes, the certificate rows they imply, the inclusion
+block, the account view with its complete delegation and registration
+histories, every later or same-block event for that stake credential, and the
+latest block again (T2). The transaction must have the recorded ID, TTL and
+inputs, a body that hashes to the ID, and only the stake-only certificate shapes
+`[2]`, `[7, 2]` or `[11]` for one key credential and EASY1, with a matching
+deposit. The stake credential comes only from those bytes. Live tips keep the
+existing freshness and progress checks; the inclusion block and later events are
+historical points with their own coherence check against T2, so an old or
+prior-epoch inclusion is legitimate. The account view must equal the effect of
+the last reconstructed certificate, so a later delegation elsewhere or a later
+deregistration is shown as information only when a verified certificate
+explains it. The check never enables or calls the wallet, builds, signs or posts.
+
+Outcomes are confirmed, not-found, pending (newer than T1 or an index still
+catching up), inconsistent (a positive contradiction) and unavailable (provider
+error, timeout or limit), each with a machine reason code; the page's private
+view keeps the last one (for example `inconsistent:BODY_ID`) and never renders
+provider payloads. Only a confirmed check obtains a single-use resolution
+from the coordinator's one issuer; it binds the exact record, recovery lease,
+status generation, observed T2 and a deadline, and it is checked synchronously
+immediately before the record is removed. A 404, timeout, provider error,
+contradiction or lagged index never removes the record, and there is no
+time-based removal. A confirmation is shown as a historical fact for the
+transaction's own stake credential, with its current state, never attributed to
+a different connected wallet.
+
+When the budget ends without confirmation the page apologises, keeps the record
+and the ID and offers Check status. An inconsistent result stops polling and
+clears nothing. If another tab of this browser changes or removes the saved
+record, status work stops and keeps the ID; the changed record is never healed.
+After a reload there is no automatic poll; Check status runs one bounded check.
+A confirmation at one block can still be rolled back; the record is removed at
+the first coherent confirmation and the ID stays visible.
 
 ## Mobile entry
 
@@ -128,7 +178,31 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 56 cases and `--cases first` executes six.
+`--cases all` now executes 70 cases and `--cases first` executes six. Selectors
+are strict: `--case` must name one registered case (the 70 plus
+`missing-configuration`) and `--cases` must be `all` or `first`; anything else
+exits before a server or browser starts.
+
+Every registered case declares its exact page dispatches and intercepted POSTs
+in the fixture: 0 for veto and refusal cases, 1 for single-attempt cases. Page
+dispatches accumulate across the tab's navigations and reloads; both counts are
+asserted on success and recorded on failure. Served-chunk identity reads are
+settled in each case before its verdict; a mismatch or failed read while the
+case is active disqualifies the case, and any control run on it, without
+replacing its primary failure.
+
+Fourteen status cases follow an identical registered submission:
+`confirm-after-poll`, `confirm-new-inclusion`, `confirm-index-lag`,
+`confirm-unknown-outcome` (deadline measured from dispatch), `confirm-timeout`
+(observed 185 seconds after dispatch), `confirm-wrong-body`,
+`confirm-same-height-fork`, `confirm-unreconciled-account`,
+`confirm-later-other-pool`, `confirm-different-wallet`, `status-cross-tab`,
+`status-disconnect`, `status-dispose` and `check-status-after-reload` (a wallet
+whose every method throws). Each declares one dispatch and one POST and asserts
+that status work caused no wallet call and no read outside the status paths. The
+browser test input hides the document after submission so the wallet owner's
+visible-only refresh is idle while status work runs. Every other case answers
+status reads for its ID with 404.
 
 Only browser test input supplies the visibility simulation. Production lifecycle,
 source, timers and guards are unchanged, and isolated context cleanup removes it.
@@ -142,15 +216,21 @@ public test data. Scripts/fixtures and private evidence remain outside exported
 product source under the existing release exporter.
 
 Run the existing chain-context, wallet-signature, wallet-session, stake-builder,
-stake-guard and pool-facts suites, native signature/coordination suites, installed
+stake-guard and pool-facts suites, the recovery-verifier suite
+(`scripts/check-recovery-verifier.cjs`, every outcome, reason code and
+resolution refusal), native signature/coordination suites, installed
 security/compatibility checks, build/lint, raw production/full audits and source
 export checks. Record actual executed/skipped counts and raw audit responses.
 Current registry output is a point-in-time witness; it does not erase the
 historical moderate tooling disposition in `tooling-advisories.json`.
 
-Required bounded controls target six new controller seams: display-approval
+Required bounded controls target six controller seams: display-approval
 identity, authentic total deadline, post-sign source eligibility, retained
-lease/intent, duplicate dispatch, and Unknown ID display retention. Controls run
+lease/intent, duplicate dispatch, and Unknown ID display retention. Four more
+target status confirmation: body binding (`confirm-wrong-body`), historical
+point identity (`confirm-same-height-fork`), account reconciliation
+(`confirm-unreconciled-account`) and the three-minute poll budget
+(`confirm-timeout`), each with `confirm-after-poll` as its passing neighbor. Controls run
 only against a committed candidate, restore exact source/index, rebuild any
 served mutant, and rerun the full flow after each restoration. A failure must
 show its named forbidden effect; compiler failures and earlier vetoes are

@@ -5,6 +5,8 @@ import { assessChainContext } from "./chain-context";
 import type { ChainAssessment } from "./chain-context";
 import { MAINNET_SOURCE } from "./blockfrost-reader";
 import { assembleSignedTransaction, validateBeforeSigning } from "./guard";
+import { createRecoveryVerifier } from "./recovery-verifier";
+import type { AccountState, StatusOutcome } from "./recovery-verifier";
 import type { AcceptedTransaction, Review } from "./types";
 
 const clock = Date.now, invoke = Reflect.apply;
@@ -16,8 +18,16 @@ export interface DelegationReview {
   readonly deposit: string;
   readonly expiresAt: number;
 }
+/** Historical chain fact for the original credential A, never attributed to a currently connected wallet. */
+export interface DelegationConfirmation {
+  readonly blockHeight: string;
+  readonly confirmations: string;
+  readonly credential: string;
+  readonly account: AccountState;
+}
 export interface DelegationView {
-  readonly phase: "disconnected" | "connecting" | "assessing" | "ready" | "building" | "review" | "signing" | "checking" | "submitting" | "submitted" | "unknown" | "already-EASY1" | "refused";
+  readonly phase: "disconnected" | "connecting" | "assessing" | "ready" | "building" | "review" | "signing" | "checking" | "submitting" | "submitted" | "unknown" | "already-EASY1" | "refused" |
+    "confirmed" | "check-later" | "inconsistent" | "changed";
   readonly message: string;
   readonly walletId: string | null;
   readonly account: string | null;
@@ -25,6 +35,12 @@ export interface DelegationView {
   readonly txId: string | null;
   readonly recovery: RecoveryState;
   readonly walletBrowseHref: string | null;
+  readonly statusRunning: boolean;
+  readonly statusUntil: number | null;
+  readonly canCheckStatus: boolean;
+  /** Machine outcome and reason code of the last completed status check, for example "inconsistent:BODY_ID". */
+  readonly statusReason: string | null;
+  readonly confirmation: DelegationConfirmation | null;
 }
 class FlowFailure extends Error {}
 interface Operation {
@@ -33,14 +49,27 @@ interface Operation {
   approval: { view: DelegationReview; decide: (approved: boolean) => void } | null;
   attempted: boolean;
   txId: string | null;
+  dispatchedAt: number | null;
 }
+/** Status work has its own cancellation and generation authority, separate from cancel(). */
+interface StatusWork {
+  readonly abort: AbortController;
+  readonly generation: number;
+  readonly txId: string;
+  readonly deadline: number | null;
+  expired: boolean;
+  resolved: Extract<StatusOutcome, { status: "confirmed" }> | null;
+}
+type StatusStep = { readonly kind: "confirmed"; readonly outcome: Extract<StatusOutcome, { status: "confirmed" }> } | { readonly kind: "continue" | "busy" | "inconsistent" | "changed" };
+const APOLOGY = "Sorry, we couldn't confirm your delegation yet. Confirmation usually takes about 20 seconds but can take longer. Please check again here in a few minutes, or check later in your wallet.";
 /** The page receives display data and deliberate actions; handles, reviews and bytes stay private. */
 export function createDelegationController(projectId: string) {
   const post = window.fetch, owner = createWalletSession(id => {
     try { return (window as unknown as { cardano?: Record<string, unknown> }).cardano?.[id]; } catch { return null; }
-  }), coordinator = createDelegationCoordinator();
+  }), coordinator = createDelegationCoordinator(), verifier = createRecoveryVerifier(projectId, coordinator);
   const listeners = new Set<() => void>();
   let disposed = false, serial = 0, operation: Operation | null = null, coordinationReady = false;
+  let status: StatusWork | null = null, confirmation: DelegationConfirmation | null = null, statusReason: string | null = null;
   let phase: DelegationView["phase"] = "disconnected", message = "Choose a wallet to connect.", review: DelegationReview | null = null;
   let txId: string | null = null;
   const fail = (): never => { throw new FlowFailure(); };
@@ -52,7 +81,9 @@ export function createDelegationController(projectId: string) {
       (origin === "https://easy1staking.com" || origin === "https://preview.easy1staking.com");
     return Object.freeze({ phase, message, walletId: state.walletId, account: state.observation?.binding.stakeKeyHash ?? null,
       review, txId: txId ?? prior.txId, recovery: prior,
-      walletBrowseHref: browse ? "web+cardano://browse/v1?uri=" + encodeURIComponent(origin + "/pool") : null });
+      walletBrowseHref: browse ? "web+cardano://browse/v1?uri=" + encodeURIComponent(origin + "/pool") : null,
+      statusRunning: status !== null, statusUntil: status?.deadline ?? null, confirmation, statusReason,
+      canCheckStatus: !disposed && !status && !operation && prior.status === "pending" && prior.record !== null });
   }
   function emit(): void { if (!disposed) for (const listener of listeners) { try { listener(); } catch { /* Display only. */ } } }
   function show(next: DelegationView["phase"], text: string): void { phase = next; message = text; emit(); }
@@ -116,7 +147,7 @@ export function createDelegationController(projectId: string) {
     return ready(await source(op, previous));
   }
   function finalBarrier(op: Operation, lease: DelegationLease, intent: DelegationIntent, result: Ready, original: Ready,
-    issued: Review, signed: AcceptedTransaction, bytes: Uint8Array, deadlineAt: number): void {
+    issued: Review, signed: AcceptedTransaction, bytes: Uint8Array, deadlineAt: number): number {
     coordinator.assertAttempt(lease, intent);
     current(op);
     const state = observed(op), c = result.context, time = clock();
@@ -134,6 +165,7 @@ export function createDelegationController(projectId: string) {
     if (signed.txId !== issued.txId || !signed.signedHex.startsWith("84" + issued.bodyHex) ||
       bytes.length * 2 !== signed.signedHex.length || signed.signedHex !== Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("")) fail();
     current(op); // No display/provider callbacks or property lookup follows this barrier.
+    return time;
   }
   async function submit(op: Operation, lease: DelegationLease, issued: Review, result: Ready, original: Ready,
     signed: AcceptedTransaction, deadlineAt: number): Promise<void> {
@@ -154,7 +186,7 @@ export function createDelegationController(projectId: string) {
       });
       // A veto may precede the first race; cleanup can still abort this promise.
       void expired.catch(() => {});
-      finalBarrier(op, lease, intent, result, original, issued, signed, bytes, deadlineAt);
+      op.dispatchedAt = finalBarrier(op, lease, intent, result, original, issued, signed, bytes, deadlineAt);
       op.txId = issued.txId; op.attempted = true; attempted = true;
       const responsePromise = invoke(post, window, [MAINNET_SOURCE + "/tx/submit", options]) as Promise<Response>;
       const response = await Promise.race([responsePromise, expired]);
@@ -185,7 +217,7 @@ export function createDelegationController(projectId: string) {
   }
   async function prepare(): Promise<void> {
     if (disposed || operation || phase !== "ready") return;
-    const op: Operation = { abort: new AbortController(), revision: owner.getState().revision, approval: null, attempted: false, txId: null };
+    const op: Operation = { abort: new AbortController(), revision: owner.getState().revision, approval: null, attempted: false, txId: null, dispatchedAt: null };
     operation = op; review = null;
     try {
       await coordinator.withNewOperation(async lease => {
@@ -224,6 +256,67 @@ export function createDelegationController(projectId: string) {
         error instanceof CoordinationError && error.code === "CANCELLED" ? "Delegation stopped before sending. The operation was cancelled or the wallet changed. Reconnect to assess again." :
         "Browser coordination or the operation is unavailable. Check any prior operation from its originating browser.");
     } finally { if (operation === op) operation = null; review = null; emit(); }
+    // The new-operation lock is released: poll for at most three minutes after dispatch.
+    if (op.attempted && op.txId !== null && op.dispatchedAt !== null) startStatus(op.txId, op.dispatchedAt + 180000);
+  }
+  function live(work: StatusWork): boolean { return !disposed && status === work; }
+  function startStatus(id: string, deadline: number | null): void {
+    if (disposed || status || operation || (deadline !== null && clock() >= deadline)) return;
+    const prior = recovery(); if (prior.status !== "pending" || prior.txId !== id) return;
+    let generation: number; try { generation = coordinator.beginStatus(); } catch { return; }
+    const work: StatusWork = { abort: new AbortController(), generation, txId: id, deadline, expired: false, resolved: null };
+    status = work; confirmation = null; emit();
+    void runStatus(work);
+  }
+  /** One bounded read session under the recovery lock; it never enables or calls the wallet, builds, signs or posts. */
+  async function statusCheck(work: StatusWork): Promise<StatusStep> {
+    let outcome: StatusOutcome;
+    try {
+      outcome = await coordinator.withRecoveryOperation(work.txId, async lease => {
+        const result = await verifier.check(lease, { generation: work.generation, deadline: work.deadline, signal: work.abort.signal });
+        if (live(work)) statusReason = result.status + ":" + result.reason;
+        if (result.status === "confirmed" && live(work)) { coordinator.resolveConfirmed(lease, result.resolution); work.resolved = result; }
+        return result;
+      }, { signal: work.abort.signal });
+    } catch (error) {
+      if (work.resolved) return { kind: "confirmed", outcome: work.resolved };
+      const code = error instanceof CoordinationError ? error.code : "OPERATION";
+      return { kind: code === "BUSY" ? "busy" : code === "LOST" || code === "PENDING" || code === "RECORD" ? "changed" : "continue" };
+    }
+    if (work.resolved) return { kind: "confirmed", outcome: work.resolved };
+    return { kind: outcome.status === "inconsistent" ? "inconsistent" : "continue" };
+  }
+  async function runStatus(work: StatusWork): Promise<void> {
+    let step: StatusStep = { kind: "continue" }, timer: ReturnType<typeof setTimeout> | undefined;
+    // The automatic budget expires at its absolute deadline: abort the in-flight check and revoke its resolution.
+    if (work.deadline !== null) timer = setTimeout(() => { work.expired = true; work.abort.abort(); coordinator.endStatus(work.generation); }, Math.max(0, work.deadline - clock()));
+    try {
+      if (work.deadline === null) step = await statusCheck(work);
+      else while (live(work) && !work.expired && clock() < work.deadline) {
+        const started = clock();
+        step = await statusCheck(work);
+        if (step.kind !== "continue" && step.kind !== "busy") break;
+        const wait = Math.min(started + 10000, work.deadline) - clock();
+        if (wait > 0) await new Promise<void>(resolve => {
+          const pause = setTimeout(resolve, wait);
+          work.abort.signal.addEventListener("abort", () => { clearTimeout(pause); resolve(); }, { once: true });
+        });
+      }
+    } finally { if (timer !== undefined) clearTimeout(timer); }
+    if (!live(work)) return;
+    status = null; coordinator.endStatus(work.generation); txId = work.txId;
+    if (step.kind === "confirmed") {
+      const o = step.outcome;
+      confirmation = Object.freeze({ blockHeight: o.blockHeight, confirmations: o.confirmations, credential: o.credential, account: o.account });
+      show("confirmed", `Your delegation transaction was confirmed on chain in block ${o.blockHeight} (${o.confirmations} confirmation${o.confirmations === "1" ? "" : "s"}).`);
+    } else if (step.kind === "inconsistent") show("inconsistent", "We found this transaction but couldn't verify it consistently. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.");
+    else if (step.kind === "changed") show("changed", "This operation's saved status changed in another tab of this browser. Keep the transaction ID and check it in your wallet or a chain explorer.");
+    else show("check-later", APOLOGY);
+  }
+  /** One deliberate bounded check, also after a reload; there is no automatic poll on reload. */
+  async function checkStatus(): Promise<void> {
+    const prior = recovery();
+    if (prior.status === "pending" && prior.txId) startStatus(prior.txId, null);
   }
   function approve(display: DelegationReview): void {
     const op = operation;
@@ -231,7 +324,10 @@ export function createDelegationController(projectId: string) {
     const decision = op.approval; op.approval = null; phase = "checking"; decision.decide(true);
   }
   function disconnect(): void { cancel(); owner.disconnect(); review = null; if (!txId) show("disconnected", "Choose a wallet to connect."); }
-  function dispose(): void { if (disposed) return; cancel(); disposed = true; window.removeEventListener("storage", onStorage); owner.dispose(); coordinator.dispose(); listeners.clear(); }
-  return Object.freeze({ getView: view, connect, prepare, approve, cancel, disconnect, dispose,
+  function dispose(): void {
+    if (disposed) return; cancel(); disposed = true; status?.abort.abort(); status = null;
+    window.removeEventListener("storage", onStorage); owner.dispose(); coordinator.dispose(); listeners.clear();
+  }
+  return Object.freeze({ getView: view, connect, prepare, approve, cancel, disconnect, dispose, checkStatus,
     subscribe(listener: () => void): () => void { listeners.add(listener); return () => { listeners.delete(listener); }; } });
 }

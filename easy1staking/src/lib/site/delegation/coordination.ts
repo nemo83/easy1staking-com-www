@@ -20,7 +20,7 @@ export interface RecoveryState {
   readonly record: RecoveryRecord | null;
   readonly persisted: boolean | null;
 }
-export type CoordinationCode = "UNAVAILABLE" | "BUSY" | "PENDING" | "LOST" | "RECORD" | "LEASE" | "INTENT" | "CANCELLED" | "OPERATION";
+export type CoordinationCode = "UNAVAILABLE" | "BUSY" | "PENDING" | "LOST" | "RECORD" | "LEASE" | "INTENT" | "RESOLUTION" | "CANCELLED" | "OPERATION";
 const messages: Record<CoordinationCode, string> = {
   UNAVAILABLE: "Browser coordination is unavailable. Use your wallet directly.",
   BUSY: "Another delegation operation is active in this browser.",
@@ -29,6 +29,7 @@ const messages: Record<CoordinationCode, string> = {
   RECORD: "The recovery record is unsupported or invalid.",
   LEASE: "This delegation operation is no longer active.",
   INTENT: "This intent cannot authorize the requested operation.",
+  RESOLUTION: "This status result cannot resolve the recovery record.",
   CANCELLED: "This delegation operation was cancelled.",
   OPERATION: "The delegation operation could not complete.",
 };
@@ -77,17 +78,29 @@ export function parseRecoveryRecord(raw: unknown): RecoveryRecord {
 
 declare const leaseBrand: unique symbol;
 declare const intentBrand: unique symbol;
+declare const resolutionBrand: unique symbol;
 export interface DelegationLease { readonly [leaseBrand]: true }
 export interface DelegationIntent { readonly [intentBrand]: true }
+export interface DelegationResolution { readonly [resolutionBrand]: true }
+/** What a confirmed status check binds: the exact record, status generation, observed T2 and issuer deadline. */
+export interface ResolutionClaim {
+  readonly kind: "confirmed";
+  readonly record: string;
+  readonly generation: number;
+  readonly point: { readonly slot: string; readonly hash: string; readonly height: string };
+  readonly deadline: number;
+}
+export type ResolutionIssuer = (lease: DelegationLease, claim: ResolutionClaim) => DelegationResolution;
 export interface IntentDetails {
   readonly txId: string;
   readonly invalidHereafterSlot: string;
   readonly inputRefs: readonly string[];
   readonly createdAt: number;
 }
-interface LeaseState { active: boolean; mode: "new" | "recovery" }
+interface LeaseState { active: boolean; mode: "new" | "recovery"; txId: string | null }
 interface Candidate { record: RecoveryRecord; attempted: boolean }
 interface IntentState { lease: DelegationLease; candidate: Candidate }
+interface ResolutionState { lease: DelegationLease; kind: "confirmed"; record: string; generation: number; point: ResolutionClaim["point"]; deadline: number; consumed: boolean }
 export interface DelegationCoordinator {
   getState(): RecoveryState;
   withNewOperation<T>(callback: (lease: DelegationLease) => Promise<T>, options?: { signal?: AbortSignal }): Promise<T>;
@@ -99,13 +112,19 @@ export interface DelegationCoordinator {
   beginAttempt(lease: DelegationLease, intent: DelegationIntent): RecoveryRecord;
   markOutcome(lease: DelegationLease, intent: DelegationIntent, stage: "submitted" | "unknown"): RecoveryRecord;
   cancelUnattempted(lease: DelegationLease, intent: DelegationIntent): void;
+  recoveryRecord(lease: DelegationLease): RecoveryRecord;
+  beginStatus(): number;
+  endStatus(generation: number): void;
+  resolutionIssuer(): ResolutionIssuer;
+  resolveConfirmed(lease: DelegationLease, resolution: DelegationResolution): void;
   dispose(): void;
 }
 
 export function createDelegationCoordinator(): DelegationCoordinator {
   let disposed = false, known: RecoveryRecord | null = null, lost = false, invalid = false, unavailable = false;
-  let persisted: boolean | null = null, candidate: Candidate | null = null;
+  let persisted: boolean | null = null, candidate: Candidate | null = null, statusGeneration = 0, issuerTaken = false;
   const leases = new WeakMap<DelegationLease, LeaseState>(), intents = new WeakMap<DelegationIntent, IntentState>();
+  const resolutions = new WeakMap<DelegationResolution, ResolutionState>();
   const cancellations = new Set<() => void>();
   function storage(): Storage {
     try { return window.localStorage; } catch { throw new CoordinationError("UNAVAILABLE"); }
@@ -154,6 +173,11 @@ export function createDelegationCoordinator(): DelegationCoordinator {
   function active(lease: DelegationLease): LeaseState {
     const state = leases.get(lease);
     insist(!disposed && state?.active, "LEASE");
+    return state;
+  }
+  function recovering(lease: DelegationLease): LeaseState {
+    const state = active(lease);
+    insist(state.mode === "recovery" && hexId(state.txId), "LEASE");
     return state;
   }
   function matching(lease: DelegationLease, intent: DelegationIntent): Candidate {
@@ -214,7 +238,7 @@ export function createDelegationCoordinator(): DelegationCoordinator {
         insist(lock, "BUSY"); insist(!cancelled && !disposed, "CANCELLED");
         entered = true;
         lease = Object.freeze({}) as DelegationLease;
-        const currentLease = lease, state: LeaseState = { active: true, mode };
+        const currentLease = lease, state: LeaseState = { active: true, mode, txId };
         leases.set(currentLease, state);
         const work = async () => {
           probeStorage();
@@ -293,9 +317,47 @@ export function createDelegationCoordinator(): DelegationCoordinator {
       } catch { lost = true; unavailable = true; throw new CoordinationError("UNAVAILABLE"); }
       candidate = null; known = null;
     },
+    recoveryRecord(lease: DelegationLease): RecoveryRecord {
+      const state = recovering(lease), record = read();
+      insist(record && record.txId === state.txId, "LOST");
+      return record;
+    },
+    beginStatus(): number { insist(!disposed, "CANCELLED"); return ++statusGeneration; },
+    endStatus(generation: number): void { if (generation === statusGeneration) statusGeneration++; },
+    /** Handed out once; the recovery verifier takes it at construction, so no other caller can mint a resolution. */
+    resolutionIssuer(): ResolutionIssuer {
+      insist(!disposed && !issuerTaken, "OPERATION");
+      issuerTaken = true;
+      return Object.freeze((lease: DelegationLease, claim: ResolutionClaim): DelegationResolution => {
+        const state = recovering(lease);
+        insist(claim !== null && typeof claim === "object" && claim.kind === "confirmed" && claim.generation === statusGeneration &&
+          typeof claim.deadline === "number" && Number.isFinite(claim.deadline) && Date.now() < claim.deadline &&
+          typeof claim.point?.slot === "string" && typeof claim.point.hash === "string" && typeof claim.point.height === "string", "RESOLUTION");
+        const record = read();
+        insist(record && record.txId === state.txId && JSON.stringify(record) === claim.record, "RESOLUTION");
+        const token = Object.freeze({}) as DelegationResolution;
+        resolutions.set(token, { lease, kind: "confirmed", record: claim.record, generation: claim.generation,
+          point: Object.freeze({ slot: claim.point.slot, hash: claim.point.hash, height: claim.point.height }), deadline: claim.deadline, consumed: false });
+        return token;
+      });
+    },
+    resolveConfirmed(lease: DelegationLease, resolution: DelegationResolution): void {
+      const state = recovering(lease);
+      const issued = resolution !== null && typeof resolution === "object" ? resolutions.get(resolution) : undefined;
+      insist(issued && !issued.consumed && issued.lease === lease && issued.kind === "confirmed" && issued.generation === statusGeneration, "RESOLUTION");
+      const record = read();
+      insist(record && record.txId === state.txId && JSON.stringify(record) === issued.record, "RESOLUTION");
+      insist(Date.now() < issued.deadline, "RESOLUTION"); // Checked immediately before removal.
+      issued.consumed = true;
+      try {
+        const store = storage(); store.removeItem(DELEGATION_RECORD_KEY);
+        insist(store.getItem(DELEGATION_RECORD_KEY) === null, "UNAVAILABLE");
+      } catch { lost = true; unavailable = true; throw new CoordinationError("UNAVAILABLE"); }
+      candidate = null; known = null; statusGeneration++;
+    },
     dispose(): void {
       if (disposed) return;
-      disposed = true;
+      disposed = true; statusGeneration++;
       window.removeEventListener("storage", onStorage);
       for (const cancel of cancellations) cancel();
     },

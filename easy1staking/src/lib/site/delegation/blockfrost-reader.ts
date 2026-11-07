@@ -3,7 +3,7 @@ import type { Json } from "./provider-json";
 export const MAINNET_SOURCE = "https://cardano-mainnet.blockfrost.io/api/v0";
 export interface SourceRuntime { readonly now?: () => number; readonly readTimeoutMs?: number; readonly totalTimeoutMs?: number }
 export interface Observation { readonly value: Json; readonly observedAt: number }
-const fixed = /^\/(?:blocks\/latest(?:\/txs)?|epochs\/latest(?:\/parameters)?|epochs\/[0-9]{1,16}\/parameters|pools\/(?:retired|retiring)|pools\/[0-9a-f]{56}(?:\/(?:updates|metadata))?|accounts\/stake1[023456789acdefghjklmnpqrstuvwxyz]{1,120}(?:\/(?:registrations|delegations))?|addresses\/addr1[023456789acdefghjklmnpqrstuvwxyz]{1,200}\/utxos|txs\/[0-9a-f]{64}(?:\/(?:stakes|delegations|pool_updates|pool_retires|utxos))?)$/;
+const fixed = /^\/(?:blocks\/latest(?:\/txs)?|blocks\/[0-9a-f]{64}|epochs\/latest(?:\/parameters)?|epochs\/[0-9]{1,16}\/parameters|pools\/(?:retired|retiring)|pools\/[0-9a-f]{56}(?:\/(?:updates|metadata))?|accounts\/stake1[023456789acdefghjklmnpqrstuvwxyz]{1,120}(?:\/(?:registrations|delegations))?|addresses\/addr1[023456789acdefghjklmnpqrstuvwxyz]{1,200}\/utxos|txs\/[0-9a-f]{64}(?:\/(?:stakes|delegations|pool_updates|pool_retires|utxos|cbor))?)$/;
 /** An operation owns all requests and deadlines; no observations survive it as a cache. */
 export function createBlockfrostRead(projectId: string, signal?: AbortSignal, runtime: SourceRuntime = {}) {
   ensure(typeof projectId === "string" && projectId.trim().length >= 1 && projectId.length <= 256 && /^[\x20-\x7e]+$/.test(projectId), "CONFIGURATION");

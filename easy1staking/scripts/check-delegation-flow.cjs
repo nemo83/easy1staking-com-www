@@ -67,6 +67,40 @@ async function main(){
    const record={name,http:[],posts:[],signatures:[],tripwires:[],errors:[],routeHandlerErrors:[],chunkReadErrors:[],chunkIdentityFailures:[],chunkReadsAbandonedAtClose:0};report.cases.push(record);const caseReads=[];
    // Route-handler page actions may race case teardown; record their failures instead of throwing.
    const routeStep=async step=>{try{await step();}catch(error){record.routeHandlerErrors.push(String(error?.message??error).split("\n")[0]);}};const s=scenario(name!=="unregistered"),golden=vectors.find(v=>v.registered===(name!=="unregistered"));
+   // Status reads for the submitted ID: 404 unless the case's plan includes it; an included transaction is one coherent synthetic chain point.
+   const plan=fixture.statusPlans[name]||{notFound:null},otherPool=raw.poolBech32(chain.otherHash),st={lookups:0,inclusion:null,lastTip:null,pinned:null,cborReads:0,historyReads:0,reloaded:false,trace:[]},NOT_FOUND=Symbol("404");
+   const statusPath=p=>p==="/txs/"+golden.txId||p.startsWith("/txs/"+golden.txId+"/")||!!st.inclusion&&(p==="/blocks/"+st.inclusion.hash||plan.lag&&p==="/accounts/"+account+"/delegations");
+   function include(){
+    const t=st.lastTip;let slot=BigInt(t.slot)-2n,height=slot-100000000n,hash=id(Number(slot));
+    if(plan.above){slot=BigInt(t.slot)+1n;height=slot-100000000n;hash=id(Number(slot));}
+    if(plan.fork){st.pinned=t;slot=BigInt(t.slot)-5n;height=BigInt(t.height);hash="f0".repeat(32);}
+    const time=(1596059091000+Number(slot-4492800n)*1000)/1000,acc=s.routes.get("/accounts/"+account);st.inclusion={slot:Number(slot),height:Number(height),time,hash,index:0};
+    acc.pool_id=plan.unreconciled?otherPool:chain.poolId;acc.active=true;
+    st.ownHistory={active_epoch:666,tx_hash:golden.txId,amount:"100000000",pool_id:chain.poolId,tx_slot:Number(slot),block_time:time,block_height:Number(height)};
+    if(!plan.lag)s.routes.get("/accounts/"+account+"/delegations").push(st.ownHistory);
+    if(plan.laterOther){const later=id(0x5a5a),q=point(slot+1n);s.txs[later]={hash:later,valid_contract:true,...q,stake_cert_count:0,delegation_count:1,pool_update_count:0,pool_retire_count:0};
+     s.routes.set(`/txs/${later}/delegations`,[{cert_index:0,index:0,address:account,pool_id:otherPool,active_epoch:667}]);
+     s.routes.get("/accounts/"+account+"/delegations").push({active_epoch:667,tx_hash:later,amount:"100000000",pool_id:otherPool,tx_slot:q.slot,block_time:q.block_time,block_height:q.block_height});acc.pool_id=otherPool;}
+   }
+   function statusValue(p){
+    const tx=golden.txId;
+    if(p==="/txs/"+tx){
+     st.lookups++;
+     if(!st.inclusion){if(plan.notFound===null||name==="check-status-after-reload"&&!st.reloaded||st.lookups<=plan.notFound){st.trace.push({lookup:st.lookups,found:false});return NOT_FOUND;}include();}
+     st.trace.push({lookup:st.lookups,found:true});const i=st.inclusion;
+     return{hash:tx,block:i.hash,block_height:i.height,block_time:i.time,slot:i.slot,index:i.index,output_amount:[{unit:"lovelace",quantity:golden.change}],fees:golden.fee,deposit:golden.deposit,size:golden.signedSize,
+      invalid_before:null,invalid_hereafter:golden.ttl,utxo_count:2,withdrawal_count:0,mir_cert_count:0,delegation_count:1,stake_cert_count:golden.registered?0:1,pool_update_count:0,pool_retire_count:0,asset_mint_or_burn_count:0,redeemer_count:0,valid_contract:true,treasury_donation:"0"};
+    }
+    if(!st.inclusion)return NOT_FOUND;
+    st.trace.push({lookup:st.lookups,path:p.replace(tx,"{tx}")});const i=st.inclusion;
+    if(p===`/txs/${tx}/cbor`){st.cborReads++;if(plan.lag&&st.cborReads===1)return NOT_FOUND;const sig=record.signatures[0];return{cbor:plan.wrongBody?"84"+golden.bodyHex.replace("021a0002a389","021a0002a38a")+sig.witness+"f5f6":sig.signedHex};}
+    if(p===`/txs/${tx}/delegations`)return[{index:0,cert_index:0,address:account,pool_id:chain.poolId,active_epoch:666}];
+    if(p===`/txs/${tx}/stakes`)return[{cert_index:0,address:account,registration:true}];
+    if(p==="/blocks/"+i.hash)return{time:i.time,height:i.height,hash:i.hash,slot:i.slot,epoch:664,epoch_slot:(i.slot-4492800)%432000,slot_leader:chain.poolId,size:1024,tx_count:1,output:"100000000",fees:golden.fee,
+     block_vrf:"vrf_vk1"+"q".repeat(58),op_cert:"ab".repeat(32),op_cert_counter:"1",previous_block:id(i.slot-1),next_block:null,confirmations:st.lastTip.height-i.height};
+    if(p==="/accounts/"+account+"/delegations"){st.historyReads++;const rows=s.routes.get(p);return st.historyReads===1?rows:[...rows,st.ownHistory];}
+    return undefined;
+   }
    if(name==="already-EASY1"){
     s.txs[chain.registrationId].delegation_count=1;
     s.routes.set(`/txs/${chain.registrationId}/delegations`,[{cert_index:0,index:0,address:account,pool_id:chain.poolId,active_epoch:666}]);
@@ -106,18 +140,21 @@ async function main(){
       return value;
      };
      const deny=name=>(...args)=>{state.tripwires.push(name);throw Error("FORBIDDEN_"+name);};
-     const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const u=new URL(typeof input==="string"?input:input.url,location.href);if(u.origin==="https://cardano-mainnet.blockfrost.io"&&init?.method==="POST"){state.submitDispatches++;try{nativeSet.call(sessionStorage,"synthetic:submitDispatches",String(state.submitDispatches));}catch{}}if(u.origin===location.origin)return nativeFetch(input,init);if(u.origin!=="https://cardano-mainnet.blockfrost.io")return deny("unexpected-fetch")();if(init?.method==="POST"){state.attemptAt=performance.now();if(["storage-final-loss","storage-final-replaced"].includes(mode))state.retainedAtAttempt=nativeGet.call(localStorage,"easy1staking:delegation-recovery");}if(init?.credentials!=="omit"||init?.redirect!=="error"||init?.cache!=="no-store")return deny("transport-options")();return nativeFetch(input,init);};
+     const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const u=new URL(typeof input==="string"?input:input.url,location.href);if(u.origin==="https://cardano-mainnet.blockfrost.io"&&init?.method==="POST"){state.submitDispatches++;try{nativeSet.call(sessionStorage,"synthetic:submitDispatches",String(state.submitDispatches));}catch{}}if(u.origin===location.origin)return nativeFetch(input,init);if(u.origin!=="https://cardano-mainnet.blockfrost.io")return deny("unexpected-fetch")();if(init?.method==="POST"){state.attemptAt=performance.now();state.attemptClock=Date.now();if(["storage-final-loss","storage-final-replaced"].includes(mode))state.retainedAtAttempt=nativeGet.call(localStorage,"easy1staking:delegation-recovery");}if(init?.credentials!=="omit"||init?.redirect!=="error"||init?.cache!=="no-store")return deny("transport-options")();return nativeFetch(input,init);};
      window.XMLHttpRequest=function(){return deny("xhr")();};window.WebSocket=function(){return deny("socket")();};window.EventSource=function(){return deny("events")();};navigator.sendBeacon=deny("beacon");window.gtag=deny("analytics");
      navigator.storage.persist=deny("persist-prompt");
      // Responding tripwire controls are exercised without outward I/O.
      try{navigator.sendBeacon("https://invalid.example");}catch{}state.control=state.tripwires.pop();
-     async function read(value){if(state.replyAt!==null&&["post-reply-deadline","post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)&&state.postReadIndex++<3)await new Promise(r=>setTimeout(r,delay));return value;}
+     async function read(value){state.walletReads=(state.walletReads||0)+1;if(state.replyAt!==null&&["post-reply-deadline","post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)&&state.postReadIndex++<3)await new Promise(r=>setTimeout(r,delay));return value;}
      const api={getNetworkId:()=>read(state.network),getChangeAddress:()=>read(state.address),getRewardAddresses:()=>read([]),getUtxos:()=>read([state.utxo]),async signTx(unsigned,partial){state.signCalls++;state.signAt=performance.now();if(partial!==false)throw Error("PARTIAL_FLAG");if(["cancel-approval","account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","same-account-focus"].includes(mode))await new Promise(r=>state.release=r);
       if(mode==="long-consent")await new Promise(r=>setTimeout(r,31000));const witness=await window.syntheticSign(unsigned);state.replyAt=performance.now();
       if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)){const before=document.visibilityState;Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});state.visibilityTransition={before,after:document.visibilityState,at:performance.now()};document.dispatchEvent(new Event("visibilitychange"));}
       if(mode.startsWith("presubmit-"))state.clockDeltaMs+=baseTime+(600-Number(mode.slice(10)))*1000-Date.now();
       return witness;},signData:deny("signData"),submitTx:deny("wallet-submit")};
-     window.cardano=mode==="no-wallet"?{}:{synthetic:{enable:async()=>{state.enableCalls++;return read(api);}}};
+     // After a flagged reload every wallet method throws and is counted; status checking must never call one.
+     let throwingWallet=false;try{throwingWallet=nativeGet.call(sessionStorage,"synthetic:throwingWallet")==="1";}catch{}
+     state.throwingWalletCalls=0;const refuse=()=>{state.throwingWalletCalls++;throw Error("FORBIDDEN_WALLET_AFTER_RELOAD");};
+     window.cardano=mode==="no-wallet"?{}:throwingWallet?{synthetic:{enable:refuse,isEnabled:refuse,getNetworkId:refuse,getChangeAddress:refuse,getRewardAddresses:refuse,getUtxos:refuse,signTx:refuse,signData:refuse,submitTx:refuse}}:{synthetic:{enable:async()=>{state.enableCalls++;return read(api);}}};
      state.controls=[];
      for(const probe of [()=>window.fetch('https://invalid.example'),()=>new XMLHttpRequest(),()=>new WebSocket('wss://invalid.example'),()=>new EventSource('https://invalid.example'),()=>navigator.sendBeacon('https://invalid.example'),()=>api.signData(),()=>api.submitTx(),()=>navigator.storage.persist(),()=>window.gtag()]){try{probe();}catch{}state.controls.push(state.tripwires.pop());}
     },{baseTime,chain,mode:name,delay:fixture.postReplyReadDelayMs});
@@ -126,10 +163,10 @@ async function main(){
       if(pageOrigin===origin)return route.continue();const local=await fetch(origin+u.pathname+u.search);return route.fulfill({status:local.status,headers:Object.fromEntries([...local.headers].filter(([k])=>!["content-encoding","content-length","transfer-encoding"].includes(k))),body:Buffer.from(await local.arrayBuffer())});
      }
      if(u.origin!=="https://cardano-mainnet.blockfrost.io"||!u.pathname.startsWith("/api/v0/")){report.unexpected.push({url:request.url(),method:request.method()});return route.abort();}
-     const p=u.pathname.slice(7),entry={url:request.url(),method:request.method(),path:p};record.http.push(entry);
+     const p=u.pathname.slice(7),entry={url:request.url(),method:request.method(),path:p,at:Date.now()};record.http.push(entry);
      if(request.method()==="POST"){
       assert.equal(p,"/tx/submit");const bytes=request.postDataBuffer(),expected=record.signatures[0];assert(expected,"SIGN_BEFORE_POST");assert.equal(bytes.toString("hex"),expected.signedHex,"EXACT_GUARDED_POST_BYTES");assert.equal(request.headers()["content-type"],"application/cbor");record.posts.push({txId:expected.txId,hex:bytes.toString("hex"),at:Date.now()});
-      if(name==="submit-timeout")await new Promise(r=>setTimeout(r,61000));
+      if(name==="submit-timeout"||name==="confirm-unknown-outcome")await new Promise(r=>setTimeout(r,61000));
       if(name==="cancel-transmission"){await routeStep(()=>page.getByRole("button",{name:"Cancel here"}).click());await new Promise(r=>setTimeout(r,100));}
       if(name==="storage-after-transmission"){await routeStep(async()=>{const other=await context.newPage();await other.goto(origin+"/pool");await other.evaluate(()=>{localStorage.removeItem("easy1staking:delegation-recovery");});await other.close();});await page.waitForTimeout(100);}
       if(name==="submit-bad-status")return route.fulfill({status:500,contentType:"application/json",body:'{"error":"SYNTHETIC_PRIVATE_CANARY"}'});
@@ -146,10 +183,18 @@ async function main(){
       if(name==="dispose-postreply")await routeStep(()=>page.goto(origin+'/'));else await routeStep(()=>page.getByRole('button',{name:name==="cancel-postreply"?'Cancel here':'Disconnect wallet'}).click());
      }
      if(["post-reply-deadline","post-reply-deadline-hidden"].includes(name)&&p==="/pools/"+chain.poolHash+"/metadata"&&await page.evaluate(()=>window.synthetic.replyAt!==null))await new Promise(r=>setTimeout(r,8000));
-     if(p==="/blocks/latest"){
-      const observed=await page.evaluate(()=>({now:Date.now(),afterReply:window.synthetic.replyAt!==null,jump:window.synthetic.clockDeltaMs}));
+     if(statusPath(p)){
+      if(p==="/txs/"+golden.txId&&!st.inclusion&&st.lookups+1===(plan.notFound??-1)+1){
+       if(plan.disconnectOnFound)await routeStep(()=>page.getByRole("button",{name:"Disconnect wallet"}).click());
+       if(plan.disposeOnFound){await routeStep(()=>page.locator('a[aria-label="easy1staking home"]').first().click());st.navigatedAt=Date.now();}
+      }
+      value=statusValue(p);entry.status=value===NOT_FOUND?404:200;
+      if(value===NOT_FOUND)return route.fulfill({status:404,contentType:"application/json",body:'{"status_code":404,"error":"Not Found","message":"The requested component has not been found."}',headers:{"access-control-allow-origin":"*"}});
+     }else if(p==="/blocks/latest"){
+      // A navigation or reload can destroy the page context mid-read; that read then fails as transport, never as a handler crash.
+      const observed=await page.evaluate(()=>({now:Date.now(),afterReply:window.synthetic.replyAt!==null,jump:window.synthetic.clockDeltaMs})).catch(()=>null);if(!observed)return route.abort();
       const slot=observed.afterReply||observed.jump>0?baseSlot+BigInt(Math.floor((observed.now-baseTime)/1000)):baseSlot;
-      value={slot:Number(slot),epoch:664,hash:slot===baseSlot?chain.tipHash:id(Number(slot)),height:Number(slot-100000000n),time:(baseTime+Number(slot-baseSlot)*1000)/1000};entry.slot=value.slot;
+      value=st.pinned??{slot:Number(slot),epoch:664,hash:slot===baseSlot?chain.tipHash:id(Number(slot)),height:Number(slot-100000000n),time:(baseTime+Number(slot-baseSlot)*1000)/1000};entry.slot=value.slot;st.lastTip=value;
      }else value=s.routes.has(p)?s.routes.get(p):p.startsWith("/txs/")?s.txs[p.slice(5)]:undefined;
      assert.notEqual(value,undefined,"EXPLICIT_SOURCE_FIXTURE "+p);if(Array.isArray(value)&&u.searchParams.has("page")){const n=Number(u.searchParams.get("page"));value=value.slice((n-1)*100,n*100);}
      return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(value),headers:{"access-control-allow-origin":"*"}});
@@ -214,6 +259,90 @@ async function main(){
      await page.waitForFunction(()=>/Delegation stopped before sending|Submitted to Blockfrost|Submission outcome is unknown/.test(document.querySelector('#delegate [role="status"]')?.textContent||''),{},{timeout:15000});assert.equal(record.posts.length,0,"FORBIDDEN_POST_SIGN_VETO "+name);
     }else if(name.startsWith("submit-")||name==="cancel-transmission"||name==="storage-after-transmission"){
      await page.getByText("Submission outcome is unknown.",{exact:false}).waitFor({timeout:65000});assert.equal(record.posts.length,1,"ONE_POSSIBLE_TRANSMISSION");const text=await page.locator('#delegate').innerText();assert(text.includes(record.signatures[0].txId),"UNKNOWN_RETAINS_DERIVED_ID");assert(!text.includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR");await page.waitForTimeout(name==="submit-timeout"?1000:200);assert.equal(record.posts.length,1,"NO_AUTOMATIC_RETRY");assert.equal(await page.evaluate(()=>window.synthetic.submitDispatches),1,"ONE_POSSIBLE_DISPATCH");record.unknownRetained=true;
+    }else if(fixture.statusPlans[name]){
+     // Status cases: identical registered submission, then read-only status work. Each waits on a terminal state or a fixed real-time observation.
+     const apology="Sorry, we couldn't confirm your delegation yet. Confirmation usually takes about 20 seconds but can take longer. Please check again here in a few minutes, or check later in your wallet.";
+     const inconsistentText="We found this transaction but couldn't verify it consistently. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.";
+     const changedText="This operation's saved status changed in another tab of this browser. Keep the transaction ID and check it in your wallet or a chain explorer.";
+     const statusText=()=>page.evaluate(()=>document.querySelector('#delegate [role="status"]')?.textContent||""),stored=()=>page.evaluate(()=>localStorage.getItem("easy1staking:delegation-recovery"));
+     const terminal="^Your delegation transaction was confirmed on chain|couldn't verify it consistently|saved status changed in another tab|^Sorry, we couldn't confirm";
+     const waitTerminal=timeout=>page.waitForFunction(source=>new RegExp(source).test(document.querySelector('#delegate [role="status"]')?.textContent||""),terminal,{timeout,polling:100});
+     const viewOf=()=>page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve)return JSON.parse(JSON.stringify(c.getView()));state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');});
+     const until=async(fn,ms,label)=>{for(let i=0;i<ms/100&&!fn();i++)await new Promise(r=>setTimeout(r,100));assert(fn(),label);};
+     const statusReads=after=>record.http.filter(x=>x.method==="GET"&&x.at>after&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/"+golden.txId))).length;
+     async function confirmedState(copy){
+      assert.equal(await stored(),null,"CONFIRMED_RECORD_REMOVED");const text=await statusText();
+      assert.match(text,/^Your delegation transaction was confirmed on chain in block \d+ \(\d+ confirmations?\)\.$/,"CONFIRMED_COPY");assert(text.includes("block "+st.inclusion.height+" "),"CONFIRMED_BLOCK");
+      const region=await page.locator('[aria-label="Delegation confirmation"]').innerText();assert(region.includes(chain.stakeKeyHash),"CONFIRMATION_NAMES_CREDENTIAL_A");assert(region.includes(copy),"CONFIRMED_ACCOUNT_STATE");
+      assert((await page.locator('#delegate').innerText()).includes(golden.txId),"CONFIRMED_KEEPS_ID");assert.equal(await page.getByText("A prior operation is unresolved",{exact:false}).count(),0,"CONFIRMED_NO_PRIOR_NOTICE");
+      record.confirmedText=text;return region;
+     }
+     await page.waitForFunction(()=>window.synthetic.attemptClock!==undefined,{},{timeout:15000});
+     record.statusAttempt=await page.evaluate(()=>({clock:window.synthetic.attemptClock,at:window.synthetic.attemptAt}));const postAt=record.posts[0].at;
+     const B=chain.addressHex.slice(58)==="cd".repeat(28)?"ce".repeat(28):"cd".repeat(28);
+     if(name==="confirm-different-wallet"){
+      await page.evaluate(b=>{window.synthetic.address=window.synthetic.address.slice(0,58)+b;},B);
+      // A window focus event (browser test input) asks the wallet owner for a fresh observation of the switched account.
+      await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+      await page.waitForFunction(b=>document.querySelector('#delegate')?.textContent.includes(b),B,{timeout:15000});record.switchedCredential=B;
+     }
+     // Hide the document so the wallet owner's visible-only 30 s refresh is idle; any later wallet call would come from status work.
+     await page.evaluate(()=>{Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});});await page.waitForTimeout(1000);
+     const walletAt=()=>page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,walletReads:window.synthetic.walletReads||0,throwing:window.synthetic.throwingWalletCalls}));
+     const baseline=await walletAt();record.walletBaseline=baseline;assert.equal(baseline.signCalls,1);
+     if(["confirm-after-poll","confirm-new-inclusion","confirm-index-lag","confirm-later-other-pool","confirm-different-wallet","status-disconnect"].includes(name)){
+      await waitTerminal(80000);const region=await confirmedState(name==="confirm-later-other-pool"?"This stake account has since delegated to another pool.":"This stake account currently delegates to EASY1.");
+      const found=st.trace.filter(x=>x.found!==undefined);record.lookups=found;
+      if(name==="confirm-after-poll")assert.deepEqual(found.map(x=>x.found),[false,false,true],"TWO_404_TICKS_THEN_CONFIRMED");
+      if(name==="confirm-new-inclusion"){assert.deepEqual(found.map(x=>x.found),[true,true],"PENDING_THEN_CONFIRMED");assert(!st.trace.some(x=>x.lookup===1&&x.path),"NEWER_THAN_T1_STOPS_BEFORE_BODY");}
+      if(name==="confirm-index-lag"){assert.deepEqual(found.map(x=>x.found),[true,true,true],"LAG_PENDING_TWICE_THEN_CONFIRMED");assert.equal(st.cborReads,3,"CBOR_404_THEN_READ_TWICE");assert.equal(st.historyReads,2,"HISTORY_LAG_THEN_COMPLETE");}
+      if(name==="confirm-different-wallet"){assert(!region.includes(B),"CONFIRMATION_NEVER_NAMES_CONNECTED_WALLET");assert((await viewOf()).account===B,"DIFFERENT_WALLET_CONNECTED");}
+      if(name==="status-disconnect"){assert.equal((await viewOf()).walletId,null,"DISCONNECTED_DURING_CHECK");assert.equal(await page.getByRole("button",{name:"Disconnect wallet"}).count(),0);}
+     }else if(name==="confirm-unknown-outcome"){
+      await page.getByText("Submission outcome is unknown.",{exact:false}).waitFor({timeout:65000});let v=await viewOf();for(let i=0;i<20&&!v.statusRunning;i++){await page.waitForTimeout(100);v=await viewOf();}record.statusUntil=v.statusUntil;
+      assert(v.statusRunning&&Number.isSafeInteger(v.statusUntil),"POLL_RUNNING_AFTER_UNKNOWN");const origin0=v.statusUntil-180000;
+      assert(origin0<=record.statusAttempt.clock&&record.statusAttempt.clock-origin0<1000,"DEADLINE_MEASURED_FROM_DISPATCH");
+      await waitTerminal(40000);await confirmedState("This stake account currently delegates to EASY1.");
+     }else if(name==="confirm-timeout"){
+      // Fixed real-time observation 185 s after dispatch; state is read without first waiting for any text.
+      await page.waitForFunction(at=>performance.now()-at>=185000,record.statusAttempt.at,{timeout:200000,polling:250});
+      const text=await statusText(),raw=await stored(),body=await page.locator('#delegate').innerText();record.observedAt185={text,raw};
+      assert.equal(text,apology,"APOLOGY_AT_THREE_MINUTES");assert(raw&&JSON.parse(raw).txId===golden.txId,"RECORD_RETAINED_AT_TIMEOUT");assert(body.includes(golden.txId),"ID_SHOWN_AT_TIMEOUT");
+      assert.equal(await page.getByRole("button",{name:"Check status"}).count(),1,"CHECK_STATUS_OFFERED");assert(st.trace.every(x=>x.found===false),"ONLY_404_TICKS");
+      assert.equal(record.http.filter(x=>x.method==="GET"&&x.at>postAt+181000&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/"))).length,0,"NO_READS_AFTER_BUDGET");
+     }else if(["confirm-wrong-body","confirm-same-height-fork","confirm-unreconciled-account"].includes(name)){
+      // Victims wait for either terminal state, then check retained storage before any expected text.
+      await waitTerminal(60000);const raw=await stored();record.victimTerminal={text:await statusText(),raw};
+      assert(raw!==null&&JSON.parse(raw).txId===golden.txId,{"confirm-wrong-body":"RECORD_RETAINED_ON_MISMATCH","confirm-same-height-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-unreconciled-account":"RECORD_RETAINED_ON_ACCOUNT_MISMATCH"}[name]);
+      assert.equal(await statusText(),inconsistentText,"INCONSISTENT_MESSAGE");record.statusReason=(await viewOf()).statusReason;assert.equal(record.statusReason,{"confirm-wrong-body":"inconsistent:BODY_ID","confirm-same-height-fork":"inconsistent:POINT_RELATION","confirm-unreconciled-account":"inconsistent:ACCOUNT"}[name],"INCONSISTENT_REASON_CODE");assert((await page.locator('#delegate').innerText()).includes(golden.txId),"INCONSISTENT_KEEPS_ID");
+      const lookups=st.lookups;await page.waitForTimeout(11000);assert.equal(st.lookups,lookups,"INCONSISTENT_STOPS_POLL");
+     }else if(name==="status-cross-tab"){
+      await until(()=>st.lookups>=1,15000,"FIRST_TICK");const second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
+      await second.evaluate(()=>{window.held=navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},()=>new Promise(r=>{window.releaseHeld=r;}));});
+      await second.waitForFunction(()=>typeof window.releaseHeld==="function",{},{timeout:15000});const holdStart=Date.now(),lookupsAtHold=st.lookups;await page.waitForTimeout(12000);
+      record.busyWindow={holdStart,lookupsAtHold,lookupsAfter:st.lookups,reads:statusReads(holdStart+500)};assert.equal(record.busyWindow.reads,0,"BUSY_TICK_SKIPPED");assert.equal(st.lookups,lookupsAtHold,"BUSY_TICK_NO_LOOKUP");
+      await second.evaluate(()=>{localStorage.removeItem("easy1staking:delegation-recovery");window.releaseHeld();});
+      await page.getByText(changedText,{exact:true}).waitFor({timeout:15000});assert.equal(await statusText(),changedText,"CHANGED_IN_ANOTHER_TAB");
+      assert((await page.locator('#delegate').innerText()).includes(golden.txId),"CHANGED_KEEPS_ID");assert.equal(await stored(),null,"NOTHING_HEALED");
+      const v=await viewOf();assert.equal(v.recovery.status,"unknown","LOST_NOT_HEALED");assert.equal(v.canCheckStatus,false);assert.equal(await page.getByRole("button",{name:"Check status"}).count(),0);
+      const lookups=st.lookups;await page.waitForTimeout(11000);assert.equal(st.lookups,lookups,"CHANGED_STOPS_POLL");await second.close();
+     }else if(name==="status-dispose"){
+      await page.waitForURL(origin+"/",{timeout:20000});await until(()=>st.navigatedAt,15000,"DISPOSED_DURING_CHECK");await page.waitForTimeout(12000);
+      record.afterDispose={reads:statusReads(st.navigatedAt+1000),raw:await stored()};assert.equal(record.afterDispose.reads,0,"NO_STATUS_AFTER_DISPOSE");
+      assert(record.afterDispose.raw&&JSON.parse(record.afterDispose.raw).stage==="submitted","DISPOSE_RETAINS_RECORD");
+     }else if(name==="check-status-after-reload"){
+      await until(()=>st.lookups>=1,15000,"FIRST_TICK");await page.waitForTimeout(1000);
+      await page.evaluate(()=>sessionStorage.setItem("synthetic:throwingWallet","1"));const reloadAt=Date.now();await page.reload();await page.locator('#delegate [role="status"]').waitFor();
+      await page.getByRole("button",{name:"Check status"}).waitFor({timeout:15000});st.reloaded=true;await page.waitForTimeout(3000);
+      record.afterReload={automaticReads:statusReads(reloadAt)};assert.equal(record.afterReload.automaticReads,0,"NO_AUTOMATIC_STATUS_ON_RELOAD");
+      await page.getByRole("button",{name:"Check status"}).click();await waitTerminal(35000);await confirmedState("This stake account currently delegates to EASY1.");
+      const w=await walletAt();record.afterReload.wallet=w;assert.deepEqual(w,{enableCalls:0,signCalls:0,walletReads:0,throwing:0},"ZERO_WALLET_CALLS_AFTER_RELOAD");
+     }
+     if(name!=="check-status-after-reload")assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+     assert.equal(record.posts.length,1,"STATUS_ZERO_POST");
+     const foreign=record.http.filter(x=>x.at>postAt&&!(x.method==="GET"&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/")||x.path.startsWith("/blocks/")||x.path.startsWith("/accounts/"+account))));
+     assert.deepEqual(foreign.map(x=>x.method+" "+x.path),[],"STATUS_READ_ONLY_NO_BUILD_READS");
+     record.statusTrace=st.trace;
     }else{
      await page.getByText("Submitted to Blockfrost.",{exact:false}).waitFor({timeout:name==="long-consent"?45000:name==="post-reply-timely-hidden"?35000:15000});
      await page.waitForTimeout(1500); // Fixed settle window: a late duplicate dispatch is intercepted asynchronously.
@@ -222,7 +351,7 @@ async function main(){
      if(name==="isolated-context"){const isolated=await browser.newContext();const p=await isolated.newPage();await p.route('**/*',route=>{const u=new URL(route.request().url());return u.origin===origin?route.continue():route.abort();});await p.goto(origin+'/pool');assert.equal(await p.evaluate(()=>localStorage.getItem('easy1staking:delegation-recovery')),null,'ORIGIN_CONTEXTS_DO_NOT_SHARE');await isolated.close();}
      const signed=record.signatures[0];assert.equal(pythonHash(signed.bodyHex),signed.txId,"INDEPENDENT_ID");assert.deepEqual(Object.keys(retained),["schemaVersion","networkId","poolId","txId","invalidHereafterSlot","inputRefs","createdAt","stage"]);
     }
-    record.actual=await page.evaluate(()=>({submitDispatches:window.synthetic.submitDispatches,enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,replyAt:window.synthetic.replyAt,attemptAt:window.synthetic.attemptAt??null,visibilityTransition:window.synthetic.visibilityTransition??null,visibility:document.visibilityState,faultAt:window.synthetic.faultAt??null,faultKind:window.synthetic.faultKind??null,retainedAtAttempt:window.synthetic.retainedAtAttempt??null,tripwires:window.synthetic.tripwires,phaseText:document.querySelector('#delegate [role="status"]').textContent}));assert.deepEqual(record.actual.tripwires,[]);assert.deepEqual(record.errors,[],"NO_PAGE_ERRORS_BEFORE_CLOSE");assert(!(await page.locator('body').innerText()).includes('SYNTHETIC_PRIVATE_CANARY'),"ERROR_REDACTION");if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(name)){
+    record.actual=await page.evaluate(()=>({submitDispatches:window.synthetic.submitDispatches,enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,replyAt:window.synthetic.replyAt,attemptAt:window.synthetic.attemptAt??null,visibilityTransition:window.synthetic.visibilityTransition??null,visibility:document.visibilityState,faultAt:window.synthetic.faultAt??null,faultKind:window.synthetic.faultKind??null,retainedAtAttempt:window.synthetic.retainedAtAttempt??null,tripwires:window.synthetic.tripwires,phaseText:document.querySelector('#delegate [role="status"]')?.textContent??null}));assert.deepEqual(record.actual.tripwires,[]);assert.deepEqual(record.errors,[],"NO_PAGE_ERRORS_BEFORE_CLOSE");assert(!(await page.locator('body').innerText()).includes('SYNTHETIC_PRIVATE_CANARY'),"ERROR_REDACTION");if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(name)){
      assert.equal(record.actual.visibility,"hidden","CONTROLLED_HIDDEN_DOCUMENT");assert.equal(record.actual.visibilityTransition?.after,"hidden");assert(record.actual.visibilityTransition.at>=record.actual.replyAt,"HIDDEN_AFTER_AUTHENTIC_REPLY");assert.equal(record.actual.signCalls,1);assert.equal(record.actual.enableCalls,5,"NO_VISIBLE_POLL_REACQUISITION");
      record.constructionSlot=Number(baseSlot);record.currentSlots=record.http.filter(x=>x.path==="/blocks/latest").map(x=>x.slot);
      if(name==="post-reply-timely-hidden"){record.realPostReplyElapsedMs=record.actual.attemptAt-record.actual.replyAt;assert(record.realPostReplyElapsedMs>=fixture.postReplyReadDelayMs*3&&record.realPostReplyElapsedMs<30000,"TIMELY_HIDDEN_EXACT_POST_WITHIN_TOTAL_BUDGET");}

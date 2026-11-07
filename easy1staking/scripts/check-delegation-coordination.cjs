@@ -60,6 +60,63 @@ function nodeCases() {
   check("symbol key cannot bypass exact schema", () => { const r = clone(fixture); r[Symbol("extra")] = 1; valueReject(r); });
   check("no exported resolution, blind clear, wallet or transport capability", () => assert.deepEqual(Object.keys(api).sort(), ["CoordinationError", "DELEGATION_LOCK_NAME", "DELEGATION_POOL_ID", "DELEGATION_RECORD_KEY", "createDelegationCoordinator", "parseRecoveryRecord", "serializeRecoveryRecord"].sort()));
 }
+// resolveConfirmed in Node: a storage-only window and native Node Web Locks; nothing else is available.
+async function nodeResolutionCases() {
+  const items = new Map(), saved = Object.getOwnPropertyDescriptor(globalThis, "window"), key = api.DELEGATION_RECORD_KEY;
+  globalThis.window = { localStorage: { getItem: k => items.has(k) ? items.get(k) : null, setItem: (k, v) => { items.set(k, String(v)); }, removeItem: k => { items.delete(k); } }, addEventListener() {}, removeEventListener() {} };
+  const code = fn => { try { fn(); return "ACCEPTED"; } catch (error) { return error.code; } };
+  const submitted = JSON.stringify({ ...fixture, stage: "submitted" });
+  const claim = (generation, extra = {}) => ({ kind: "confirmed", record: submitted, generation, point: { slot: "200000100", hash: "c".repeat(64), height: "100000100" }, deadline: Date.now() + 10000, ...extra });
+  async function scenario(name, fn) {
+    items.clear(); items.set(key, submitted); const c = api.createDelegationCoordinator();
+    try { await fn(c); } finally { c.dispose(); }
+    checks++; console.log(`PASS node ${name}`);
+  }
+  try {
+    await scenario("resolution issuer is handed out once", async c => { c.resolutionIssuer(); assert.equal(code(() => c.resolutionIssuer()), "OPERATION"); });
+    await scenario("issued confirmed resolution removes once, reads back null and resets known/candidate", async c => {
+      const issue = c.resolutionIssuer(), g = c.beginStatus();
+      const reuse = await c.withRecoveryOperation(fixture.txId, async lease => { const r = issue(lease, claim(g)); c.resolveConfirmed(lease, r); return code(() => c.resolveConfirmed(lease, r)); });
+      assert.equal(reuse, "RESOLUTION"); assert.equal(items.has(key), false); assert.equal(c.getState().status, "absent");
+      assert.equal(await c.withNewOperation(async () => "healthy"), "healthy");
+    });
+    await scenario("forged, cloned, foreign, stale, changed and expired resolutions remove nothing", async c => {
+      const issue = c.resolutionIssuer(), other = api.createDelegationCoordinator(); let g = c.beginStatus();
+      try {
+        const results = await c.withRecoveryOperation(fixture.txId, async lease => {
+          const forged = code(() => c.resolveConfirmed(lease, Object.freeze({})));
+          const staleIssue = code(() => issue(lease, claim(g - 1)));
+          const changedIssue = code(() => issue(lease, claim(g, { record: JSON.stringify({ ...fixture, stage: "unknown" }) })));
+          const expiredIssue = code(() => issue(lease, claim(g, { deadline: Date.now() - 1 })));
+          const r = issue(lease, claim(g));
+          const cloned = code(() => c.resolveConfirmed(lease, structuredClone(r))), foreign = code(() => other.resolveConfirmed(lease, r));
+          c.beginStatus(); const stale = code(() => c.resolveConfirmed(lease, r));
+          const late = issue(lease, claim(g = c.beginStatus(), { deadline: Date.now() + 30 })); await new Promise(resolve => setTimeout(resolve, 60));
+          const expired = code(() => c.resolveConfirmed(lease, late));
+          const ended = issue(lease, claim(g = c.beginStatus())); c.endStatus(g); const revoked = code(() => c.resolveConfirmed(lease, ended));
+          return { forged, staleIssue, changedIssue, expiredIssue, cloned, foreign, stale, expired, revoked };
+        });
+        assert.deepEqual(results, { forged: "RESOLUTION", staleIssue: "RESOLUTION", changedIssue: "RESOLUTION", expiredIssue: "RESOLUTION", cloned: "RESOLUTION", foreign: "LEASE", stale: "RESOLUTION", expired: "RESOLUTION", revoked: "RESOLUTION" }, "FORBIDDEN_RESOLUTION");
+        assert.equal(items.get(key), submitted);
+      } finally { other.dispose(); }
+    });
+    await scenario("released, disposed and new-operation leases cannot resolve; existing transitions are unchanged", async c => {
+      const issue = c.resolutionIssuer(), g = c.beginStatus(); let saved;
+      await c.withRecoveryOperation(fixture.txId, async lease => { saved = { lease, r: issue(lease, claim(g)) }; });
+      assert.equal(code(() => c.resolveConfirmed(saved.lease, saved.r)), "LEASE"); assert.equal(items.get(key), submitted);
+      const disposed = await c.withRecoveryOperation(fixture.txId, async lease => { const r = issue(lease, claim(c.beginStatus())); c.dispose(); return code(() => c.resolveConfirmed(lease, r)); }).catch(error => error.code);
+      assert.equal(disposed, "CANCELLED"); assert.equal(items.get(key), submitted);
+      items.clear(); const fresh = api.createDelegationCoordinator(), freshIssue = fresh.resolutionIssuer();
+      try {
+        assert.deepEqual(await fresh.withNewOperation(async lease => {
+          const newMode = code(() => freshIssue(lease, claim(fresh.beginStatus()))), intent = fresh.prepare(lease, details());
+          fresh.beginAttempt(lease, intent); fresh.markOutcome(lease, intent, "submitted"); return { newMode, record: JSON.parse(items.get(key)).stage };
+        }), { newMode: "LEASE", record: "submitted" });
+      } finally { fresh.dispose(); }
+    });
+  } finally { if (saved) Object.defineProperty(globalThis, "window", saved); else delete globalThis.window; }
+}
+function details() { const { txId, invalidHereafterSlot, inputRefs, createdAt } = fixture; return { txId, invalidHereafterSlot, inputRefs, createdAt }; }
 async function browserCases() {
   const option = (name, fallback) => process.argv.includes(name) ? path.resolve(process.argv[process.argv.indexOf(name) + 1]) : fallback;
   const playwrightPath = option("--playwright", "/tmp/easy1-homepage-browser-tools/node_modules/playwright");
@@ -459,6 +516,44 @@ async function browserCases() {
         assert.deepEqual(other, { code: "OPERATION", message: "The delegation operation could not complete." }, "FORBIDDEN_CALLBACK_ERROR_PAYLOAD");
       }
     });
+    await scenario("confirmed resolution removes exactly once; another tab sees the removal as LOST, never healed", async (a, b) => {
+      await a.evaluate(async () => c.withNewOperation(async lease => { const intent = c.prepare(lease, details); c.beginAttempt(lease, intent); c.markOutcome(lease, intent, "submitted"); }));
+      await b.waitForFunction(() => c.getState().record?.stage === "submitted");
+      const result = await a.evaluate(async () => {
+        const issue = c.resolutionIssuer(), g = c.beginStatus(), record = localStorage.getItem(api.DELEGATION_RECORD_KEY);
+        return c.withRecoveryOperation(fixture.txId, async lease => {
+          const r = issue(lease, { kind: "confirmed", record, generation: g, point: { slot: "200000100", hash: "c".repeat(64), height: "100000100" }, deadline: Date.now() + 10000 });
+          const forged = await code(async () => c.resolveConfirmed(lease, structuredClone(r)));
+          c.resolveConfirmed(lease, r); const reuse = await code(async () => c.resolveConfirmed(lease, r));
+          return { forged, reuse, raw: localStorage.getItem(api.DELEGATION_RECORD_KEY), state: c.getState().status, second: await code(async () => c.resolutionIssuer()) };
+        });
+      });
+      assert.deepEqual(result, { forged: "RESOLUTION", reuse: "RESOLUTION", raw: null, state: "absent", second: "OPERATION" }, "FORBIDDEN_RESOLUTION");
+      await b.waitForFunction(() => c.getState().status === "unknown");
+      assert.equal(await b.evaluate(() => c.getState().txId), fixture.txId);
+      assert.equal(await a.evaluate(() => c.withNewOperation(async () => "healthy")), "healthy");
+    });
+    for (const change of ["replace-stage", "delete", "abort", "dispose"]) await scenario(`resolution under ${change} removes nothing`, async (a, b) => {
+      await a.evaluate(async () => c.withNewOperation(async lease => { const intent = c.prepare(lease, details); c.beginAttempt(lease, intent); c.markOutcome(lease, intent, "submitted"); }));
+      await a.evaluate(() => {
+        window.issue = c.resolutionIssuer(); window.ready = false; window.abort = new AbortController();
+        const g = c.beginStatus(), record = localStorage.getItem(api.DELEGATION_RECORD_KEY);
+        window.operation = code(() => c.withRecoveryOperation(fixture.txId, async lease => {
+          const r = issue(lease, { kind: "confirmed", record, generation: g, point: { slot: "200000100", hash: "c".repeat(64), height: "100000100" }, deadline: Date.now() + 60000 });
+          ready = true; await new Promise(resolve => { window.resume = resolve; });
+          window.inner = await code(async () => c.resolveConfirmed(lease, r));
+        }, { signal: abort.signal }));
+      });
+      await a.waitForFunction(() => ready);
+      if (change === "replace-stage") await b.evaluate(() => localStorage.setItem(api.DELEGATION_RECORD_KEY, JSON.stringify({ ...fixture, stage: "unknown" })));
+      if (change === "delete") await b.evaluate(() => localStorage.removeItem(api.DELEGATION_RECORD_KEY));
+      if (change !== "abort" && change !== "dispose") await a.waitForFunction(() => c.getState().record?.stage === "unknown" || c.getState().status === "unknown");
+      if (change === "abort") await a.evaluate(() => abort.abort()); if (change === "dispose") await a.evaluate(() => c.dispose());
+      await a.evaluate(() => resume()); await a.waitForFunction(() => window.inner !== undefined);
+      const result = await a.evaluate(async () => ({ inner, raw: localStorage.getItem(api.DELEGATION_RECORD_KEY) }));
+      assert.equal(result.inner, { "replace-stage": "RESOLUTION", delete: "LOST", abort: "LEASE", dispose: "LEASE" }[change], "FORBIDDEN_RESOLUTION " + change);
+      if (change === "delete") assert.equal(result.raw, null); else assert.equal(JSON.parse(result.raw).stage, change === "replace-stage" ? "unknown" : "submitted");
+    });
     assert.deepEqual(forbidden, [], "FORBIDDEN_NETWORK_OR_NAVIGATION");
   } finally {
     if (browser) { await browser.close(); lifecycle.browserClosed = true; }
@@ -484,7 +579,7 @@ function identities() {
 }
 (async () => {
   try {
-    if (!process.argv.includes("--browser-only")) nodeCases();
+    if (!process.argv.includes("--browser-only")) { nodeCases(); await nodeResolutionCases(); }
     if (!process.argv.includes("--node-only")) await browserCases();
     console.log(`PASS coordination ${checks} Node checks, ${browserChecks} native Chromium scenarios`);
   } finally { identities(); }

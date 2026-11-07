@@ -16,7 +16,11 @@
     "source-freshness",
     "lease-intent",
     "duplicate-dispatch",
-    "unknown-retention"
+    "unknown-retention",
+    "body-binding",
+    "point-identity",
+    "account-reconciliation",
+    "poll-budget"
   ],
   "allCases": [
     "registered",
@@ -74,7 +78,21 @@
     "dispose-postreply",
     "storage-final-replaced",
     "locks-unavailable",
-    "same-account-postreply-focus"
+    "same-account-postreply-focus",
+    "confirm-after-poll",
+    "confirm-new-inclusion",
+    "confirm-index-lag",
+    "confirm-unknown-outcome",
+    "confirm-timeout",
+    "confirm-wrong-body",
+    "confirm-same-height-fork",
+    "confirm-unreconciled-account",
+    "confirm-later-other-pool",
+    "confirm-different-wallet",
+    "status-cross-tab",
+    "status-disconnect",
+    "status-dispose",
+    "check-status-after-reload"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -307,6 +325,114 @@
     "missing-configuration": {
       "submitDispatches": 0,
       "posts": 0
+    },
+    "confirm-after-poll": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-new-inclusion": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-index-lag": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-unknown-outcome": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-timeout": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-wrong-body": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-same-height-fork": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-unreconciled-account": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-later-other-pool": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-different-wallet": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "status-cross-tab": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "status-disconnect": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "status-dispose": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "check-status-after-reload": {
+      "submitDispatches": 1,
+      "posts": 1
+    }
+  },
+  "statusPlans": {
+    "confirm-after-poll": {
+      "notFound": 2
+    },
+    "confirm-new-inclusion": {
+      "notFound": 0,
+      "above": true
+    },
+    "confirm-index-lag": {
+      "notFound": 0,
+      "lag": true
+    },
+    "confirm-unknown-outcome": {
+      "notFound": 1
+    },
+    "confirm-timeout": {
+      "notFound": null
+    },
+    "confirm-wrong-body": {
+      "notFound": 0,
+      "wrongBody": true
+    },
+    "confirm-same-height-fork": {
+      "notFound": 0,
+      "fork": true
+    },
+    "confirm-unreconciled-account": {
+      "notFound": 0,
+      "unreconciled": true
+    },
+    "confirm-later-other-pool": {
+      "notFound": 0,
+      "laterOther": true
+    },
+    "confirm-different-wallet": {
+      "notFound": 2
+    },
+    "status-cross-tab": {
+      "notFound": null
+    },
+    "status-disconnect": {
+      "notFound": 1,
+      "disconnectOnFound": true
+    },
+    "status-dispose": {
+      "notFound": 1,
+      "disposeOnFound": true
+    },
+    "check-status-after-reload": {
+      "notFound": 0
     }
   }
 }
