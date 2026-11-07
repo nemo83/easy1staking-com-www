@@ -20,6 +20,8 @@ export interface DelegationReview {
 }
 /** Historical chain fact for the original credential A, never attributed to a currently connected wallet. */
 export interface DelegationConfirmation {
+  readonly txId: string;
+  readonly message: string;
   readonly blockHeight: string;
   readonly confirmations: string;
   readonly credential: string;
@@ -69,7 +71,8 @@ export function createDelegationController(projectId: string) {
   }), coordinator = createDelegationCoordinator(), verifier = createRecoveryVerifier(projectId, coordinator);
   const listeners = new Set<() => void>();
   let disposed = false, serial = 0, operation: Operation | null = null, coordinationReady = false;
-  let status: StatusWork | null = null, confirmation: DelegationConfirmation | null = null, statusReason: string | null = null;
+  // The confirmed result is held apart from the wallet/action phase; only a new operation's transaction ID supersedes it.
+  let status: StatusWork | null = null, resolved: DelegationConfirmation | null = null, statusReason: string | null = null;
   let phase: DelegationView["phase"] = "disconnected", message = "Choose a wallet to connect.", review: DelegationReview | null = null;
   let txId: string | null = null;
   const fail = (): never => { throw new FlowFailure(); };
@@ -82,7 +85,7 @@ export function createDelegationController(projectId: string) {
     return Object.freeze({ phase, message, walletId: state.walletId, account: state.observation?.binding.stakeKeyHash ?? null,
       review, txId: txId ?? prior.txId, recovery: prior,
       walletBrowseHref: browse ? "web+cardano://browse/v1?uri=" + encodeURIComponent(origin + "/pool") : null,
-      statusRunning: status !== null, statusUntil: status?.deadline ?? null, confirmation, statusReason,
+      statusRunning: status !== null, statusUntil: status?.deadline ?? null, confirmation: resolved !== null && resolved.txId === txId ? resolved : null, statusReason,
       canCheckStatus: !disposed && !status && !operation && prior.status === "pending" && prior.record !== null });
   }
   function emit(): void { if (!disposed) for (const listener of listeners) { try { listener(); } catch { /* Display only. */ } } }
@@ -261,11 +264,13 @@ export function createDelegationController(projectId: string) {
   }
   function live(work: StatusWork): boolean { return !disposed && status === work; }
   function startStatus(id: string, deadline: number | null): void {
-    if (disposed || status || operation || (deadline !== null && clock() >= deadline)) return;
+    if (disposed || status || operation) return;
     const prior = recovery(); if (prior.status !== "pending" || prior.txId !== id) return;
+    // The automatic budget already ended (for example a tab suspended past dispatch + 180 s): apologise now, without a check.
+    if (deadline !== null && clock() >= deadline) { txId = id; show("check-later", APOLOGY); return; }
     let generation: number; try { generation = coordinator.beginStatus(); } catch { return; }
     const work: StatusWork = { abort: new AbortController(), generation, txId: id, deadline, expired: false, resolved: null };
-    status = work; confirmation = null; emit();
+    status = work; emit();
     void runStatus(work);
   }
   /** One bounded read session under the recovery lock; it never enables or calls the wallet, builds, signs or posts. */
@@ -306,9 +311,9 @@ export function createDelegationController(projectId: string) {
     if (!live(work)) return;
     status = null; coordinator.endStatus(work.generation); txId = work.txId;
     if (step.kind === "confirmed") {
-      const o = step.outcome;
-      confirmation = Object.freeze({ blockHeight: o.blockHeight, confirmations: o.confirmations, credential: o.credential, account: o.account });
-      show("confirmed", `Your delegation transaction was confirmed on chain in block ${o.blockHeight} (${o.confirmations} confirmation${o.confirmations === "1" ? "" : "s"}).`);
+      const o = step.outcome, text = `Your delegation transaction was confirmed on chain in block ${o.blockHeight} (${o.confirmations} confirmation${o.confirmations === "1" ? "" : "s"}).`;
+      resolved = Object.freeze({ txId: work.txId, message: text, blockHeight: o.blockHeight, confirmations: o.confirmations, credential: o.credential, account: o.account });
+      show("confirmed", text);
     } else if (step.kind === "inconsistent") show("inconsistent", "We found this transaction but couldn't verify it consistently. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.");
     else if (step.kind === "changed") show("changed", "This operation's saved status changed in another tab of this browser. Keep the transaction ID and check it in your wallet or a chain explorer.");
     else show("check-later", APOLOGY);

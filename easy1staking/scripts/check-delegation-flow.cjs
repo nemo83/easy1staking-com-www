@@ -48,7 +48,7 @@ async function freePort(port=0){const s=net.createServer();s.listen(port,"127.0.
 function failureText(error){return(error instanceof assert.AssertionError&&!error.generatedMessage?String(error.message):String(error?.name||"Error")+": "+String(error?.message??error)).split("\n")[0];}
 function descendants(pid){try{return fs.readFileSync(`/proc/${pid}/task/${pid}/children`,"utf8").trim().split(/\s+/).filter(Boolean).map(Number).flatMap(p=>[p,...descendants(p)]);}catch{return[];}}
 const report={runnerSha256:sha(fs.readFileSync(__filename)),fixtureSha256:sha(fs.readFileSync(path.join(__dirname,'fixtures/delegation-flow.json'))),node:process.version,source:{},cases:[],chunks:[],unexpected:[],errors:[],cleanup:{},buildId:fs.readFileSync(path.join(app,".next/BUILD_ID"),"utf8").trim()};
-for(const name of ["controller","wallet-session","coordination","builder","guard","crypto","chain-context","wallet-codec","source-cbor","blockfrost-reader","provider-json","cbor","types"])report.source[name]=sha(fs.readFileSync(path.join(app,"src/lib/site/delegation",name+".ts")));
+for(const name of ["controller","wallet-session","coordination","recovery-verifier","builder","guard","crypto","chain-context","wallet-codec","source-cbor","blockfrost-reader","provider-json","cbor","types"])report.source[name]=sha(fs.readFileSync(path.join(app,"src/lib/site/delegation",name+".ts")));
 // A crash outside the case loop still terminates owned children and leaves a partial report.
 function crash(kind,error){if(report.crashed)return;report.crashed={kind,failure:failureText(error)};for(const pid of descendants(process.pid))try{process.kill(pid,"SIGKILL");}catch{}try{fs.writeFileSync(path.join(output,"report.json"),JSON.stringify(report,null,2));}catch{}process.exit(1);}
 process.on("unhandledRejection",error=>crash("unhandledRejection",error));process.on("uncaughtException",error=>crash("uncaughtException",error));
@@ -74,11 +74,13 @@ async function main(){
     const t=st.lastTip;let slot=BigInt(t.slot)-2n,height=slot-100000000n,hash=id(Number(slot));
     if(plan.above){slot=BigInt(t.slot)+1n;height=slot-100000000n;hash=id(Number(slot));}
     if(plan.fork){st.pinned=t;slot=BigInt(t.slot)-5n;height=BigInt(t.height);hash="f0".repeat(32);}
+    // Later fork: the inclusion sits 10 slots back; a later delegation elsewhere is in a different block at the same height, 5 slots on.
+    if(plan.laterFork){slot=BigInt(t.slot)-10n;height=slot-100000000n;hash=id(Number(slot));}
     const time=(1596059091000+Number(slot-4492800n)*1000)/1000,acc=s.routes.get("/accounts/"+account);st.inclusion={slot:Number(slot),height:Number(height),time,hash,index:0};
     acc.pool_id=plan.unreconciled?otherPool:chain.poolId;acc.active=true;
     st.ownHistory={active_epoch:666,tx_hash:golden.txId,amount:"100000000",pool_id:chain.poolId,tx_slot:Number(slot),block_time:time,block_height:Number(height)};
     if(!plan.lag)s.routes.get("/accounts/"+account+"/delegations").push(st.ownHistory);
-    if(plan.laterOther){const later=id(0x5a5a),q=point(slot+1n);s.txs[later]={hash:later,valid_contract:true,...q,stake_cert_count:0,delegation_count:1,pool_update_count:0,pool_retire_count:0};
+    if(plan.laterOther||plan.laterFork){const later=id(0x5a5a),q=plan.laterFork?{...point(slot+5n),block_height:Number(height)}:point(slot+1n);s.txs[later]={hash:later,valid_contract:true,...q,stake_cert_count:0,delegation_count:1,pool_update_count:0,pool_retire_count:0};
      s.routes.set(`/txs/${later}/delegations`,[{cert_index:0,index:0,address:account,pool_id:otherPool,active_epoch:667}]);
      s.routes.get("/accounts/"+account+"/delegations").push({active_epoch:667,tx_hash:later,amount:"100000000",pool_id:otherPool,tx_slot:q.slot,block_time:q.block_time,block_height:q.block_height});acc.pool_id=otherPool;}
    }
@@ -146,7 +148,8 @@ async function main(){
      // Responding tripwire controls are exercised without outward I/O.
      try{navigator.sendBeacon("https://invalid.example");}catch{}state.control=state.tripwires.pop();
      async function read(value){state.walletReads=(state.walletReads||0)+1;if(state.replyAt!==null&&["post-reply-deadline","post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)&&state.postReadIndex++<3)await new Promise(r=>setTimeout(r,delay));return value;}
-     const api={getNetworkId:()=>read(state.network),getChangeAddress:()=>read(state.address),getRewardAddresses:()=>read([]),getUtxos:()=>read([state.utxo]),async signTx(unsigned,partial){state.signCalls++;state.signAt=performance.now();if(partial!==false)throw Error("PARTIAL_FLAG");if(["cancel-approval","account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","same-account-focus"].includes(mode))await new Promise(r=>state.release=r);
+     if(mode==="status-visible-refresh"){const every=window.setInterval.bind(window);window.setInterval=(fn,ms,...rest)=>every(ms===30000&&typeof fn==="function"?(...a)=>{state.intervalTicks=(state.intervalTicks||0)+1;return fn(...a);}:fn,ms,...rest);}
+     const api={getNetworkId:()=>state.failReads?Promise.reject(Error("SYNTHETIC_REFRESH_FAILURE")):read(state.network),getChangeAddress:()=>read(state.address),getRewardAddresses:()=>read([]),getUtxos:()=>read([state.utxo]),async signTx(unsigned,partial){state.signCalls++;state.signAt=performance.now();if(partial!==false)throw Error("PARTIAL_FLAG");if(["cancel-approval","account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","same-account-focus"].includes(mode))await new Promise(r=>state.release=r);
       if(mode==="long-consent")await new Promise(r=>setTimeout(r,31000));const witness=await window.syntheticSign(unsigned);state.replyAt=performance.now();
       if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)){const before=document.visibilityState;Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});state.visibilityTransition={before,after:document.visibilityState,at:performance.now()};document.dispatchEvent(new Event("visibilitychange"));}
       if(mode.startsWith("presubmit-"))state.clockDeltaMs+=baseTime+(600-Number(mode.slice(10)))*1000-Date.now();
@@ -167,6 +170,9 @@ async function main(){
      if(request.method()==="POST"){
       assert.equal(p,"/tx/submit");const bytes=request.postDataBuffer(),expected=record.signatures[0];assert(expected,"SIGN_BEFORE_POST");assert.equal(bytes.toString("hex"),expected.signedHex,"EXACT_GUARDED_POST_BYTES");assert.equal(request.headers()["content-type"],"application/cbor");record.posts.push({txId:expected.txId,hex:bytes.toString("hex"),at:Date.now()});
       if(name==="submit-timeout"||name==="confirm-unknown-outcome")await new Promise(r=>setTimeout(r,61000));
+      // The tab "resumes" after the POST is dispatched and before status starts: the existing synthetic page clock moves past dispatch + 180 s.
+      if(name==="confirm-resumed-after-deadline"||plan.visibleRefresh)await routeStep(async()=>{record.walletAtPost=await page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,walletReads:window.synthetic.walletReads||0,throwing:window.synthetic.throwingWalletCalls}));});
+      if(name==="confirm-resumed-after-deadline")await routeStep(async()=>{record.clockJump=await page.evaluate(()=>{const before=Date.now();window.synthetic.clockDeltaMs+=181000;return{ms:181000,before,after:Date.now()};});});
       if(name==="cancel-transmission"){await routeStep(()=>page.getByRole("button",{name:"Cancel here"}).click());await new Promise(r=>setTimeout(r,100));}
       if(name==="storage-after-transmission"){await routeStep(async()=>{const other=await context.newPage();await other.goto(origin+"/pool");await other.evaluate(()=>{localStorage.removeItem("easy1staking:delegation-recovery");});await other.close();});await page.waitForTimeout(100);}
       if(name==="submit-bad-status")return route.fulfill({status:500,contentType:"application/json",body:'{"error":"SYNTHETIC_PRIVATE_CANARY"}'});
@@ -188,6 +194,9 @@ async function main(){
        if(plan.disconnectOnFound)await routeStep(()=>page.getByRole("button",{name:"Disconnect wallet"}).click());
        if(plan.disposeOnFound){await routeStep(()=>page.locator('a[aria-label="easy1staking home"]').first().click());st.navigatedAt=Date.now();}
       }
+      // A visible wallet refresh while the first check's transaction lookup is in flight.
+      if(plan.visibleRefresh&&p==="/txs/"+golden.txId&&st.lookups===0&&!st.refresh)await routeStep(async()=>{const counts=()=>page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,walletReads:window.synthetic.walletReads||0,visibility:document.visibilityState}));
+       const before=await counts();await page.evaluate(()=>window.dispatchEvent(new Event("focus")));await page.waitForFunction(n=>window.synthetic.enableCalls>n,before.enableCalls,{timeout:5000,polling:50});await page.waitForTimeout(500);st.refresh={before,after:await counts(),at:Date.now()};});
       value=statusValue(p);entry.status=value===NOT_FOUND?404:200;
       if(value===NOT_FOUND)return route.fulfill({status:404,contentType:"application/json",body:'{"status_code":404,"error":"Not Found","message":"The requested component has not been found."}',headers:{"access-control-allow-origin":"*"}});
      }else if(p==="/blocks/latest"){
@@ -277,6 +286,12 @@ async function main(){
       assert((await page.locator('#delegate').innerText()).includes(golden.txId),"CONFIRMED_KEEPS_ID");assert.equal(await page.getByText("A prior operation is unresolved",{exact:false}).count(),0,"CONFIRMED_NO_PRIOR_NOTICE");
       record.confirmedText=text;return region;
      }
+     // The confirmed result keeps its copy and its own caption whatever the wallet/action phase now shows.
+     async function kept(label){
+      const n=await page.locator('[aria-label="Delegation confirmation"]').count(),region=n?await page.locator('[aria-label="Delegation confirmation"]').innerText():"",body=await page.locator('#delegate').innerText();
+      record.protected=(record.protected||[]).concat([{label,status:await statusText(),region}]);
+      assert(region.includes("Transaction ID — confirmed on chain")&&region.includes(golden.txId)&&region.includes(record.confirmedText)&&!body.includes("outcome pending or unknown")&&!body.includes("submitted, confirmation pending"),label);
+     }
      await page.waitForFunction(()=>window.synthetic.attemptClock!==undefined,{},{timeout:15000});
      record.statusAttempt=await page.evaluate(()=>({clock:window.synthetic.attemptClock,at:window.synthetic.attemptAt}));const postAt=record.posts[0].at;
      const B=chain.addressHex.slice(58)==="cd".repeat(28)?"ce".repeat(28):"cd".repeat(28);
@@ -287,7 +302,7 @@ async function main(){
       await page.waitForFunction(b=>document.querySelector('#delegate')?.textContent.includes(b),B,{timeout:15000});record.switchedCredential=B;
      }
      // Hide the document so the wallet owner's visible-only 30 s refresh is idle; any later wallet call would come from status work.
-     await page.evaluate(()=>{Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});});await page.waitForTimeout(1000);
+     if(!plan.visibleRefresh)await page.evaluate(()=>{Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});});await page.waitForTimeout(1000);
      const walletAt=()=>page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,walletReads:window.synthetic.walletReads||0,throwing:window.synthetic.throwingWalletCalls}));
      const baseline=await walletAt();record.walletBaseline=baseline;assert.equal(baseline.signCalls,1);
      if(["confirm-after-poll","confirm-new-inclusion","confirm-index-lag","confirm-later-other-pool","confirm-different-wallet","status-disconnect"].includes(name)){
@@ -310,12 +325,44 @@ async function main(){
       assert.equal(text,apology,"APOLOGY_AT_THREE_MINUTES");assert(raw&&JSON.parse(raw).txId===golden.txId,"RECORD_RETAINED_AT_TIMEOUT");assert(body.includes(golden.txId),"ID_SHOWN_AT_TIMEOUT");
       assert.equal(await page.getByRole("button",{name:"Check status"}).count(),1,"CHECK_STATUS_OFFERED");assert(st.trace.every(x=>x.found===false),"ONLY_404_TICKS");
       assert.equal(record.http.filter(x=>x.method==="GET"&&x.at>postAt+181000&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/"))).length,0,"NO_READS_AFTER_BUDGET");
-     }else if(["confirm-wrong-body","confirm-same-height-fork","confirm-unreconciled-account"].includes(name)){
+     }else if(["confirm-wrong-body","confirm-same-height-fork","confirm-unreconciled-account","confirm-later-fork"].includes(name)){
       // Victims wait for either terminal state, then check retained storage before any expected text.
       await waitTerminal(60000);const raw=await stored();record.victimTerminal={text:await statusText(),raw};
-      assert(raw!==null&&JSON.parse(raw).txId===golden.txId,{"confirm-wrong-body":"RECORD_RETAINED_ON_MISMATCH","confirm-same-height-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-unreconciled-account":"RECORD_RETAINED_ON_ACCOUNT_MISMATCH"}[name]);
-      assert.equal(await statusText(),inconsistentText,"INCONSISTENT_MESSAGE");record.statusReason=(await viewOf()).statusReason;assert.equal(record.statusReason,{"confirm-wrong-body":"inconsistent:BODY_ID","confirm-same-height-fork":"inconsistent:POINT_RELATION","confirm-unreconciled-account":"inconsistent:ACCOUNT"}[name],"INCONSISTENT_REASON_CODE");assert((await page.locator('#delegate').innerText()).includes(golden.txId),"INCONSISTENT_KEEPS_ID");
+      assert(raw!==null&&JSON.parse(raw).txId===golden.txId,{"confirm-wrong-body":"RECORD_RETAINED_ON_MISMATCH","confirm-same-height-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-unreconciled-account":"RECORD_RETAINED_ON_ACCOUNT_MISMATCH","confirm-later-fork":"RECORD_RETAINED_ON_INCOHERENCE"}[name]);
+      assert.equal(await statusText(),inconsistentText,"INCONSISTENT_MESSAGE");record.statusReason=(await viewOf()).statusReason;assert.equal(record.statusReason,{"confirm-wrong-body":"inconsistent:BODY_ID","confirm-same-height-fork":"inconsistent:POINT_RELATION","confirm-unreconciled-account":"inconsistent:ACCOUNT","confirm-later-fork":"inconsistent:POINT_PAIR"}[name],"INCONSISTENT_REASON_CODE");assert((await page.locator('#delegate').innerText()).includes(golden.txId),"INCONSISTENT_KEEPS_ID");
       const lookups=st.lookups;await page.waitForTimeout(11000);assert.equal(st.lookups,lookups,"INCONSISTENT_STOPS_POLL");
+     }else if(name==="confirm-resumed-after-deadline"){
+      // Either terminal-looking text, then a fixed settle; the apology is the first expected text asserted.
+      await page.waitForFunction(()=>/^Sorry, we couldn't confirm|^Submitted to Blockfrost/.test(document.querySelector('#delegate [role="status"]')?.textContent||""),{},{timeout:15000,polling:100});await page.waitForTimeout(2000);
+      const text=await statusText(),raw=await stored(),v=await viewOf(),pageNow=await page.evaluate(()=>Date.now());record.resumed={text,raw,pageNow,attemptClock:record.statusAttempt.clock,clockJump:record.clockJump,statusRunning:v.statusRunning,phase:v.phase};
+      assert(pageNow-record.statusAttempt.clock>180000,"PAGE_CLOCK_PAST_BUDGET");
+      assert.equal(text,apology,"APOLOGY_AFTER_RESUME");assert(raw&&JSON.parse(raw).txId===golden.txId,"RECORD_RETAINED_AFTER_RESUME");assert((await page.locator('#delegate').innerText()).includes(golden.txId),"ID_SHOWN_AFTER_RESUME");
+      assert.equal(await page.getByRole("button",{name:"Check status"}).count(),1,"CHECK_STATUS_AFTER_RESUME");assert.equal(v.statusRunning,false,"NO_POLL_AFTER_RESUME");
+      assert.equal(record.http.filter(x=>x.method==="GET"&&x.at>postAt&&(x.path.startsWith("/txs/")||x.path.startsWith("/blocks/")||x.path.startsWith("/accounts/"))).length,0,"ZERO_STATUS_READS_AFTER_RESUME");
+      assert.deepEqual(await walletAt(),record.walletAtPost,"ZERO_WALLET_EFFECTS_AFTER_POST");
+     }else if(name==="confirm-then-disconnect"){
+      await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");record.statusCutoff=Date.now();assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+      await page.getByRole("button",{name:"Disconnect wallet"}).click();await page.waitForTimeout(300);
+      await kept("CONFIRMED_LABEL_KEPT");assert.equal((await viewOf()).walletId,null,"DISCONNECTED_AFTER_CONFIRMATION");
+      await page.getByLabel("Wallet",{exact:true}).selectOption("synthetic");await page.getByRole("button",{name:"Connect selected wallet"}).click();
+      await page.waitForFunction(()=>/already delegates|could not be verified|eligibility checked/.test(document.querySelector('#delegate [role="status"]')?.textContent||""),{},{timeout:20000,polling:100});
+      await kept("CONFIRMED_LABEL_KEPT_AFTER_CONNECT");
+     }else if(name==="confirm-then-refresh-failure"){
+      await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");record.statusCutoff=Date.now();assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+      // The page becomes visible again; the wallet owner's refresh read throws.
+      await page.evaluate(()=>{window.synthetic.failReads=true;Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"visible"});document.dispatchEvent(new Event("visibilitychange"));});
+      await page.waitForFunction(()=>/wallet changed or became unavailable/.test(document.querySelector('#delegate [role="status"]')?.textContent||""),{},{timeout:15000,polling:100});
+      record.refreshFailure=await walletAt();assert.equal(record.refreshFailure.enableCalls,baseline.enableCalls+1,"VISIBLE_REFRESH_RAN");assert.equal((await viewOf()).walletId,"synthetic","WALLET_STILL_SELECTED");
+      await kept("CONFIRMED_LABEL_KEPT");
+     }else if(name==="status-visible-refresh"){
+      await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");record.statusCutoff=Date.now();
+      // Counted from the POST: the refresh may land before the settle-window baseline.
+      const atPost=record.walletAtPost,w=await walletAt(),ticks=await page.evaluate(()=>window.synthetic.intervalTicks||0),acquisitions=w.enableCalls-atPost.enableCalls;
+      record.visibleRefresh={atPost,baseline,after:w,refresh:st.refresh,intervalTicks:ticks,acquisitions,visibility:await page.evaluate(()=>document.visibilityState),lookups:st.trace.filter(x=>x.found!==undefined)};
+      assert.equal(record.visibleRefresh.visibility,"visible","VISIBLE_PAGE");assert(st.refresh&&st.refresh.after.enableCalls>st.refresh.before.enableCalls&&st.refresh.before.visibility==="visible","REFRESH_DURING_CHECK");
+      assert.deepEqual(record.visibleRefresh.lookups.map(x=>x.found),[false,true],"POLL_CONTINUES_TO_CONFIRMATION");
+      // Status work never calls the wallet: every enable is a visible refresh (the runner's focus or an instrumented 30 s tick), each with its seven reads.
+      assert.equal(w.signCalls,atPost.signCalls,"STATUS_ZERO_SIGN");assert(acquisitions>=1&&acquisitions<=1+ticks,"ENABLE_ONLY_FROM_REFRESH");assert.equal(w.walletReads-atPost.walletReads,7*acquisitions,"WALLET_READS_ONLY_FROM_REFRESH");
      }else if(name==="status-cross-tab"){
       await until(()=>st.lookups>=1,15000,"FIRST_TICK");const second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
       await second.evaluate(()=>{window.held=navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},()=>new Promise(r=>{window.releaseHeld=r;}));});
@@ -338,9 +385,10 @@ async function main(){
       await page.getByRole("button",{name:"Check status"}).click();await waitTerminal(35000);await confirmedState("This stake account currently delegates to EASY1.");
       const w=await walletAt();record.afterReload.wallet=w;assert.deepEqual(w,{enableCalls:0,signCalls:0,walletReads:0,throwing:0},"ZERO_WALLET_CALLS_AFTER_RELOAD");
      }
-     if(name!=="check-status-after-reload")assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+     // Cases that act after confirmation (disconnect, reconnect, refresh) check status-work wallet effects at their cutoff.
+     if(!["check-status-after-reload","confirm-then-disconnect","confirm-then-refresh-failure","status-visible-refresh"].includes(name))assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
      assert.equal(record.posts.length,1,"STATUS_ZERO_POST");
-     const foreign=record.http.filter(x=>x.at>postAt&&!(x.method==="GET"&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/")||x.path.startsWith("/blocks/")||x.path.startsWith("/accounts/"+account))));
+     const foreign=record.http.filter(x=>x.at>postAt&&x.at<=(record.statusCutoff??Infinity)&&!(x.method==="GET"&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/")||x.path.startsWith("/blocks/")||x.path.startsWith("/accounts/"+account))));
      assert.deepEqual(foreign.map(x=>x.method+" "+x.path),[],"STATUS_READ_ONLY_NO_BUILD_READS");
      record.statusTrace=st.trace;
     }else{

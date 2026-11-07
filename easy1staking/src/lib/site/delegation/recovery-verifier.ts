@@ -13,8 +13,8 @@ import type { DelegationCoordinator, DelegationLease, DelegationResolution, Reco
 const ZERO_SLOT = BigInt(4492800), ZERO_TIME = BigInt("1596059091000"), THOUSAND = BigInt(1000), ZERO = BigInt(0), ONE = BigInt(1);
 export type StatusReason = "CONFIRMED" | "NOT_FOUND" | "NEWER_THAN_TIP" | "INDEX_LAG" | "TX_IDENTITY" | "TX_CONTRACT" | "TX_VALIDITY" | "TX_COUNTS" |
   "BODY_ENCODING" | "BODY_ID" | "BODY_INPUTS" | "BODY_TTL" | "CERTIFICATES" | "CREDENTIAL" | "DEPOSIT" | "CERTIFICATE_ROWS" | "BLOCK_IDENTITY" |
-  "POINT_FIELDS" | "POINT_RELATION" | "HISTORY" | "LATER_EVENT" | "ACCOUNT" | "TIP" | "PROVIDER" | "LIMIT" | "TIMEOUT" | "CANCELLED";
-export type AccountState = "EASY1" | "other-pool" | "deregistered";
+  "POINT_FIELDS" | "POINT_RELATION" | "POINT_PAIR" | "HISTORY" | "LATER_EVENT" | "ACCOUNT" | "TIP" | "PROVIDER" | "LIMIT" | "TIMEOUT" | "CANCELLED";
+export type AccountState = "EASY1" | "other-pool" | "deregistered" | "undelegated";
 export type StatusOutcome =
   | { readonly status: "confirmed"; readonly reason: "CONFIRMED"; readonly txId: string; readonly blockHeight: string; readonly confirmations: string;
       readonly credential: string; readonly stakeAddress: string; readonly account: AccountState; readonly resolution: DelegationResolution }
@@ -64,6 +64,17 @@ export function historicalPoint(point: HistoricalPoint, tip: LiveTip): void {
       (point.confirmations === undefined || point.confirmations <= tip.height - point.height && point.confirmations >= point.floor! - point.height);
   };
   contradict(relation(), "POINT_RELATION");
+}
+/** A historical point with the transaction placed at it. */
+export interface PlacedPoint { readonly point: HistoricalPoint; readonly txId: string; readonly index: bigint }
+/** Historical points must also agree with one another, not only with T2: one block per height and slot, ordered heights, distinct placements. */
+export function historicalPairs(points: readonly PlacedPoint[]): void {
+  for (let i = 0; i < points.length; i++) for (let j = i + 1; j < points.length; j++) {
+    const a = points[i].point, b = points[j].point, block = a.hash === b.hash && a.slot === b.slot && a.height === b.height && a.time === b.time;
+    contradict((a.height !== b.height || block) && (a.slot !== b.slot || block) &&
+      (a.slot < b.slot) === (a.height < b.height) && (a.slot > b.slot) === (a.height > b.height) &&
+      points[i].txId !== points[j].txId && (a.hash !== b.hash || points[i].index !== points[j].index), "POINT_PAIR");
+  }
 }
 interface Event { readonly point: HistoricalPoint; readonly index: bigint; readonly cert: bigint; readonly action: "registered" | "deregistered" | "delegated"; readonly pool: string | null; readonly original: boolean }
 function compare(a: Event, b: Event): number {
@@ -179,12 +190,12 @@ export function createRecoveryVerifier(projectId: string, coordinator: Delegatio
       const laterDelegations = later(delegations), laterRegistrations = later(registrations);
       const laterIds = [...new Set([...laterDelegations, ...laterRegistrations].map(row => rowPoint(row).tx))];
       if (laterIds.length > 16) throw new Verdict("unavailable", "LIMIT");
-      const points: HistoricalPoint[] = [];
+      const points: PlacedPoint[] = [];
       for (const id of laterIds) {
         const value = await after("/txs/" + id);
         contradict(hash(field(value, "hash")) === id && boolean(field(value, "valid_contract")) === true, "LATER_EVENT");
         const p: HistoricalPoint = Object.freeze({ slot: integer(field(value, "slot")), height: integer(field(value, "block_height")), time: integer(field(value, "block_time")), hash: hash(field(value, "block")) });
-        const index = integer(field(value, "index"), BigInt(65535)); points.push(p);
+        const index = integer(field(value, "index"), BigInt(65535)); points.push(Object.freeze({ point: p, txId: id, index }));
         contradict(p.slot !== point.slot || p.hash === point.hash && p.height === point.height && index !== txIndex, "LATER_EVENT");
         const groups: [readonly Json[], "delegations" | "stakes", string][] = [[laterDelegations.filter(r => rowPoint(r).tx === id), "delegations", "delegation_count"], [laterRegistrations.filter(r => rowPoint(r).tx === id), "stakes", "stake_cert_count"]];
         for (const [group, endpoint, total] of groups) {
@@ -226,13 +237,14 @@ export function createRecoveryVerifier(projectId: string, coordinator: Delegatio
       try { t2 = liveTip(await read.get("/blocks/latest"), read.clock()); progress([t1, t2]); }
       catch (error) { throw error instanceof SourceError && (error.code === "STALE" || error.code === "COHERENCE") ? new Verdict("unavailable", "TIP") : error; }
       historicalPoint(inclusion, t2);
-      for (const p of points) historicalPoint(p, t2);
+      for (const p of points) historicalPoint(p.point, t2);
+      historicalPairs([Object.freeze({ point: inclusion, txId, index: txIndex }), ...points]);
       read.check();
       const deadline = Math.min(started + 30000, request.deadline ?? Number.POSITIVE_INFINITY);
       const resolution = issue(lease, Object.freeze({ kind: "confirmed", record: JSON.stringify(record), generation: request.generation,
         point: Object.freeze({ slot: t2.slot.toString(), hash: t2.hash, height: t2.height.toString() }), deadline }));
       return Object.freeze({ status: "confirmed", reason: "CONFIRMED", txId, blockHeight: point.height.toString(), confirmations: inclusion.confirmations!.toString(),
-        credential, stakeAddress: stake, account: accountPool === EASY1_HASH ? "EASY1" : accountPool !== null ? "other-pool" : "deregistered", resolution });
+        credential, stakeAddress: stake, account: accountPool === EASY1_HASH ? "EASY1" : accountPool !== null ? "other-pool" : accountRegistered ? "undelegated" : "deregistered", resolution });
     } catch (error) {
       if (error instanceof CoordinationError) throw error;
       if (error instanceof Verdict) return Object.freeze({ status: error.status, reason: error.reason, txId });

@@ -92,7 +92,12 @@
     "status-cross-tab",
     "status-disconnect",
     "status-dispose",
-    "check-status-after-reload"
+    "check-status-after-reload",
+    "confirm-later-fork",
+    "confirm-resumed-after-deadline",
+    "confirm-then-disconnect",
+    "confirm-then-refresh-failure",
+    "status-visible-refresh"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -381,6 +386,26 @@
     "check-status-after-reload": {
       "submitDispatches": 1,
       "posts": 1
+    },
+    "confirm-later-fork": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-resumed-after-deadline": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-then-disconnect": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-then-refresh-failure": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "status-visible-refresh": {
+      "submitDispatches": 1,
+      "posts": 1
     }
   },
   "statusPlans": {
@@ -433,6 +458,24 @@
     },
     "check-status-after-reload": {
       "notFound": 0
+    },
+    "confirm-later-fork": {
+      "notFound": 0,
+      "laterFork": true
+    },
+    "confirm-resumed-after-deadline": {
+      "notFound": null,
+      "resumed": true
+    },
+    "confirm-then-disconnect": {
+      "notFound": 0
+    },
+    "confirm-then-refresh-failure": {
+      "notFound": 0
+    },
+    "status-visible-refresh": {
+      "notFound": 1,
+      "visibleRefresh": true
     }
   }
 }

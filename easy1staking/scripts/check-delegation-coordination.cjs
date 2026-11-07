@@ -100,6 +100,12 @@ async function nodeResolutionCases() {
         assert.equal(items.get(key), submitted);
       } finally { other.dispose(); }
     });
+    await scenario("a resolution issued under recovery lease L1 is refused under a second active lease L2 and removes nothing", async c => {
+      const issue = c.resolutionIssuer(), g = c.beginStatus(); let issued;
+      await c.withRecoveryOperation(fixture.txId, async lease => { issued = issue(lease, claim(g)); });
+      assert.equal(await c.withRecoveryOperation(fixture.txId, async lease => code(() => c.resolveConfirmed(lease, issued))), "RESOLUTION", "FORBIDDEN_CROSS_LEASE_RESOLUTION");
+      assert.equal(items.get(key), submitted); assert.equal(c.getState().status, "pending");
+    });
     await scenario("released, disposed and new-operation leases cannot resolve; existing transitions are unchanged", async c => {
       const issue = c.resolutionIssuer(), g = c.beginStatus(); let saved;
       await c.withRecoveryOperation(fixture.txId, async lease => { saved = { lease, r: issue(lease, claim(g)) }; });

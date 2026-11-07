@@ -7,7 +7,7 @@ import styles from "./EditorialPages.module.css";
 type Controller = ReturnType<typeof createDelegationController>;
 const busyPhases = ["connecting", "assessing", "building", "review", "signing", "checking", "submitting"];
 const accountCopy = { "EASY1": "This stake account currently delegates to EASY1.", "other-pool": "This stake account has since delegated to another pool.",
-  "deregistered": "This stake account has since been deregistered." } as const;
+  "deregistered": "This stake account has since been deregistered.", "undelegated": "This stake account is registered but not currently delegated to a pool." } as const;
 function ada(lovelace: string): string {
   const value = BigInt(lovelace);
   return `${value / BigInt(1000000)}.${(value % BigInt(1000000)).toString().padStart(6, "0")} ADA`;
@@ -39,6 +39,8 @@ export function DelegatePanel() {
   }, []);
   const busy = !!view && busyPhases.includes(view.phase);
   const prior = view?.recovery.status !== "absent";
+  // A confirmed result keeps its own label whatever the wallet/action phase shows; other IDs are labelled by phase.
+  const confirmed = view?.confirmation ?? null;
   return <section id="delegate" className={`wrap section ${styles.authored}`} aria-labelledby="delegate-title">
     <div className="eyebrow">Stake-only delegation / staged candidate</div>
     <h2 id="delegate-title">Stake with <em>EASY1.</em></h2>
@@ -54,10 +56,12 @@ export function DelegatePanel() {
         <p role="status" aria-live="polite" aria-atomic="true">{view.message}</p>
         {view.account && <div className={styles.poolIdentity}>Connected stake credential<code>{view.account}</code></div>}
         {prior && <p className="mt-4">A prior operation is unresolved in this browser. Keep its ID. This page can check its status, but it cannot yet clear an unconfirmed record or retry it.</p>}
-        {view.txId && <div className={styles.poolIdentity}>Transaction ID — {view.phase === "confirmed" ? "confirmed on chain" : view.phase === "submitted" ? "submitted, confirmation pending" : "outcome pending or unknown"}<code>{view.txId}</code></div>}
-        {view.confirmation && <div className="mt-4" aria-label="Delegation confirmation">
-          <div className={styles.poolIdentity}>Stake credential in this transaction<code>{view.confirmation.credential}</code></div>
-          <p>{accountCopy[view.confirmation.account]}</p>
+        {view.txId && view.txId !== confirmed?.txId && <div className={styles.poolIdentity}>Transaction ID — {view.phase === "submitted" ? "submitted, confirmation pending" : "outcome pending or unknown"}<code>{view.txId}</code></div>}
+        {confirmed && <div className="mt-4" aria-label="Delegation confirmation">
+          <div className={styles.poolIdentity}>Transaction ID — confirmed on chain<code>{confirmed.txId}</code></div>
+          {view.message !== confirmed.message && <p>{confirmed.message}</p>}
+          <div className={styles.poolIdentity}>Stake credential in this transaction<code>{confirmed.credential}</code></div>
+          <p>{accountCopy[confirmed.account]}</p>
         </div>}
         {view.statusRunning && <p className="mt-4">Checking the chain for this transaction. This uses read-only chain data, never your wallet.</p>}
         {view.canCheckStatus && !busy && <button type="button" className="btn btn-primary mt-6" onClick={() => { void controller.current?.checkStatus(); }}>Check status</button>}

@@ -77,10 +77,19 @@ inputs, a body that hashes to the ID, and only the stake-only certificate shapes
 deposit. The stake credential comes only from those bytes. Live tips keep the
 existing freshness and progress checks; the inclusion block and later events are
 historical points with their own coherence check against T2, so an old or
-prior-epoch inclusion is legitimate. The account view must equal the effect of
-the last reconstructed certificate, so a later delegation elsewhere or a later
-deregistration is shown as information only when a verified certificate
-explains it. The check never enables or calls the wallet, builds, signs or posts.
+prior-epoch inclusion is legitimate. The historical points are also checked
+against one another: across the inclusion and every reconstructed later event,
+one height or one slot names one block (hash, slot, height and time), a lower
+slot has a lower height and the converse, two transactions never share one
+block and transaction index, and one transaction never appears at two points.
+A violation is `inconsistent:POINT_PAIR`. The account view must equal the
+effect of the last reconstructed certificate, so a later delegation elsewhere,
+a later deregistration, or a re-registration without a new delegation is shown
+as information only when a verified certificate explains it. The page names
+four account states: currently delegates to EASY1, has since delegated to
+another pool, has since been deregistered, and registered but not currently
+delegated to a pool. The check never enables or calls the wallet, builds, signs
+or posts.
 
 Outcomes are confirmed, not-found, pending (newer than T1 or an index still
 catching up), inconsistent (a positive contradiction) and unavailable (provider
@@ -93,10 +102,20 @@ immediately before the record is removed. A 404, timeout, provider error,
 contradiction or lagged index never removes the record, and there is no
 time-based removal. A confirmation is shown as a historical fact for the
 transaction's own stake credential, with its current state, never attributed to
-a different connected wallet.
+a different connected wallet. The confirmed result (block, confirmations,
+credential, account state, its ID and the "confirmed on chain" caption) is held
+apart from the wallet and action state: Disconnect, a new Connect, a new review,
+a cancellation with no operation in progress and a failed visible wallet
+refresh never relabel it or caption its ID as pending or unknown. Only a new
+operation's own transaction ID supersedes it, with its own label. The result
+lives in page memory only; after a reload the record is already removed and the
+page shows no prior operation.
 
 When the budget ends without confirmation the page apologises, keeps the record
-and the ID and offers Check status. An inconsistent result stops polling and
+and the ID and offers Check status. If the budget has already ended when status
+work would start (for example a tab suspended past dispatch plus 180 seconds),
+the page shows the same apology at once, without a check, and keeps the record,
+the ID and Check status. An inconsistent result stops polling and
 clears nothing. If another tab of this browser changes or removes the saved
 record, status work stops and keeps the ID; the changed record is never healed.
 After a reload there is no automatic poll; Check status runs one bounded check.
@@ -178,8 +197,8 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 70 cases and `--cases first` executes six. Selectors
-are strict: `--case` must name one registered case (the 70 plus
+`--cases all` now executes 75 cases and `--cases first` executes six. Selectors
+are strict: `--case` must name one registered case (the 75 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
 
@@ -191,18 +210,30 @@ settled in each case before its verdict; a mismatch or failed read while the
 case is active disqualifies the case, and any control run on it, without
 replacing its primary failure.
 
-Fourteen status cases follow an identical registered submission:
+Nineteen status cases follow an identical registered submission:
 `confirm-after-poll`, `confirm-new-inclusion`, `confirm-index-lag`,
 `confirm-unknown-outcome` (deadline measured from dispatch), `confirm-timeout`
 (observed 185 seconds after dispatch), `confirm-wrong-body`,
 `confirm-same-height-fork`, `confirm-unreconciled-account`,
 `confirm-later-other-pool`, `confirm-different-wallet`, `status-cross-tab`,
-`status-disconnect`, `status-dispose` and `check-status-after-reload` (a wallet
-whose every method throws). Each declares one dispatch and one POST and asserts
-that status work caused no wallet call and no read outside the status paths. The
-browser test input hides the document after submission so the wallet owner's
-visible-only refresh is idle while status work runs. Every other case answers
-status reads for its ID with 404.
+`status-disconnect`, `status-dispose`, `check-status-after-reload` (a wallet
+whose every method throws), `confirm-later-fork` (a later delegation elsewhere
+in another block at the inclusion height; only the pairwise check fails),
+`confirm-resumed-after-deadline` (the runner's synthetic page clock moves past
+dispatch plus 180 seconds after the POST and before status starts; the apology,
+record, ID and Check status show with zero status reads), `confirm-then-disconnect`
+(Disconnect, then a new Connect, after confirmation), `confirm-then-refresh-failure`
+(the page becomes visible after confirmation and the wallet refresh read throws)
+and `status-visible-refresh` (a visible wallet refresh during an in-flight check;
+polling continues to confirmation). Each declares one dispatch and one POST and
+asserts that status work caused no wallet call and no read outside the status
+paths, up to the point where a case deliberately disconnects, reconnects or
+refreshes. The browser test input hides the document after submission so the
+wallet owner's visible-only refresh is idle while status work runs, except in
+`status-visible-refresh`, where every wallet enable must come from a visible
+refresh (the runner's focus event or an instrumented 30-second tick) with its
+seven wallet reads and no signature. Every other case answers status reads for
+its ID with 404. The per-run source hashes include `recovery-verifier.ts`.
 
 Only browser test input supplies the visibility simulation. Production lifecycle,
 source, timers and guards are unchanged, and isolated context cleanup removes it.
@@ -226,11 +257,17 @@ historical moderate tooling disposition in `tooling-advisories.json`.
 
 Required bounded controls target six controller seams: display-approval
 identity, authentic total deadline, post-sign source eligibility, retained
-lease/intent, duplicate dispatch, and Unknown ID display retention. Four more
+lease/intent, duplicate dispatch, and Unknown ID display retention. Seven more
 target status confirmation: body binding (`confirm-wrong-body`), historical
 point identity (`confirm-same-height-fork`), account reconciliation
-(`confirm-unreconciled-account`) and the three-minute poll budget
-(`confirm-timeout`), each with `confirm-after-poll` as its passing neighbor. Controls run
+(`confirm-unreconciled-account`), the three-minute poll budget
+(`confirm-timeout`), pairwise historical identity (`confirm-later-fork`), the
+resumed-after-deadline apology (`confirm-resumed-after-deadline`) and the
+protected confirmed status (`confirm-then-disconnect`), each with
+`confirm-after-poll` as its passing neighbor. The recovery-verifier and
+coordination Node suites also carry mutation evidence for the per-event
+historical-point loop, the 16-transaction limit, the later-event row count and
+the resolution's lease identity. Controls run
 only against a committed candidate, restore exact source/index, rebuild any
 served mutant, and rerun the full flow after each restoration. A failure must
 show its named forbidden effect; compiler failures and earlier vetoes are

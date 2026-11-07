@@ -229,6 +229,13 @@ outcome("later delegation after a deregistration without re-registration", s => 
   laterRegistration(s, { hash: id(0x91), slot: s.p.slot + 5, registration: false }); laterDelegation(s, { hash: id(0x92), slot: s.p.slot + 6 });
 }, "inconsistent", "LATER_EVENT");
 outcome("more than 16 later transactions is a limit", s => { for (let i = 0; i < 17; i++) laterDelegation(s, { hash: id(0xa00 + i), slot: s.p.slot + 1 + i }); }, "unavailable", "LIMIT");
+test("exactly 16 later transactions are within the limit", async () => { const s = scenario(); for (let i = 0; i < 16; i++) laterDelegation(s, { hash: id(0xa00 + i), slot: s.p.slot + 1 + i }); await confirmed(s, "other-pool"); });
+outcome("a later transaction's own rows outnumber its history rows", s => {
+  laterDelegation(s); const rows = s.extra.get(`/txs/${fixture.laterId}/delegations`); rows.push({ ...clone(rows[0]), index: 1, cert_index: 1, pool_id: chain.poolId }); s.extra.get("/txs/" + fixture.laterId).delegation_count = 2;
+}, "inconsistent", "LATER_EVENT");
+test("later deregistration then re-registration without delegation confirms as registered but not delegated", async () => {
+  const s = scenario(); laterRegistration(s, { hash: id(0x84), slot: s.p.slot + 5, registration: false }); laterRegistration(s, { hash: id(0x85), slot: s.p.slot + 6, registration: true }); await confirmed(s, "undelegated");
+});
 // g. T2, live tips and historical points.
 outcome("T2 regresses below T1", s => { s.tips.push(tip(BigInt(s.tips[0].slot) - 1n)); }, "unavailable", "TIP");
 const atTipHeight = (offset) => () => { const t = S0 + BigInt(fixture.tipOffset), q = point(t - BigInt(offset)); return scenario("2", { slot: t - BigInt(offset), point: { height: Number(t - 100000000n) } }); };
@@ -237,6 +244,30 @@ test("same-height fork twin: the same earlier slot at a lower height confirms", 
 outcome("same-slot fork: inclusion at T2's slot with another hash", () => {}, "inconsistent", "POINT_RELATION", "2", { scenario: () => scenario("2", { slot: S0 + BigInt(fixture.tipOffset), point: { hash: id(0xf0) } }) });
 outcome("reported confirmations exceed T2", s => { const b = s.block; s.block = () => ({ ...b(), confirmations: b().confirmations + 1 }); }, "inconsistent", "POINT_RELATION");
 outcome("reported confirmations below T1", s => { const b = s.block; s.block = () => ({ ...b(), confirmations: b().confirmations - 1 }); }, "inconsistent", "POINT_RELATION");
+// Each reconstructed later event is a historical point with its own check against T2.
+outcome("a later event above T2's height", s => { laterDelegation(s, { slot: s.p.slot + 5, point: { height: s.tips[0].height + 1 } }); }, "inconsistent", "POINT_RELATION");
+outcome("a later event at T2's slot in another block", s => { laterDelegation(s, { slot: s.tips[0].slot, point: { hash: id(0xf6) } }); }, "inconsistent", "POINT_RELATION");
+// Historical points are also checked pairwise: the inclusion point and every reconstructed later event.
+outcome("original-vs-later same-height fork: a later delegation at the inclusion height, 5 slots on", s => { laterDelegation(s, { slot: s.p.slot + 5, point: { height: s.p.height } }); }, "inconsistent", "POINT_PAIR");
+outcome("later-vs-later fork at one height", s => { laterDelegation(s, { hash: id(0xb1), slot: s.p.slot + 5 }); laterDelegation(s, { hash: id(0xb2), slot: s.p.slot + 7, point: { height: s.p.height + 5 } }); }, "inconsistent", "POINT_PAIR");
+outcome("later-vs-later same slot in different blocks", s => { laterDelegation(s, { hash: id(0xb3), slot: s.p.slot + 5 }); laterDelegation(s, { hash: id(0xb4), slot: s.p.slot + 5, index: 1, point: { hash: id(0xf5) } }); }, "inconsistent", "POINT_PAIR");
+function sharedBlock(s, index) {
+  // Two later transactions in one block: the second also carries another account's certificate first, so cert_index alone keeps the events ordered.
+  laterDelegation(s, { hash: id(0xb5), slot: s.p.slot + 5, index: 2 }); laterDelegation(s, { hash: id(0xb6), slot: s.p.slot + 5, index, pools: [chain.poolId] });
+  const rows = s.extra.get(`/txs/${id(0xb6)}/delegations`); rows.unshift({ index: 0, cert_index: 0, address: raw.stakeBech32(fixture.otherStakeKeyHash), pool_id: otherPool, active_epoch: rows[0].active_epoch });
+  Object.assign(rows[1], { index: 1, cert_index: 1 }); s.extra.get("/txs/" + id(0xb6)).delegation_count = 2;
+}
+outcome("two transactions at one block and transaction index", s => { sharedBlock(s, 2); }, "inconsistent", "POINT_PAIR");
+test("two transactions in one block at different transaction indexes confirm", async () => { const s = scenario(); sharedBlock(s, 3); await confirmed(s, "EASY1"); });
+test("historicalPairs is pure: one block per height and slot, ordered heights, distinct placements", () => {
+  const at = (slot, height, hash, txId, index = 0n) => ({ point: { slot, height, time: BigInt(timeAt(slot) / 1000), hash }, txId, index });
+  const code = list => { try { verifierModule.historicalPairs(list); return "OK"; } catch (e) { return e.reason; } }, base = 4492800n + 2000000n, x = at(base, 50n, id(1), id(0x11), 3n);
+  assert.equal(code([x, at(base + 5n, 55n, id(2), id(0x12))]), "OK"); assert.equal(code([x, at(base, 50n, id(1), id(0x12), 4n)]), "OK", "same block, another index");
+  assert.equal(code([x, at(base + 5n, 50n, id(2), id(0x12))]), "POINT_PAIR", "equal height, another block"); assert.equal(code([x, at(base, 51n, id(2), id(0x12))]), "POINT_PAIR", "equal slot, another block");
+  assert.equal(code([x, at(base, 50n, id(1), id(0x12), 3n)]), "POINT_PAIR", "two transactions at one block and index"); assert.equal(code([x, at(base + 5n, 49n, id(2), id(0x12))]), "POINT_PAIR", "later slot at a lower height");
+  assert.equal(code([x, at(base - 5n, 51n, id(2), id(0x12))]), "POINT_PAIR", "earlier slot at a higher height"); assert.equal(code([x, at(base + 5n, 55n, id(2), id(0x11))]), "POINT_PAIR", "one transaction at two points");
+  assert.equal(code([x, at(base + 5n, 55n, id(2), id(0x12)), at(base + 9n, 55n, id(3), id(0x13))]), "POINT_PAIR", "later-vs-later at one height");
+});
 test("historicalPoint is pure: fields, then every relation against T2", () => {
   const t = { slot: 2000000n + 4492800n, hash: id(1), epoch: 212n, observedAt: 0, height: 50n, time: BigInt(timeAt(2000000n + 4492800n) / 1000) };
   const ok = { slot: t.slot - 10n, height: 40n, time: t.time - 10n, hash: id(2) }, code = p => { try { verifierModule.historicalPoint(p, t); return "OK"; } catch (e) { return e.reason; } };
