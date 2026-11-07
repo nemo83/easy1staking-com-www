@@ -58,7 +58,7 @@ async function main(){
   report.chromium={path:executable,sha256:sha(fs.readFileSync(executable))};browser=await chromium.launch({executablePath:executable,headless:true,env:{PATH:env.PATH,HOME:output,TMPDIR:process.env.TMPDIR},args:["--no-sandbox","--disable-background-networking","--disable-component-update","--no-first-run"]});report.chromium.version=browser.version();
   report.chromium.pids=descendants(process.pid).filter(pid=>pid!==server.pid&&!descendants(server.pid).includes(pid));
   for(const name of options.case?[options.case]:options.cases==="all"?fixture.allCases:fixture.firstCases){
-   const record={name,http:[],posts:[],signatures:[],tripwires:[],errors:[],routeHandlerErrors:[]};report.cases.push(record);
+   const record={name,http:[],posts:[],signatures:[],tripwires:[],errors:[],routeHandlerErrors:[],chunkReadErrors:[],chunkReadsAbandonedAtClose:0};report.cases.push(record);
    // Route-handler page actions may race case teardown; record their failures instead of throwing.
    const routeStep=async step=>{try{await step();}catch(error){record.routeHandlerErrors.push(String(error?.message??error).split("\n")[0]);}};const s=scenario(name!=="unregistered"),golden=vectors.find(v=>v.registered===(name!=="unregistered"));
    if(name==="already-EASY1"){
@@ -68,7 +68,7 @@ async function main(){
    }
    if(name==="contradictory-account")s.routes.get("/accounts/"+account).registered=false;
    const pageOrigin=name==="approved-origin"?"https://easy1staking.com":name==="preview-origin"?"https://preview.easy1staking.com":origin;
-   const context=await browser.newContext({viewport:{width:360,height:800},serviceWorkers:"block"});let page,primary;try{
+   const context=await browser.newContext({viewport:{width:360,height:800},serviceWorkers:"block"});let page,primary,closing=false,onResponse;try{
     await context.exposeFunction("syntheticSign",unsigned=>{
      const tips=record.http.filter(x=>x.path==="/blocks/latest");assert(tips.length>=6,"SOURCE_ASSESSMENTS");assert.equal(tips[2].slot,Number(baseSlot),"ORIGINAL_CONSTRUCTION_SLOT");
      const expectedBody=golden.bodyHex,expectedId=golden.txId;assert.equal(pythonHash(expectedBody),expectedId,"LITERAL_GOLDEN_ID");
@@ -146,7 +146,9 @@ async function main(){
      assert.notEqual(value,undefined,"EXPLICIT_SOURCE_FIXTURE "+p);if(Array.isArray(value)&&u.searchParams.has("page")){const n=Number(u.searchParams.get("page"));value=value.slice((n-1)*100,n*100);}
      return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(value),headers:{"access-control-allow-origin":"*"}});
     });
-    page=await context.newPage();page.on("pageerror",e=>record.errors.push(String(e)));page.on("response",response=>{const u=new URL(response.url());if(u.pathname.startsWith("/_next/static/")&&u.pathname.endsWith(".js"))pending.push((async()=>{const bytes=await response.body(),file=path.join(app,".next",u.pathname.replace("/_next/",""));assert.equal(sha(bytes),sha(fs.readFileSync(file)),"SERVED_CHUNK_IDENTITY");report.chunks.push({path:u.pathname,sha256:sha(bytes),bytes:bytes.length});})());});
+    page=await context.newPage();page.on("pageerror",e=>record.errors.push(String(e)));
+    // Each served-chunk read is handled when created: a failed read while active is recorded, one cut off by teardown is counted.
+    onResponse=response=>{const u=new URL(response.url());if(u.pathname.startsWith("/_next/static/")&&u.pathname.endsWith(".js")){const read=response.body().then(bytes=>{const file=path.join(app,".next",u.pathname.replace("/_next/",""));assert.equal(sha(bytes),sha(fs.readFileSync(file)),"SERVED_CHUNK_IDENTITY");report.chunks.push({path:u.pathname,sha256:sha(bytes),bytes:bytes.length});},error=>{if(closing)record.chunkReadsAbandonedAtClose++;else record.chunkReadErrors.push(failureText(error));});read.catch(()=>{});pending.push(read);}};page.on("response",onResponse);
     await page.goto(pageOrigin+"/pool?uri=https%3A%2F%2Finvalid.example");await page.locator('#delegate [role="status"]').waitFor();
     await page.getByLabel("Wallet",{exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.synthetic.enableCalls),0,"NO_AUTO_ENABLE");assert.equal(await page.evaluate(()=>window.synthetic.control),"beacon","TRIPWIRE_RESPONDS");assert.deepEqual(await page.evaluate(()=>window.synthetic.controls),['unexpected-fetch','xhr','socket','events','beacon','signData','wallet-submit','persist-prompt','analytics'],'ALL_TRIPWIRES_RESPOND');
     assert(await page.getByText("On mobile, open this exact page",{exact:false}).isVisible());if(pageOrigin===origin)assert.equal(await page.locator('a[href^="web+cardano:"]').count(),0,"LOCAL_ORIGIN_NO_HOP");
@@ -227,10 +229,13 @@ async function main(){
     const later=[],check=fn=>{try{fn();}catch(error){later.push(error);}};
     check(()=>assert(record.posts.length<=1,"ONE_POST_AT_CLOSE"));
     if(page&&!page.isClosed())check(()=>assert(!(record.terminal?.submitDispatches>1),"ONE_DISPATCH_AT_CLOSE"));
+    // Teardown begins: later chunk-read failures are abandoned at close, not case failures.
+    closing=true;if(page&&onResponse)page.off("response",onResponse);
     // Unrouted requests must not reach the network before the context closes.
     await context.setOffline(true);await context.unrouteAll({behavior:"ignoreErrors"});
     await context.close();
     check(()=>assert.deepEqual(record.routeHandlerErrors,[],"NO_ROUTE_HANDLER_ERRORS"));
+    check(()=>assert.deepEqual(record.chunkReadErrors,[],"NO_CHUNK_READ_ERRORS"));
     check(()=>assert.deepEqual(record.errors,[],"NO_PAGE_ERRORS "+name));
     check(()=>assert(!(record.terminal?.text||'').includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR "+name));
     // A case's first failure is its verdict; later cleanup failures never replace it.
@@ -240,7 +245,7 @@ async function main(){
    }
   }
   await Promise.all(pending);assert.deepEqual(report.unexpected,[]);report.passed=true;
- }catch(error){failure=error;report.failure=String(error);}
+ }catch(error){failure=error;report.failure=String(error).split("\n")[0];}
  finally{
   if(browser){await browser.close();await new Promise(r=>setTimeout(r,100));report.cleanup.chromium=report.chromium.pids.map(pid=>{try{const stat=fs.readFileSync(`/proc/${pid}/stat`,'utf8');const state=stat.slice(stat.lastIndexOf(')')+2).split(' ')[0];assert.equal(state,'Z','CHROMIUM_CHILD_RUNNING '+pid);return{pid,state:'terminal-zombie'};}catch(error){if(error.code==='ENOENT')return{pid,state:'exited'};throw error;}});}
   if(server){serverChildren=descendants(server.pid);server.kill("SIGTERM");if(server.exitCode===null)await once(server,"exit");report.cleanup.serverExit=server.exitCode;for(const pid of serverChildren){try{process.kill(pid,0);throw Error("CHILD_STILL_RUNNING "+pid);}catch(e){if(e.code!=="ESRCH")throw e;}}}
