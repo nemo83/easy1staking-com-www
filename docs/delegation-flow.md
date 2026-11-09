@@ -218,8 +218,8 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 80 cases and `--cases first` executes six. Selectors
-are strict: `--case` must name one registered case (the 80 plus
+`--cases all` now executes 81 cases and `--cases first` executes six. Selectors
+are strict: `--case` must name one registered case (the 81 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
 
@@ -232,11 +232,13 @@ settled in each case before its verdict; a mismatch or failed read while the
 case is active disqualifies the case, and any control run on it, without
 replacing its primary failure.
 
-Twenty-four status cases follow an identical registered submission:
+Twenty-five status cases follow an identical registered submission:
 `confirm-after-poll`, `confirm-new-inclusion`, `confirm-index-lag`,
 `confirm-unknown-outcome` (deadline measured from dispatch), `confirm-timeout`
 (observed 185 seconds after dispatch), `confirm-wrong-body`,
-`confirm-same-height-fork`, `confirm-unreconciled-account`,
+`confirm-same-height-fork` (T1 = T2; the inclusion block is at the tip's height
+in another block, so both the relation against T2 and the T1 identity rule
+reject it), `confirm-unreconciled-account`,
 `confirm-later-other-pool`, `confirm-different-wallet`, `status-cross-tab`,
 `status-disconnect`, `status-dispose`, `check-status-after-reload` (a wallet
 whose every method throws), `confirm-later-fork` (a later delegation elsewhere
@@ -255,7 +257,10 @@ answers T1 two slots below it; the inclusion block reports T2's hash 5 slots and
 5 heights lower, with consistent block content and confirmations; only the hash
 rule against T2 fails), `confirm-t1-hash-reuse` (the same split tips; the
 inclusion block reports T1's hash 5 slots and 5 heights lower; only the T1
-identity rule fails),
+identity rule fails), `confirm-later-tip-fork` (the same split tips; a
+reconstructed later delegation elsewhere is at T2's height in another block, one
+slot below T2 and so above T1, with otherwise coherent content, history and
+account view; only the per-event relation against T2 fails),
 `confirm-then-other-tab-pending` (after confirmation a second same-origin tab
 writes a well-formed pending record for another ID under the origin lock; the
 first tab shows that ID with its pending caption and message, hides the
@@ -300,7 +305,7 @@ Required bounded controls target six controller seams: display-approval
 identity, authentic total deadline, post-sign source eligibility, retained
 lease/intent, duplicate dispatch, and Unknown ID display retention. Seven more
 target status confirmation: body binding (`confirm-wrong-body`), historical
-point identity (`confirm-same-height-fork`), account reconciliation
+point identity against T2 (`confirm-later-tip-fork`), account reconciliation
 (`confirm-unreconciled-account`), the three-minute poll budget
 (`confirm-timeout`), pairwise historical identity (`confirm-later-fork`), the
 resumed-after-deadline apology (`confirm-resumed-after-deadline`) and the
@@ -311,9 +316,25 @@ block-hash and active-ID rules: pairwise hash identity
 whose mutant restores the earlier local-ID precedence and same-ID confirmation
 gate). One more targets the T1 identity rule (`confirm-t1-hash-reuse`, whose
 mutant removes the T1 identity call). Each control has `confirm-after-poll` as
-its passing neighbor. The
-recovery-verifier and coordination Node suites also carry mutation evidence for
-the per-event historical-point loop, the 16-transaction limit, the later-event
+its passing neighbor.
+
+Every control and mutant victim is chosen so that only its own rule can fail.
+When T1 = T2, a hash, slot or height contradiction against T2 is also one
+against T1, so the T1 identity rule would mask the T2 rules. Those victims use
+split tips instead. In the browser, the first status tip read after the POST
+pins T2 at the live tip and answers T1 two slots below it (`confirm-tip-hash-reuse`,
+`confirm-t1-hash-reuse` and `confirm-later-tip-fork`). In the recovery-verifier
+suite, the fixture's `tipAdvance` adds a T2 ten slots above T1 for the inclusion
+reporting T2's hash, the three later events checked against T2 (above T2's
+height, at T2's slot in another block, and at T2's height in another block
+between T1 and T2) and the T1 identity cases. An inclusion at T2's height cannot
+be split this way: a transaction above T1 is pending (newer than T1), and live
+progress puts T2 above T1. So `confirm-same-height-fork` and the suite's
+same-height and same-slot inclusion forks keep T1 = T2 and are covered by both
+rules, and the control for the relation against T2 uses `confirm-later-tip-fork`.
+
+The recovery-verifier and coordination Node suites also carry mutation evidence
+for the per-event historical-point loop, the 16-transaction limit, the later-event
 row count, the resolution's lease identity, each of the two hash-identity
 clauses (original/later and later/later pairs; inclusion against T2), and the
 T1 identity rule: its hash clause (inclusion and later event against T1), its

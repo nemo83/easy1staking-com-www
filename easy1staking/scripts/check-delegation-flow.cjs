@@ -89,7 +89,8 @@ async function main(){
     st.ownHistory={active_epoch:666,tx_hash:golden.txId,amount:"100000000",pool_id:chain.poolId,tx_slot:Number(slot),block_time:time,block_height:Number(height)};
     if(!plan.lag)s.routes.get("/accounts/"+account+"/delegations").push(st.ownHistory);
     // Later hash reuse: the later delegation elsewhere reports the inclusion block's hash at another index, 5 slots and 5 heights on.
-    if(plan.laterOther||plan.laterFork||plan.laterHashReuse){const later=id(0x5a5a),q=plan.laterFork?{...point(slot+5n),block_height:Number(height)}:plan.laterHashReuse?{...point(slot+5n),block:hash,index:1}:point(slot+1n);s.txs[later]={hash:later,valid_contract:true,...q,stake_cert_count:0,delegation_count:1,pool_update_count:0,pool_retire_count:0};
+    // Later tip fork: T2 is pinned two slots above T1; the later delegation elsewhere is at T2's height in another block, one slot below T2 (above T1).
+    if(plan.laterOther||plan.laterFork||plan.laterHashReuse||plan.laterTipFork){const later=id(0x5a5a),q=plan.laterFork?{...point(slot+5n),block_height:Number(height)}:plan.laterHashReuse?{...point(slot+5n),block:hash,index:1}:plan.laterTipFork?{...point(BigInt(st.pinned.slot)-1n),block_height:st.pinned.height}:point(slot+1n);s.txs[later]={hash:later,valid_contract:true,...q,stake_cert_count:0,delegation_count:1,pool_update_count:0,pool_retire_count:0};
      s.routes.set(`/txs/${later}/delegations`,[{cert_index:0,index:0,address:account,pool_id:otherPool,active_epoch:667}]);
      s.routes.get("/accounts/"+account+"/delegations").push({active_epoch:667,tx_hash:later,amount:"100000000",pool_id:otherPool,tx_slot:q.slot,block_time:q.block_time,block_height:q.block_height});acc.pool_id=otherPool;}
    }
@@ -215,7 +216,7 @@ async function main(){
       const slot=observed.afterReply||observed.jump>0?baseSlot+BigInt(Math.floor((observed.now-baseTime)/1000)):baseSlot;
       const at=n=>({slot:Number(n),epoch:664,hash:n===baseSlot?chain.tipHash:id(Number(n)),height:Number(n-100000000n),time:(baseTime+Number(n-baseSlot)*1000)/1000});
       // Split tips: the first read after the POST pins T2 at the live tip and answers T1 two slots below it, so T1 and T2 differ.
-      if((plan.tipHashReuse||plan.t1HashReuse)&&record.posts.length&&!st.pinned){st.pinned=at(slot);value=at(slot-2n);}
+      if((plan.tipHashReuse||plan.t1HashReuse||plan.laterTipFork)&&record.posts.length&&!st.pinned){st.pinned=at(slot);value=at(slot-2n);}
       else value=st.pinned??at(slot);entry.slot=value.slot;st.lastTip=value;
      }else value=s.routes.has(p)?s.routes.get(p):p.startsWith("/txs/")?s.txs[p.slice(5)]:undefined;
      assert.notEqual(value,undefined,"EXPLICIT_SOURCE_FIXTURE "+p);if(Array.isArray(value)&&u.searchParams.has("page")){const n=Number(u.searchParams.get("page"));value=value.slice((n-1)*100,n*100);}
@@ -339,11 +340,11 @@ async function main(){
       assert.equal(text,apology,"APOLOGY_AT_THREE_MINUTES");assert(raw&&JSON.parse(raw).txId===golden.txId,"RECORD_RETAINED_AT_TIMEOUT");assert(body.includes(golden.txId),"ID_SHOWN_AT_TIMEOUT");
       assert.equal(await page.getByRole("button",{name:"Check status"}).count(),1,"CHECK_STATUS_OFFERED");assert(st.trace.every(x=>x.found===false),"ONLY_404_TICKS");
       assert.equal(record.http.filter(x=>x.method==="GET"&&x.at>postAt+181000&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/"))).length,0,"NO_READS_AFTER_BUDGET");
-     }else if(["confirm-wrong-body","confirm-same-height-fork","confirm-unreconciled-account","confirm-later-fork","confirm-later-hash-reuse","confirm-tip-hash-reuse","confirm-t1-hash-reuse"].includes(name)){
+     }else if(["confirm-wrong-body","confirm-same-height-fork","confirm-unreconciled-account","confirm-later-fork","confirm-later-hash-reuse","confirm-tip-hash-reuse","confirm-t1-hash-reuse","confirm-later-tip-fork"].includes(name)){
       // Victims wait for either terminal state, then check retained storage before any expected text.
       await waitTerminal(60000);const raw=await stored();record.victimTerminal={text:await statusText(),raw};
-      assert(raw!==null&&JSON.parse(raw).txId===golden.txId,{"confirm-wrong-body":"RECORD_RETAINED_ON_MISMATCH","confirm-same-height-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-unreconciled-account":"RECORD_RETAINED_ON_ACCOUNT_MISMATCH","confirm-later-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-later-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE","confirm-tip-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE","confirm-t1-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE"}[name]);
-      assert.equal(await statusText(),inconsistentText,"INCONSISTENT_MESSAGE");record.statusReason=(await viewOf()).statusReason;assert.equal(record.statusReason,{"confirm-wrong-body":"inconsistent:BODY_ID","confirm-same-height-fork":"inconsistent:POINT_RELATION","confirm-unreconciled-account":"inconsistent:ACCOUNT","confirm-later-fork":"inconsistent:POINT_PAIR","confirm-later-hash-reuse":"inconsistent:POINT_PAIR","confirm-tip-hash-reuse":"inconsistent:POINT_RELATION","confirm-t1-hash-reuse":"inconsistent:POINT_RELATION"}[name],"INCONSISTENT_REASON_CODE");assert((await page.locator('#delegate').innerText()).includes(golden.txId),"INCONSISTENT_KEEPS_ID");
+      assert(raw!==null&&JSON.parse(raw).txId===golden.txId,{"confirm-wrong-body":"RECORD_RETAINED_ON_MISMATCH","confirm-same-height-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-unreconciled-account":"RECORD_RETAINED_ON_ACCOUNT_MISMATCH","confirm-later-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-later-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE","confirm-tip-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE","confirm-t1-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE","confirm-later-tip-fork":"RECORD_RETAINED_ON_INCOHERENCE"}[name]);
+      assert.equal(await statusText(),inconsistentText,"INCONSISTENT_MESSAGE");record.statusReason=(await viewOf()).statusReason;assert.equal(record.statusReason,{"confirm-wrong-body":"inconsistent:BODY_ID","confirm-same-height-fork":"inconsistent:POINT_RELATION","confirm-unreconciled-account":"inconsistent:ACCOUNT","confirm-later-fork":"inconsistent:POINT_PAIR","confirm-later-hash-reuse":"inconsistent:POINT_PAIR","confirm-tip-hash-reuse":"inconsistent:POINT_RELATION","confirm-t1-hash-reuse":"inconsistent:POINT_RELATION","confirm-later-tip-fork":"inconsistent:POINT_RELATION"}[name],"INCONSISTENT_REASON_CODE");assert((await page.locator('#delegate').innerText()).includes(golden.txId),"INCONSISTENT_KEEPS_ID");
       const lookups=st.lookups;await page.waitForTimeout(11000);assert.equal(st.lookups,lookups,"INCONSISTENT_STOPS_POLL");
      }else if(name==="confirm-resumed-after-deadline"){
       // Either terminal-looking text, then a fixed settle; the apology is the first expected text asserted.

@@ -102,7 +102,8 @@
     "confirm-tip-hash-reuse",
     "confirm-then-other-tab-pending",
     "confirm-then-second-operation",
-    "confirm-t1-hash-reuse"
+    "confirm-t1-hash-reuse",
+    "confirm-later-tip-fork"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -431,6 +432,10 @@
     "confirm-t1-hash-reuse": {
       "submitDispatches": 1,
       "posts": 1
+    },
+    "confirm-later-tip-fork": {
+      "submitDispatches": 1,
+      "posts": 1
     }
   },
   "statusPlans": {
@@ -522,6 +527,10 @@
     "confirm-t1-hash-reuse": {
       "notFound": 0,
       "t1HashReuse": true
+    },
+    "confirm-later-tip-fork": {
+      "notFound": 0,
+      "laterTipFork": true
     }
   },
   "otherTabRecord": {

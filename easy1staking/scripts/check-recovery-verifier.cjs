@@ -244,9 +244,14 @@ test("same-height fork twin: the same earlier slot at a lower height confirms", 
 outcome("same-slot fork: inclusion at T2's slot with another hash", () => {}, "inconsistent", "POINT_RELATION", "2", { scenario: () => scenario("2", { slot: S0 + BigInt(fixture.tipOffset), point: { hash: id(0xf0) } }) });
 outcome("reported confirmations exceed T2", s => { const b = s.block; s.block = () => ({ ...b(), confirmations: b().confirmations + 1 }); }, "inconsistent", "POINT_RELATION");
 outcome("reported confirmations below T1", s => { const b = s.block; s.block = () => ({ ...b(), confirmations: b().confirmations - 1 }); }, "inconsistent", "POINT_RELATION");
-// Each reconstructed later event is a historical point with its own check against T2.
-outcome("a later event above T2's height", s => { laterDelegation(s, { slot: s.p.slot + 5, point: { height: s.tips[0].height + 1 } }); }, "inconsistent", "POINT_RELATION");
-outcome("a later event at T2's slot in another block", s => { laterDelegation(s, { slot: s.tips[0].slot, point: { hash: id(0xf6) } }); }, "inconsistent", "POINT_RELATION");
+// Each reconstructed later event is a historical point with its own check against T2. Each case advances the tip (T1 != T2) and places the
+// event above T1, so the T1 identity rule cannot also reject it; only the relation against T2 can fail.
+outcome("a later event above T2's height", s => { const t1 = s.tips[0]; advance(s); laterDelegation(s, { slot: t1.slot + 5, point: { height: s.tips[1].height + 1 } }); }, "inconsistent", "POINT_RELATION");
+outcome("a later event at T2's slot in another block", s => { advance(s); laterDelegation(s, { slot: s.tips[1].slot, point: { hash: id(0xf6) } }); }, "inconsistent", "POINT_RELATION");
+outcome("later/T2 tip fork: a later event at T2's height in another block, strictly between T1 and T2", s => {
+  const t1 = s.tips[0]; advance(s); const t2 = s.tips[1]; laterDelegation(s, { slot: t1.slot + 5, point: { height: t2.height } }); const q = s.extra.get("/txs/" + fixture.laterId);
+  assert(t1.slot < q.slot && q.slot < t2.slot && q.block_height === t2.height && q.block !== t2.hash, "strictly between T1 and T2, at T2's height in another block");
+}, "inconsistent", "POINT_RELATION");
 // Historical points are also checked pairwise: the inclusion point and every reconstructed later event.
 outcome("original-vs-later same-height fork: a later delegation at the inclusion height, 5 slots on", s => { laterDelegation(s, { slot: s.p.slot + 5, point: { height: s.p.height } }); }, "inconsistent", "POINT_PAIR");
 outcome("later-vs-later fork at one height", s => { laterDelegation(s, { hash: id(0xb1), slot: s.p.slot + 5 }); laterDelegation(s, { hash: id(0xb2), slot: s.p.slot + 7, point: { height: s.p.height + 5 } }); }, "inconsistent", "POINT_PAIR");
@@ -256,7 +261,7 @@ outcome("original/later: a later event reuses the inclusion hash 5 slots and 5 h
 outcome("later/later: two later events share one hash at different coordinates", s => {
   laterDelegation(s, { hash: id(0xc1), slot: s.p.slot + 5, index: 0 }); laterDelegation(s, { hash: id(0xc2), slot: s.p.slot + 7, index: 1, point: { hash: id(s.p.slot + 5) } });
 }, "inconsistent", "POINT_PAIR");
-outcome("inclusion/T2: the inclusion block reports T2's hash at a lower slot and height", () => {}, "inconsistent", "POINT_RELATION", "2", { scenario: () => scenario("2", { point: { hash: id(S0 + BigInt(fixture.tipOffset)) } }) });
+outcome("inclusion/T2: the inclusion block reports T2's hash at a lower slot and height", () => {}, "inconsistent", "POINT_RELATION", "2", { scenario: () => advance(scenario("2", { point: { hash: id(S0 + BigInt(fixture.tipOffset) + BigInt(fixture.tipAdvance)) } })) });
 // T1 names one block as well. Each case advances the tip (T1 != T2) so only the T1 rule can fail; T2 keeps its own checks.
 const advance = s => { const t2 = tip(BigInt(s.tips[0].slot) + BigInt(fixture.tipAdvance)); s.tips.push(t2); now = timeAt(BigInt(t2.slot)) + 500; return s; };
 outcome("inclusion/T1: the inclusion block reports T1's hash at a lower slot and height", () => {}, "inconsistent", "POINT_RELATION", "2", { scenario: () => advance(scenario("2", { point: { hash: id(S0 + BigInt(fixture.tipOffset)) } })) });
