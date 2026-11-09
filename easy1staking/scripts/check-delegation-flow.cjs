@@ -308,7 +308,10 @@ async function main(){
       assert(region.includes("Transaction ID — confirmed on chain")&&region.includes(golden.txId)&&region.includes(record.confirmedText)&&!body.includes("outcome pending or unknown")&&!body.includes("submitted, confirmation pending"),label);
      }
      await page.waitForFunction(()=>window.synthetic.attemptClock!==undefined,{},{timeout:15000});
-     record.statusAttempt=await page.evaluate(()=>({clock:window.synthetic.attemptClock,at:window.synthetic.attemptAt}));const postAt=record.posts[0].at;
+     record.statusAttempt=await page.evaluate(()=>({clock:window.synthetic.attemptClock,at:window.synthetic.attemptAt}));
+     // attemptClock witnesses only the page's fetch call; the route handler records the POST asynchronously. Latch on that record (bounded) before reading it.
+     // The latch only waits: postAt stays the route-recorded time and product budgets keep the page-side dispatch time (statusAttempt) as their origin.
+     await until(()=>record.posts.length>0,10000,"POST_OBSERVED");const postAt=record.posts[0].at;
      const B=chain.addressHex.slice(58)==="cd".repeat(28)?"ce".repeat(28):"cd".repeat(28);
      if(name==="confirm-different-wallet"){
       await page.evaluate(b=>{window.synthetic.address=window.synthetic.address.slice(0,58)+b;},B);
@@ -404,6 +407,7 @@ async function main(){
       assert(v.txId===B.txId&&codes.includes(B.txId),"ACTIVE_ID_SHOWN");
       assert(v.confirmation===null&&await page.locator('[aria-label="Delegation confirmation"]').count()===0&&!body.includes("confirmed on chain")&&!body.includes(record.confirmedText)&&!body.includes(golden.txId),"NO_INHERITED_CONFIRMATION");
       assert(body.includes("Transaction ID — submitted, confirmation pending")&&!body.includes("outcome pending or unknown"),"OWN_CAPTION");
+      await until(()=>record.posts.length>1,10000,"POST_OBSERVED");
       assert(record.signatures.length===2&&record.signatures[1].txId===B.txId&&record.posts.length===2&&record.posts[1].hex===record.signatures[1].signedHex&&record.posts[1].txId!==record.posts[0].txId,"SECOND_EXACT_REVIEWED_POST");
       assert(raw&&JSON.parse(raw).txId===B.txId&&JSON.parse(raw).stage==="submitted"&&JSON.parse(raw).invalidHereafterSlot===B.ttl,"SECOND_RECORD");
       assert.equal(await page.evaluate(()=>window.synthetic.submitDispatches),2,"TWO_DISPATCHES");

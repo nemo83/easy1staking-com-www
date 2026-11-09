@@ -227,7 +227,13 @@ Every registered case declares its exact page dispatches and intercepted POSTs
 in the fixture: 0 for veto and refusal cases, 1 for single-attempt cases and 2
 for `confirm-then-second-operation`. Page
 dispatches accumulate across the tab's navigations and reloads; both counts are
-asserted on success and recorded on failure. Served-chunk identity reads are
+asserted on success and recorded on failure. A status case reads the first
+intercepted POST only after the route handler has recorded it: the page-side
+dispatch clock shows that `fetch` ran, not that the route recorded the POST, so
+the runner waits up to 10 seconds for that record and otherwise fails with
+`POST_OBSERVED` instead of reading a missing record. The second operation's POST
+is read the same way. The wait moves no timing origin: product budgets are still
+measured from the page-side dispatch time. Served-chunk identity reads are
 settled in each case before its verdict; a mismatch or failed read while the
 case is active disqualifies the case, and any control run on it, without
 replacing its primary failure.
@@ -325,9 +331,11 @@ split tips instead. In the browser, the first status tip read after the POST
 pins T2 at the live tip and answers T1 two slots below it (`confirm-tip-hash-reuse`,
 `confirm-t1-hash-reuse` and `confirm-later-tip-fork`). In the recovery-verifier
 suite, the fixture's `tipAdvance` adds a T2 ten slots above T1 for the inclusion
-reporting T2's hash, the three later events checked against T2 (above T2's
-height, at T2's slot in another block, and at T2's height in another block
-between T1 and T2) and the T1 identity cases. An inclusion at T2's height cannot
+reporting T2's hash, the four later events checked against T2 (above T2's
+height, at T2's slot in another block, at T2's slot in another block at a
+height between the tips, and at T2's height in another block between T1 and T2)
+and the T1 identity cases. The one at T2's slot between the tips is the only
+case that the equal-slot clause alone rejects. An inclusion at T2's height cannot
 be split this way: a transaction above T1 is pending (newer than T1), and live
 progress puts T2 above T1. So `confirm-same-height-fork` and the suite's
 same-height and same-slot inclusion forks keep T1 = T2 and are covered by both
@@ -336,10 +344,16 @@ rules, and the control for the relation against T2 uses `confirm-later-tip-fork`
 The recovery-verifier and coordination Node suites also carry mutation evidence
 for the per-event historical-point loop, the 16-transaction limit, the later-event
 row count, the resolution's lease identity, each of the two hash-identity
-clauses (original/later and later/later pairs; inclusion against T2), and the
-T1 identity rule: its hash clause (inclusion and later event against T1), its
+clauses (original/later and later/later pairs; inclusion against T2), the
+equal-slot clause against T2 (only the later event at T2's slot between the tips
+fails without it), and the T1 identity rule: its hash clause (inclusion and later event against T1), its
 height clause, its call removed, and its call replaced by the T2 relation
-against T1, which would reject a later event included between T1 and T2. Controls run
+against T1, which would reject a later event included between T1 and T2. The
+recovery-verifier suite has 130 tests and the browser flow 81 cases. The POST
+wait has its own harness-only race control: a 1.5-second delay before the route
+records the POST makes `confirm-later-tip-fork` fail with a TypeError on the
+harness without the wait and pass with it, and suppressing the record makes it
+fail `POST_OBSERVED`. Controls run
 only against a committed candidate, restore exact source/index, rebuild any
 served mutant, and rerun the full flow after each restoration. A failure must
 show its named forbidden effect; compiler failures and earlier vetoes are

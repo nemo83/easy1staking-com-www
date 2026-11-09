@@ -252,6 +252,11 @@ outcome("later/T2 tip fork: a later event at T2's height in another block, stric
   const t1 = s.tips[0]; advance(s); const t2 = s.tips[1]; laterDelegation(s, { slot: t1.slot + 5, point: { height: t2.height } }); const q = s.extra.get("/txs/" + fixture.laterId);
   assert(t1.slot < q.slot && q.slot < t2.slot && q.block_height === t2.height && q.block !== t2.hash, "strictly between T1 and T2, at T2's height in another block");
 }, "inconsistent", "POINT_RELATION");
+// At T2's slot and time but strictly between the tips in height, so the equal-height clause cannot also fail: only the equal-slot clause against T2 rejects it.
+outcome("later/T2 equal slot: a later event at T2's slot between the tips in another block", s => {
+  const t1 = s.tips[0]; advance(s); const t2 = s.tips[1]; laterDelegation(s, { slot: t2.slot, point: { hash: id(0xe9), height: t1.height + 3 } }); const q = s.extra.get("/txs/" + fixture.laterId);
+  assert(q.slot === t2.slot && q.block_time === t2.time && t1.height < q.block_height && q.block_height < t2.height && q.block !== t2.hash, "at T2's slot and time, strictly between the tips in height, in another block");
+}, "inconsistent", "POINT_RELATION");
 // Historical points are also checked pairwise: the inclusion point and every reconstructed later event.
 outcome("original-vs-later same-height fork: a later delegation at the inclusion height, 5 slots on", s => { laterDelegation(s, { slot: s.p.slot + 5, point: { height: s.p.height } }); }, "inconsistent", "POINT_PAIR");
 outcome("later-vs-later fork at one height", s => { laterDelegation(s, { hash: id(0xb1), slot: s.p.slot + 5 }); laterDelegation(s, { hash: id(0xb2), slot: s.p.slot + 7, point: { height: s.p.height + 5 } }); }, "inconsistent", "POINT_PAIR");
