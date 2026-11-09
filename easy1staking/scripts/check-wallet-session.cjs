@@ -2,7 +2,7 @@
 "use strict";
 // Runs production ES2017 modules; encoders below generate only synthetic test payloads.
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm"), assert = require("node:assert/strict");
-const { createHash } = require("node:crypto"), { test, after } = require("node:test");
+const { createHash } = require("node:crypto"), { test } = require("node:test"), { after } = require("./lib/node-test-gate.cjs");
 const { registerHooks } = require("node:module"), { fileURLToPath } = require("node:url");
 const dependencies = new Set();
 const hook = registerHooks({ load(url, context, next) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 const fs = require("node:fs"), path = require("node:path"), assert = require("node:assert/strict");
-const { test, after } = require("node:test"), { loadDelegationSource, sha256 } = require("./lib/load-delegation-source.cjs");
+const { test } = require("node:test"), { after } = require("./lib/node-test-gate.cjs"), { loadDelegationSource, sha256 } = require("./lib/load-delegation-source.cjs");
 const fixture = require("./fixtures/chain-context.json"), vectors = require("./fixtures/stake-builder.json").vectors;
 let currentFetch, outward = 0, calls = 0; const originalFetch = globalThis.fetch, restores = [];
 globalThis.fetch = (...args) => { if (!currentFetch) { outward++; throw Error("FORBIDDEN_HTTP"); } calls++; return currentFetch(...args); };

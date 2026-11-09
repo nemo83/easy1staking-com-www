@@ -307,6 +307,33 @@ export checks. Record actual executed/skipped counts and raw audit responses.
 Current registry output is a point-in-time witness; it does not erase the
 historical moderate tooling disposition in `tooling-advisories.json`.
 
+The Node suites have no npm script. Their gate command is the direct invocation
+from `easy1staking/` with the pinned runtime, `node scripts/check-<suite>.cjs`,
+plus `node scripts/check-wallet-signature.cjs --browser` for native signature.
+Run this way, the Node 24.22.1 test runner prints a failing top-level `after()`
+hook as a failing test, yet keeps `fail 0` and exits 0, so the zero-outward and
+zero-wallet guards in those hooks could not fail a gate. The five suites with an
+`after()` hook (chain-context, wallet-signature, wallet-session, stake-builder
+and recovery-verifier) now register it through `scripts/lib/node-test-gate.cjs`.
+When the hook throws, an assertion or any other error, the helper sets exit code
+1, and rethrows so the runner still reports the failure. The commands, CLI
+modes, tests, their names, order and expectations, and the healthy counts are
+unchanged; stake-guard and pool-facts have no `after()` hook. Judge a run by its
+exit code and its test count, never by the fail counter alone. The
+recovery-verifier hook prints its identity line (with `outward` and
+`walletAccess`) only after its guard assertions pass, which shows that the guard
+ran.
+
+Fail-first evidence for the gate: on the earlier invocation (F0), one
+deliberately failing assertion or thrown error at the start of each of the five
+hooks, and a recovery-verifier test that makes and swallows a forbidden outward
+fetch, each exited 0 with the error printed. With the fail-closed hooks (F1),
+every one of those runs exits non-zero, and the healthy suites still exit 0 with
+the same counts. Node receipts recorded before this change are preserved and
+still record what those runs observed, but they were taken on a gate that a hook
+failure could not redden. As gate evidence they are superseded by receipts taken
+with the fail-closed hooks.
+
 Required bounded controls target six controller seams: display-approval
 identity, authentic total deadline, post-sign source eligibility, retained
 lease/intent, duplicate dispatch, and Unknown ID display retention. Seven more

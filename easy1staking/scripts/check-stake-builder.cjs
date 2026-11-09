@@ -4,7 +4,7 @@
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 const assert = require("node:assert/strict");
 const { createHash, createPrivateKey, createPublicKey, sign } = require("node:crypto");
-const { test, after } = require("node:test");
+const { test } = require("node:test"), { after } = require("./lib/node-test-gate.cjs");
 const { registerHooks } = require("node:module"), { fileURLToPath } = require("node:url");
 const transitivePaths = new Set();
 const moduleHook = registerHooks({ load(url, context, next) {

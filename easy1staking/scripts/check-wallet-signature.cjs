@@ -207,7 +207,7 @@ async function settlementCase(kind, h) {
 }
 
 function nodeTests() {
-  const { test, after } = require("node:test");
+  const { test } = require("node:test"), { after } = require("./lib/node-test-gate.cjs");
   after(() => { for (const o of owners) o.dispose(); assert.equal(forbiddenCalls, 0); globalThis.fetch = originalFetch; transportRestores.forEach(f => f());
     writeEvidence("signature-identity.json", identity()); writeEvidence("signature-compiled.json", [...graph].map(([file, m]) => ({ file, compiled: m.compiled })));
     console.log("SIGNATURE_IDENTITY", JSON.stringify({ modules: identity().modules, dependencyFiles: dependencies.size, forbiddenCalls })); hook.deregister(); });

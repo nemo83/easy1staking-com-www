@@ -3,7 +3,7 @@
 // Read-only recovery status verifier over the actual production modules, with a controlled clock, an in-memory
 // storage-only window and real Node Web Locks. Wallet, socket and unscripted HTTP access fail and are counted.
 const fs = require("node:fs"), path = require("node:path"), assert = require("node:assert/strict"), { spawnSync } = require("node:child_process");
-const { test, after } = require("node:test"), { loadDelegationSource, sha256 } = require("./lib/load-delegation-source.cjs");
+const { test } = require("node:test"), { after } = require("./lib/node-test-gate.cjs"), { loadDelegationSource, sha256 } = require("./lib/load-delegation-source.cjs");
 const fixture = require("./fixtures/recovery-verifier.json"), vectors = require("./fixtures/stake-builder.json").vectors, chain = require("./fixtures/chain-context.json");
 let now = 0, currentFetch, outward = 0, calls = 0, walletAccess = 0; const nativeNow = Date.now, originalFetch = globalThis.fetch, restores = [];
 Date.now = () => now; restores.push(() => { Date.now = nativeNow; });
