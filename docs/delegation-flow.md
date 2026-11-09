@@ -350,10 +350,26 @@ fails without it), and the T1 identity rule: its hash clause (inclusion and late
 height clause, its call removed, and its call replaced by the T2 relation
 against T1, which would reject a later event included between T1 and T2. The
 recovery-verifier suite has 130 tests and the browser flow 81 cases. The POST
-wait has its own harness-only race control: a 1.5-second delay before the route
+wait has its own harness-only race control. A 1.5-second delay before the route
 records the POST makes `confirm-later-tip-fork` fail with a TypeError on the
-harness without the wait and pass with it, and suppressing the record makes it
-fail `POST_OBSERVED`. Controls run
+harness without the wait and pass with it. Suppressing the record runs on
+`confirm-after-poll`, which then fails `POST_OBSERVED` first and its exact POST
+count second. The split-tip cases (`confirm-tip-hash-reuse`,
+`confirm-t1-hash-reuse` and `confirm-later-tip-fork`) cannot host that control:
+their route fixture pins T2 at the first tip read after the route has recorded
+the POST, so without the record no T2 is pinned and the fixture fails before the
+wait can expire. `confirm-after-poll`'s fixture reads no POST record before the
+wait.
+
+Recorded evidence for this candidate: the browser flow passed 81 of 81 cases with
+every declared dispatch and POST count, and the recovery-verifier suite 130 of
+130 tests. The bounded controls on `confirm-later-tip-fork`, `confirm-later-fork`,
+`confirm-later-hash-reuse`, `confirm-tip-hash-reuse` and `confirm-t1-hash-reuse`
+each failed their victim first with the retained-record assertion while
+`confirm-after-poll` passed, and the full 81-case flow passed after each
+restoration. All eleven Node mutants above were killed. Removing the equal-slot
+clause against T2 fails exactly one test, "later/T2 equal slot: a later event at
+T2's slot between the tips in another block". Controls run
 only against a committed candidate, restore exact source/index, rebuild any
 served mutant, and rerun the full flow after each restoration. A failure must
 show its named forbidden effect; compiler failures and earlier vetoes are
