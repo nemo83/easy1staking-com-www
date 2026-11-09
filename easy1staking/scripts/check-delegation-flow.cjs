@@ -80,8 +80,10 @@ async function main(){
     if(plan.fork){st.pinned=t;slot=BigInt(t.slot)-5n;height=BigInt(t.height);hash="f0".repeat(32);}
     // Later fork: the inclusion sits 10 slots back; a later delegation elsewhere is in a different block at the same height, 5 slots on.
     if(plan.laterFork||plan.laterHashReuse){slot=BigInt(t.slot)-10n;height=slot-100000000n;hash=id(Number(slot));}
-    // Tip hash reuse: T1 = T2 is pinned and the inclusion block reports that tip's hash 5 slots and 5 heights lower.
-    if(plan.tipHashReuse){st.pinned=t;slot=BigInt(t.slot)-5n;height=slot-100000000n;hash=t.hash;}
+    // Tip hash reuse: T2 is pinned two slots above T1 and the inclusion block reports T2's hash 5 slots and 5 heights lower.
+    if(plan.tipHashReuse){slot=BigInt(st.pinned.slot)-5n;height=slot-100000000n;hash=st.pinned.hash;}
+    // T1 hash reuse: T2 is pinned two slots above T1 and the inclusion block reports T1's hash 5 slots and 5 heights lower.
+    if(plan.t1HashReuse){slot=BigInt(t.slot)-5n;height=slot-100000000n;hash=t.hash;}
     const time=(1596059091000+Number(slot-4492800n)*1000)/1000,acc=s.routes.get("/accounts/"+account);st.inclusion={slot:Number(slot),height:Number(height),time,hash,index:0};
     acc.pool_id=plan.unreconciled?otherPool:chain.poolId;acc.active=true;
     st.ownHistory={active_epoch:666,tx_hash:golden.txId,amount:"100000000",pool_id:chain.poolId,tx_slot:Number(slot),block_time:time,block_height:Number(height)};
@@ -211,7 +213,10 @@ async function main(){
       // A navigation or reload can destroy the page context mid-read; that read then fails as transport, never as a handler crash.
       const observed=await page.evaluate(()=>({now:Date.now(),afterReply:window.synthetic.replyAt!==null,jump:window.synthetic.clockDeltaMs})).catch(()=>null);if(!observed)return route.abort();
       const slot=observed.afterReply||observed.jump>0?baseSlot+BigInt(Math.floor((observed.now-baseTime)/1000)):baseSlot;
-      value=st.pinned??{slot:Number(slot),epoch:664,hash:slot===baseSlot?chain.tipHash:id(Number(slot)),height:Number(slot-100000000n),time:(baseTime+Number(slot-baseSlot)*1000)/1000};entry.slot=value.slot;st.lastTip=value;
+      const at=n=>({slot:Number(n),epoch:664,hash:n===baseSlot?chain.tipHash:id(Number(n)),height:Number(n-100000000n),time:(baseTime+Number(n-baseSlot)*1000)/1000});
+      // Split tips: the first read after the POST pins T2 at the live tip and answers T1 two slots below it, so T1 and T2 differ.
+      if((plan.tipHashReuse||plan.t1HashReuse)&&record.posts.length&&!st.pinned){st.pinned=at(slot);value=at(slot-2n);}
+      else value=st.pinned??at(slot);entry.slot=value.slot;st.lastTip=value;
      }else value=s.routes.has(p)?s.routes.get(p):p.startsWith("/txs/")?s.txs[p.slice(5)]:undefined;
      assert.notEqual(value,undefined,"EXPLICIT_SOURCE_FIXTURE "+p);if(Array.isArray(value)&&u.searchParams.has("page")){const n=Number(u.searchParams.get("page"));value=value.slice((n-1)*100,n*100);}
      return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(value),headers:{"access-control-allow-origin":"*"}});
@@ -334,11 +339,11 @@ async function main(){
       assert.equal(text,apology,"APOLOGY_AT_THREE_MINUTES");assert(raw&&JSON.parse(raw).txId===golden.txId,"RECORD_RETAINED_AT_TIMEOUT");assert(body.includes(golden.txId),"ID_SHOWN_AT_TIMEOUT");
       assert.equal(await page.getByRole("button",{name:"Check status"}).count(),1,"CHECK_STATUS_OFFERED");assert(st.trace.every(x=>x.found===false),"ONLY_404_TICKS");
       assert.equal(record.http.filter(x=>x.method==="GET"&&x.at>postAt+181000&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/"))).length,0,"NO_READS_AFTER_BUDGET");
-     }else if(["confirm-wrong-body","confirm-same-height-fork","confirm-unreconciled-account","confirm-later-fork","confirm-later-hash-reuse","confirm-tip-hash-reuse"].includes(name)){
+     }else if(["confirm-wrong-body","confirm-same-height-fork","confirm-unreconciled-account","confirm-later-fork","confirm-later-hash-reuse","confirm-tip-hash-reuse","confirm-t1-hash-reuse"].includes(name)){
       // Victims wait for either terminal state, then check retained storage before any expected text.
       await waitTerminal(60000);const raw=await stored();record.victimTerminal={text:await statusText(),raw};
-      assert(raw!==null&&JSON.parse(raw).txId===golden.txId,{"confirm-wrong-body":"RECORD_RETAINED_ON_MISMATCH","confirm-same-height-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-unreconciled-account":"RECORD_RETAINED_ON_ACCOUNT_MISMATCH","confirm-later-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-later-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE","confirm-tip-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE"}[name]);
-      assert.equal(await statusText(),inconsistentText,"INCONSISTENT_MESSAGE");record.statusReason=(await viewOf()).statusReason;assert.equal(record.statusReason,{"confirm-wrong-body":"inconsistent:BODY_ID","confirm-same-height-fork":"inconsistent:POINT_RELATION","confirm-unreconciled-account":"inconsistent:ACCOUNT","confirm-later-fork":"inconsistent:POINT_PAIR","confirm-later-hash-reuse":"inconsistent:POINT_PAIR","confirm-tip-hash-reuse":"inconsistent:POINT_RELATION"}[name],"INCONSISTENT_REASON_CODE");assert((await page.locator('#delegate').innerText()).includes(golden.txId),"INCONSISTENT_KEEPS_ID");
+      assert(raw!==null&&JSON.parse(raw).txId===golden.txId,{"confirm-wrong-body":"RECORD_RETAINED_ON_MISMATCH","confirm-same-height-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-unreconciled-account":"RECORD_RETAINED_ON_ACCOUNT_MISMATCH","confirm-later-fork":"RECORD_RETAINED_ON_INCOHERENCE","confirm-later-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE","confirm-tip-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE","confirm-t1-hash-reuse":"RECORD_RETAINED_ON_INCOHERENCE"}[name]);
+      assert.equal(await statusText(),inconsistentText,"INCONSISTENT_MESSAGE");record.statusReason=(await viewOf()).statusReason;assert.equal(record.statusReason,{"confirm-wrong-body":"inconsistent:BODY_ID","confirm-same-height-fork":"inconsistent:POINT_RELATION","confirm-unreconciled-account":"inconsistent:ACCOUNT","confirm-later-fork":"inconsistent:POINT_PAIR","confirm-later-hash-reuse":"inconsistent:POINT_PAIR","confirm-tip-hash-reuse":"inconsistent:POINT_RELATION","confirm-t1-hash-reuse":"inconsistent:POINT_RELATION"}[name],"INCONSISTENT_REASON_CODE");assert((await page.locator('#delegate').innerText()).includes(golden.txId),"INCONSISTENT_KEEPS_ID");
       const lookups=st.lookups;await page.waitForTimeout(11000);assert.equal(st.lookups,lookups,"INCONSISTENT_STOPS_POLL");
      }else if(name==="confirm-resumed-after-deadline"){
       // Either terminal-looking text, then a fixed settle; the apology is the first expected text asserted.

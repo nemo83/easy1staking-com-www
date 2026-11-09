@@ -78,6 +78,17 @@ export function historicalPairs(points: readonly PlacedPoint[]): void {
       points[i].txId !== points[j].txId && (a.hash !== b.hash || points[i].index !== points[j].index), "POINT_PAIR");
   }
 }
+/** Block identity against a live tip (T1): one hash, slot or height names one block, and slots and heights are ordered alike. No upper bound: a point newer than the tip passes. */
+export function tipIdentity(tip: LiveTip, points: readonly HistoricalPoint[]): void {
+  for (const p of points) {
+    const block = p.hash === tip.hash && p.slot === tip.slot && p.height === tip.height && p.time === tip.time;
+    contradict(
+      (p.hash !== tip.hash || block) &&
+      (p.slot !== tip.slot || block) &&
+      (p.height !== tip.height || block) &&
+      (p.slot < tip.slot) === (p.height < tip.height), "POINT_RELATION");
+  }
+}
 interface Event { readonly point: HistoricalPoint; readonly index: bigint; readonly cert: bigint; readonly action: "registered" | "deregistered" | "delegated"; readonly pool: string | null; readonly original: boolean }
 function compare(a: Event, b: Event): number {
   for (const [x, y] of [[a.point.slot, b.point.slot], [a.index, b.index], [a.cert, b.cert]]) if (x !== y) return x < y ? -1 : 1;
@@ -241,6 +252,8 @@ export function createRecoveryVerifier(projectId: string, coordinator: Delegatio
       historicalPoint(inclusion, t2);
       for (const p of points) historicalPoint(p.point, t2);
       historicalPairs([Object.freeze({ point: inclusion, txId, index: txIndex }), ...points]);
+      // T1 names one block too. A later event newer than T1 (included before T2) is legitimate, so this is not historicalPoint against T1.
+      tipIdentity(t1, [inclusion, ...points.map(p => p.point)]);
       read.check();
       const deadline = Math.min(started + 30000, request.deadline ?? Number.POSITIVE_INFINITY);
       const resolution = issue(lease, Object.freeze({ kind: "confirmed", record: JSON.stringify(record), generation: request.generation,

@@ -79,7 +79,13 @@ existing freshness and progress checks; the inclusion block and later events are
 historical points with their own coherence check against T2, so an old or
 prior-epoch inclusion is legitimate. One block hash names one block: a
 historical point that reports T2's hash must be T2 itself (same slot, height
-and time), otherwise the result is `inconsistent:POINT_RELATION`. The historical
+and time), otherwise the result is `inconsistent:POINT_RELATION`. T1 names one
+block too: the inclusion and every reconstructed later event are checked against
+T1 for block identity only. A point that reports T1's hash, slot or height must
+be T1's block (same hash, slot, height and time), and a lower slot must have a
+lower height and the converse; a violation is `inconsistent:POINT_RELATION`.
+There is no upper bound against T1, so an event included between T1 and T2 is
+still accepted. The historical
 points are also checked against one another: across the inclusion and every
 reconstructed later event, one height, one slot or one block hash names one
 block (hash, slot, height and time), a lower slot has a lower height and the
@@ -212,8 +218,8 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 79 cases and `--cases first` executes six. Selectors
-are strict: `--case` must name one registered case (the 79 plus
+`--cases all` now executes 80 cases and `--cases first` executes six. Selectors
+are strict: `--case` must name one registered case (the 80 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
 
@@ -226,7 +232,7 @@ settled in each case before its verdict; a mismatch or failed read while the
 case is active disqualifies the case, and any control run on it, without
 replacing its primary failure.
 
-Twenty-three status cases follow an identical registered submission:
+Twenty-four status cases follow an identical registered submission:
 `confirm-after-poll`, `confirm-new-inclusion`, `confirm-index-lag`,
 `confirm-unknown-outcome` (deadline measured from dispatch), `confirm-timeout`
 (observed 185 seconds after dispatch), `confirm-wrong-body`,
@@ -244,9 +250,12 @@ record, ID and Check status show with zero status reads), `confirm-then-disconne
 polling continues to confirmation), `confirm-later-hash-reuse` (a later
 delegation elsewhere reports the inclusion block's hash at another transaction
 index, 5 slots and 5 heights on; only the pairwise hash rule fails),
-`confirm-tip-hash-reuse` (T1 = T2 is pinned and the inclusion block reports that
-tip's hash 5 slots and 5 heights lower, with consistent block content and
-confirmations; only the hash rule against T2 fails),
+`confirm-tip-hash-reuse` (the first status tip read pins T2 at the live tip and
+answers T1 two slots below it; the inclusion block reports T2's hash 5 slots and
+5 heights lower, with consistent block content and confirmations; only the hash
+rule against T2 fails), `confirm-t1-hash-reuse` (the same split tips; the
+inclusion block reports T1's hash 5 slots and 5 heights lower; only the T1
+identity rule fails),
 `confirm-then-other-tab-pending` (after confirmation a second same-origin tab
 writes a well-formed pending record for another ID under the origin lock; the
 first tab shows that ID with its pending caption and message, hides the
@@ -300,11 +309,16 @@ block-hash and active-ID rules: pairwise hash identity
 (`confirm-later-hash-reuse`), hash identity against T2
 (`confirm-tip-hash-reuse`) and the active ID (`confirm-then-other-tab-pending`,
 whose mutant restores the earlier local-ID precedence and same-ID confirmation
-gate). Each control has `confirm-after-poll` as its passing neighbor. The
+gate). One more targets the T1 identity rule (`confirm-t1-hash-reuse`, whose
+mutant removes the T1 identity call). Each control has `confirm-after-poll` as
+its passing neighbor. The
 recovery-verifier and coordination Node suites also carry mutation evidence for
 the per-event historical-point loop, the 16-transaction limit, the later-event
-row count, the resolution's lease identity and each of the two hash-identity
-clauses (original/later and later/later pairs; inclusion against T2). Controls run
+row count, the resolution's lease identity, each of the two hash-identity
+clauses (original/later and later/later pairs; inclusion against T2), and the
+T1 identity rule: its hash clause (inclusion and later event against T1), its
+height clause, its call removed, and its call replaced by the T2 relation
+against T1, which would reject a later event included between T1 and T2. Controls run
 only against a committed candidate, restore exact source/index, rebuild any
 served mutant, and rerun the full flow after each restoration. A failure must
 show its named forbidden effect; compiler failures and earlier vetoes are

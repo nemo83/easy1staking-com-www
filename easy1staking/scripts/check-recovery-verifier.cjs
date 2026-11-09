@@ -257,6 +257,15 @@ outcome("later/later: two later events share one hash at different coordinates",
   laterDelegation(s, { hash: id(0xc1), slot: s.p.slot + 5, index: 0 }); laterDelegation(s, { hash: id(0xc2), slot: s.p.slot + 7, index: 1, point: { hash: id(s.p.slot + 5) } });
 }, "inconsistent", "POINT_PAIR");
 outcome("inclusion/T2: the inclusion block reports T2's hash at a lower slot and height", () => {}, "inconsistent", "POINT_RELATION", "2", { scenario: () => scenario("2", { point: { hash: id(S0 + BigInt(fixture.tipOffset)) } }) });
+// T1 names one block as well. Each case advances the tip (T1 != T2) so only the T1 rule can fail; T2 keeps its own checks.
+const advance = s => { const t2 = tip(BigInt(s.tips[0].slot) + BigInt(fixture.tipAdvance)); s.tips.push(t2); now = timeAt(BigInt(t2.slot)) + 500; return s; };
+outcome("inclusion/T1: the inclusion block reports T1's hash at a lower slot and height", () => {}, "inconsistent", "POINT_RELATION", "2", { scenario: () => advance(scenario("2", { point: { hash: id(S0 + BigInt(fixture.tipOffset)) } })) });
+outcome("later/T1 hash: a later event reports T1's hash at a lower slot and height", s => { advance(s); laterDelegation(s, { slot: s.p.slot + 5, point: { hash: s.tips[0].hash } }); }, "inconsistent", "POINT_RELATION");
+outcome("later/T1 height: a later event at T1's height in another block, after T1's slot", s => { const t1 = s.tips[0]; advance(s); laterDelegation(s, { slot: t1.slot + 5, point: { height: t1.height } }); }, "inconsistent", "POINT_RELATION");
+test("advancing tip: a coherent later event included strictly between T1 and T2 confirms", async () => {
+  const s = advance(scenario()), [t1, t2] = s.tips; laterDelegation(s, { slot: t1.slot + 5 }); const q = s.extra.get("/txs/" + fixture.laterId);
+  assert(t1.slot < q.slot && q.slot < t2.slot && t1.height < q.block_height && q.block_height < t2.height, "strictly between T1 and T2"); await confirmed(s, "other-pool");
+});
 test("one hash at one point: a later event in the inclusion block at another transaction index confirms", async () => { const s = scenario(); laterDelegation(s, { slot: s.p.slot, index: INDEX + 1, point: { hash: s.p.hash } }); await confirmed(s, "other-pool"); });
 function sharedBlock(s, index) {
   // Two later transactions in one block: the second also carries another account's certificate first, so cert_index alone keeps the events ordered.
@@ -285,6 +294,20 @@ test("historicalPoint is pure: fields, then every relation against T2", () => {
   assert.equal(code({ ...ok, hash: t.hash }), "POINT_RELATION", "T2's hash at a lower slot and height");
   assert.equal(code({ ...ok, confirmations: 10n, floor: 50n }), "OK"); assert.equal(code({ ...ok, confirmations: 11n, floor: 50n }), "POINT_RELATION"); assert.equal(code({ ...ok, confirmations: 9n, floor: 50n }), "POINT_RELATION");
   assert.equal(code({ ...ok, slot: ok.slot - 432000n * 3n, time: ok.time - 432000n * 3n }), "OK", "old prior-epoch historical point");
+});
+test("tipIdentity is pure: one hash, slot and height name the tip's block, ordered alike, with no upper bound", () => {
+  const t = { slot: 2000000n + 4492800n, hash: id(1), epoch: 212n, observedAt: 0, height: 50n, time: BigInt(timeAt(2000000n + 4492800n) / 1000) };
+  const at = (slot, height, hash) => ({ slot, height, time: BigInt(timeAt(slot) / 1000), hash }), ok = at(t.slot - 10n, 40n, id(2));
+  const code = (...points) => { try { verifierModule.tipIdentity(t, points); return "OK"; } catch (e) { return e.reason; } };
+  assert.equal(code(), "OK"); assert.equal(code(ok), "OK"); assert.equal(code({ ...t }), "OK", "the tip's own block");
+  assert.equal(code(at(t.slot - 10n, 40n, t.hash)), "POINT_RELATION", "equal hash at a lower slot and height");
+  assert.equal(code({ ...t, time: t.time + 1n }), "POINT_RELATION", "equal hash, slot and height at another time");
+  assert.equal(code(at(t.slot, 51n, id(3))), "POINT_RELATION", "equal slot in another block (heights ordered)");
+  assert.equal(code(at(t.slot + 5n, 50n, id(3))), "POINT_RELATION", "equal height in another block (slots ordered)");
+  assert.equal(code(at(t.slot - 10n, 51n, id(3))), "POINT_RELATION", "lower slot at a higher height"); assert.equal(code(at(t.slot + 5n, 49n, id(3))), "POINT_RELATION", "higher slot at a lower height");
+  assert.equal(code(ok, at(t.slot - 10n, 40n, t.hash)), "POINT_RELATION", "any point of the list");
+  const newer = at(t.slot + 5n, 55n, id(4)); assert.equal(code(newer), "OK", "no upper bound: newer in slot and height"); assert.equal(code(at(t.slot + 432000n * 3n, 5000n, id(5))), "OK", "far above the tip");
+  assert.throws(() => verifierModule.historicalPoint(newer, t), e => e.reason === "POINT_RELATION", "historicalPoint would cap the same point at the tip");
 });
 // h. Unavailable outcomes.
 outcome("provider error is unavailable", s => { s.onCall = p => p === "/txs/" + s.txId ? new Response('{"error":"SYNTHETIC_PRIVATE_CANARY"}', { status: 500, headers: { "content-type": "application/json" } }) : undefined; }, "unavailable", "PROVIDER");
