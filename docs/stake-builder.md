@@ -1,7 +1,7 @@
 # Pure stake transaction builder
 
 `easy1staking/src/lib/site/delegation/builder.ts` exports `buildStakeTransaction(context)`.
-It consumes a `GuardContext`, constructs an actual Evolution SDK 0.5.9 unsigned
+It consumes a `GuardContext`, constructs an actual Evolution SDK 0.5.14 unsigned
 transaction, and returns frozen `{ unsignedHex, review }` only after the independent
 [stake guard](stake-guard.md) issues the review. The unsigned wrapper contains the
 exact reviewed body, an empty witness map, `isValid: true`, and null auxiliary data.

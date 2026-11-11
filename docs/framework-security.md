@@ -378,3 +378,120 @@ nine HTML route checks and an actual native Sharp 64×64 image response.
 Mobile 390px and desktop 1440px screenshots were inspected against the preceding
 unchanged application; live pool facts remain unavailable without configuration.
 The owned local verification server exited and was awaited.
+
+
+## Effect platform cookie advisory (GHSA-chp3-j5qr-2vfr)
+
+A later audit reported
+[`GHSA-chp3-j5qr-2vfr`](https://github.com/advisories/GHSA-chp3-j5qr-2vfr)
+against `@effect/platform` `>=0.1.0 <0.97.1` (cookie name, domain and path
+validation in `makeCookie`). The Evolution SDK 0.5.9 resolution pulled
+`@effect/platform` 0.96.1 into the production graph. On 2026-11-11, before this
+change, both raw audits (`npm audit --omit=dev --json` and `npm audit --json`)
+exited 1 with **9 moderate findings**: `@effect/cluster`, `@effect/experimental`,
+`@effect/platform`, `@effect/platform-node`, `@effect/platform-node-shared`,
+`@effect/rpc`, `@effect/sql`, `@effect/workflow` and `@evolution-sdk/evolution`.
+That advisory on `@effect/platform` was the only primary advisory; the other
+eight names were inherited through it.
+
+Registry metadata observed on 2026-11-11 decided the repair:
+
+- Evolution 0.5.14 is the first release whose dependencies omit
+  `@effect/platform`, `@effect/platform-node`, `bip39` and `@types/bip39`. Its
+  remaining dependencies (`effect ^3.21.1`, `@noble/curves ^2.0.1`,
+  `@noble/hashes ^2.2.0`, `@scure/base ^2.0.0`, `@scure/bip32 ^2.0.1`,
+  `@scure/bip39 ^2.0.1`) are already satisfied by the lock. It is a patch release
+  within the existing `^0.5.9` range. Later 0.5.x releases (up to 0.5.19 at that
+  date) and 0.6+ exist; 0.5.14 is the smallest move from the reviewed 0.5.9.
+- An `overrides` pin of `@effect/platform` was rejected. The patched
+  `@effect/platform` 0.97.1 declares the peer `effect ^3.22.1`, so Effect, the
+  core every SDK serialiser uses, would have to leave 3.21.2. Every Effect sibling
+  would have to move to its next 0.x minor, and Evolution 0.5.9 would run against
+  platform versions outside its declared ranges.
+
+The repair pins `@evolution-sdk/evolution` exactly to 0.5.14 (`^0.5.9` →
+`0.5.14`) and adds one `overrides` entry, `"effect": "3.21.2"`; the four existing
+overrides are unchanged. Without that entry, resolving 0.5.14 re-resolved
+`effect` to 3.22.4 inside the SDK's `^3.21.1` range once the Effect platform
+packages that held it at 3.21.2 left the graph. Upstream Evolution 0.5.14's own
+lockfile resolves `effect` 3.21.2, so the override keeps the combination the SDK
+was built and tested with. Remove it only as part of a deliberate, reviewed
+Effect upgrade.
+
+The lock goes from 552 to 508 entries. The removed closure is the Effect
+platform family (`cluster`, `experimental`, `platform`, `platform-node`,
+`platform-node-shared`, `rpc`, `sql`, `workflow` and the two nested `ws` copies),
+the msgpackr native-extract packages, `@parcel/watcher` with its 13 platform
+packages and its nested picomatch 4.0.4, `bip39` with its nested `@noble/hashes`
+and `@types/bip39`, and `find-my-way-ts`, `kubernetes-types`, `mime`, `msgpackr`,
+`msgpackr-extract`, `multipasta`, `node-addon-api`,
+`node-gyp-build-optional-packages`, `undici` and `uuid`. `is-glob` and
+`is-extglob` keep their version, registry URL and integrity and are now marked
+development-only, because `@parcel/watcher` was their only runtime parent. The
+three nested `@scure/base` 2.2.0 copies are unchanged. `effect` 3.21.2 and every
+Noble and Scure version and integrity are unchanged, as are Next 15.5.28,
+Sharp 0.35.5, React 18 and PostCSS 8.5.23. The removed `@parcel/watcher` copy was
+the runtime picomatch 4.0.4 resolution named in the tooling sections above; the
+tooling guard still passes because the reviewed picomatch copies that remain
+(2.3.2 and development 4.0.7) satisfy it.
+
+The runtime guard now requires `@evolution-sdk/evolution` >= 0.5.14 within
+major 0. `undici` moves from the required baselines to optional ones with the
+same 7.30.1 minimum: its only parent was the removed Effect platform, so
+absence is now the reviewed state, while any copy that returns must still be a
+stable 7.x at or above 7.30.1. `@effect/platform` is also optional, with the
+patched 0.97.1 minimum applied to every lock copy whenever one is present.
+Present optional copies receive the same installed name/version check as
+required ones. The JSON line adds `optionalCopies` and `absentOptional`. The
+YAML rule, the other baselines and the installed-metadata check are unchanged.
+Against the old lock the new guard fails exactly at
+`node_modules/@evolution-sdk/evolution` (0.5.9) and `node_modules/@effect/platform`
+(0.96.1); against the new lock the old guard fails only on the absent `undici`.
+
+Since Evolution 0.5.10 the SDK's address decoder validates the CIP-19 header
+type and requires an `addr`/`addr_test` bech32 prefix that agrees with the
+header network. A provider address that is valid bech32 and 57 bytes long but
+has a mismatched header or prefix (for example header type 4, 8 or 12 under
+`addr`, or an `addr1x` prefix) is therefore refused inside the SDK decoder. The
+chain-context assessment reports such a refusal as `RESPONSE`, where 0.5.9 decoded
+it and the site's own round-trip check refused it as `INPUT`. A synthetic probe
+on 2026-11-11 observed exactly that on both versions. The set of accepted
+addresses is unchanged: the site still requires an `addr1` prefix, a 57-byte
+header-01 base address and exact bech32 round-trip equality.
+
+Byte identity with 0.5.9 was checked on the produced transactions, not assumed.
+The stake-builder suite's literal vectors (unsigned transaction, body, id, fee,
+deposit and body SHA-256 per vector) passed against the installed 0.5.14 with
+`fixtures/stake-builder.json` unchanged, and a one-character change to a fixture
+body made the matching literal test fail. All 105 offline browser flow cases
+passed, including the exact reviewed unsigned wrapper and exact guarded POST bytes
+on every signing case, with `fixtures/delegation-flow.json` unchanged. The native
+signature campaign still ran 938 assertions.
+
+For reproduction, select Node 24 and run from `easy1staking/` in a reviewed
+checkout with no Blockfrost configuration:
+
+```sh
+node scripts/check-runtime-security.cjs --lock-only
+npm ci --ignore-scripts
+node scripts/check-runtime-security.cjs
+node scripts/check-framework-security.cjs
+node scripts/check-tooling-security.cjs
+node scripts/check-stake-builder.cjs
+npm run build
+npm run lint
+npm audit --omit=dev --json
+npm audit --json
+```
+
+Observed on 2026-11-11 with Node 24.22.1, after the change: both raw audits
+exited 0 with **zero findings** (`metadata.vulnerabilities.total` 0). This is an
+observation at that time, not an all-clear; advisories published later need the
+release gate's re-run of both audits.
+
+Limits. The T-021 ledger proof and the browser-SDK proof receipt
+([browser SDK](browser-sdk.md)) were produced with Evolution 0.5.9 and are not
+re-run here; both must be re-run on the final candidate's resolved SDK and lock
+before any release-ready claim. The literal vectors and golden bytes cover the
+vectored inputs only. Earlier sections' "Evolution 0.5.9 … unchanged" statements
+describe their own stages.

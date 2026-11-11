@@ -15,7 +15,7 @@
   "dependencies": {
     "@emotion/react": "^11.13.5",
     "@emotion/styled": "^11.13.5",
-    "@evolution-sdk/evolution": "^0.5.9",
+    "@evolution-sdk/evolution": "0.5.14",
     "@mui/icons-material": "^6.1.8",
     "@mui/material": "^6.1.8",
     "@mui/x-charts": "^7.23.2",
@@ -49,6 +49,7 @@
     "postcss": "$postcss",
     "brace-expansion@1": "1.1.21",
     "sucrase": "3.35.1",
-    "minimatch@9": "11.0.3"
+    "minimatch@9": "11.0.3",
+    "effect": "3.21.2"
   }
 }
