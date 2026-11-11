@@ -68,6 +68,7 @@
     "presign-179",
     "presubmit-120",
     "presubmit-119",
+    "final-barrier-expiry",
     "long-consent",
     "approved-origin",
     "preview-origin",
@@ -291,6 +292,10 @@
       "posts": 1
     },
     "presubmit-119": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "final-barrier-expiry": {
       "submitDispatches": 0,
       "posts": 0
     },
@@ -620,6 +625,22 @@
     }
   },
   "stopCopies": {
+    "post-reply-deadline": {
+      "text": "Delegation stopped before sending. The review expired before the transaction could be sent. Reconnect to build a new review.",
+      "reason": "stop:expired"
+    },
+    "post-reply-deadline-hidden": {
+      "text": "Delegation stopped before sending. The review expired before the transaction could be sent. Reconnect to build a new review.",
+      "reason": "stop:expired"
+    },
+    "presubmit-119": {
+      "text": "Delegation stopped before sending. The review expired before the transaction could be sent. Reconnect to build a new review.",
+      "reason": "guard:VALIDITY"
+    },
+    "final-barrier-expiry": {
+      "text": "Delegation stopped before sending. The review expired before the transaction could be sent. Reconnect to build a new review.",
+      "reason": "stop:expired"
+    },
     "presign-179": {
       "text": "Delegation stopped before sending. The review expired before the transaction could be sent. Reconnect to build a new review.",
       "reason": "guard:VALIDITY"

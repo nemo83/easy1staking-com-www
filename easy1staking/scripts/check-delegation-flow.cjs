@@ -144,6 +144,7 @@ async function main(){
      // Page-level dispatches accumulate across navigations and reloads of this tab through native session storage.
      try{state.submitDispatches=Number(nativeGet.call(sessionStorage,"synthetic:submitDispatches")||0);}catch{}
      if(mode==="locks-unavailable")Object.defineProperty(navigator,'locks',{value:undefined});
+     if(mode==="final-barrier-expiry"){const verify=crypto.subtle.verify.bind(crypto.subtle);state.verifyJumps=0;state.verifyJumpMs=0;crypto.subtle.verify=async(...args)=>{const result=await verify(...args);if(state.replyAt!==null){state.clockDeltaMs+=1500;state.verifyJumps++;state.verifyJumpMs+=1500;}return result;};}
      if(mode==="same-account-postreply-focus"){const verify=crypto.subtle.verify.bind(crypto.subtle);crypto.subtle.verify=async(...args)=>{state.verifying=true;const result=await verify(...args);await new Promise(r=>setTimeout(r,300));return result;};}
      Storage.prototype.setItem=function(key,value){
       if(mode==="storage-unavailable"||mode==="storage-prepare-fail"&&String(value).includes('"stage":"prepared"'))throw Error("SYNTHETIC_PRIVATE_CANARY");
@@ -169,6 +170,7 @@ async function main(){
       if(mode==="long-consent")await new Promise(r=>setTimeout(r,31000));const witness=await window.syntheticSign(unsigned);state.replyAt=performance.now();
       if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)){const before=document.visibilityState;Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});state.visibilityTransition={before,after:document.visibilityState,at:performance.now()};document.dispatchEvent(new Event("visibilitychange"));}
       if(mode.startsWith("presubmit-"))state.clockDeltaMs+=baseTime+(600-Number(mode.slice(10)))*1000-Date.now();
+      if(mode==="final-barrier-expiry")state.clockDeltaMs+=baseTime+(600-124)*1000-Date.now();
       return witness;},signData:deny("signData"),submitTx:deny("wallet-submit")};
      // After a flagged reload every wallet method throws and is counted; status checking must never call one.
      let throwingWallet=false;try{throwingWallet=nativeGet.call(sessionStorage,"synthetic:throwingWallet")==="1";}catch{}
@@ -333,10 +335,18 @@ async function main(){
      await page.getByRole("button",{name:"Cancel here"}).click();await page.evaluate(()=>window.synthetic.release());await page.waitForFunction(()=>window.synthetic.replyAt!==null);await page.waitForTimeout(300);assert.equal(record.posts.length,0,"CANCEL_APPROVAL_ZERO_POST");
      const text=await statusLine(),v=await currentView();record.cancel={text,phase:v.phase,failureReason:v.failureReason};assert.equal(text,fixture.cancelCopies.open,"CANCEL_OPEN_COPY");assert.equal(v.failureReason,"stop:cancel-open","CANCEL_REASON");
     }else if(["post-reply-deadline","post-reply-deadline-hidden"].includes(name)){
-     await page.waitForFunction(()=>window.synthetic.replyAt!==null);const reply=await page.evaluate(()=>window.synthetic.replyAt);await page.waitForTimeout(32500);record.realPostReplyElapsedMs=await page.evaluate(reply=>performance.now()-reply,reply);assert(record.realPostReplyElapsedMs>30000,"REAL_TOTAL_REPLY_WINDOW");assert.equal(record.posts.length,0,"POST_REPLY_DEADLINE_ZERO_POST");
-    }else if(["account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","partial-witness","foreign-witness","invalid-signature","storage-prepare-fail","storage-readback-fail","storage-final-loss","storage-final-replaced","presubmit-119","sign-declined"].includes(name)){
+     await page.waitForFunction(()=>window.synthetic.replyAt!==null);const reply=await page.evaluate(()=>window.synthetic.replyAt);await page.waitForTimeout(32500);record.realPostReplyElapsedMs=await page.evaluate(reply=>performance.now()-reply,reply);assert(record.realPostReplyElapsedMs>30000,"REAL_TOTAL_REPLY_WINDOW");assert.equal(record.posts.length,0,"POST_REPLY_DEADLINE_ZERO_POST");await stopCopy();
+    }else if(["account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","partial-witness","foreign-witness","invalid-signature","storage-prepare-fail","storage-readback-fail","storage-final-loss","storage-final-replaced","presubmit-119","final-barrier-expiry","sign-declined"].includes(name)){
      await page.waitForFunction(()=>/Delegation stopped before sending|Submitted to Blockfrost|Submission outcome is unknown/.test(document.querySelector('#delegate [role="status"]')?.textContent||''),{},{timeout:15000});assert.equal(record.posts.length,0,"FORBIDDEN_POST_SIGN_VETO "+name);
+     if(name==="final-barrier-expiry")record.barrier={stoppedAt:Date.now(),...await page.evaluate(()=>({pageNow:Date.now(),verifyJumps:window.synthetic.verifyJumps,verifyJumpMs:window.synthetic.verifyJumpMs}))};
      if(name==="sign-declined")assert.equal(await page.evaluate(()=>window.synthetic.signCalls),1,"ONE_DECLINED_SIGN");await stopCopy();
+     if(name==="final-barrier-expiry"){
+      // Recorded evidence, not pass/fail (r3 note (c)): verify jumps, the source margin (TTL minus the last /blocks/latest slot served before the stop) and the wall margin (TTL minus the page-clock slot at the stop).
+      const b=record.barrier,ttl=Number(baseSlot)+600,tips=record.http.filter(x=>x.path==="/blocks/latest"&&x.at<=b.stoppedAt&&x.slot!==undefined);b.ttl=ttl;b.lastTipSlot=tips.length?tips[tips.length-1].slot:null;b.sourceMargin=b.lastTipSlot===null?null:ttl-b.lastTipSlot;
+      b.wallSlot=Number(baseSlot)+Math.floor((b.pageNow-baseTime)/1000);b.wallMargin=ttl-b.wallSlot;b.TIP_MARGIN_HELD=b.sourceMargin!==null&&b.sourceMargin>=120;b.VERIFY_JUMPS=b.verifyJumps>=4;
+      // beginAttempt precedes finalBarrier, so its veto keeps the golden intent at stage submitting (no clearing or rebuild exception on this path).
+      b.stored=await page.evaluate(()=>localStorage.getItem("easy1staking:delegation-recovery"));const kept=b.stored===null?null:JSON.parse(b.stored);assert(kept!==null&&kept.txId===golden.txId&&kept.stage==="submitting","BARRIER_VETO_RETAINS_INTENT");
+     }
     }else if(name.startsWith("submit-")||name==="cancel-transmission"||name==="storage-after-transmission"){
      await page.getByText("Submission outcome is unknown.",{exact:false}).waitFor({timeout:65000});assert.equal(record.posts.length,1,"ONE_POSSIBLE_TRANSMISSION");const text=await page.locator('#delegate').innerText();assert(text.includes(record.signatures[0].txId),"UNKNOWN_RETAINS_DERIVED_ID");assert(!text.includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR");await page.waitForTimeout(name==="submit-timeout"?1000:200);assert.equal(record.posts.length,1,"NO_AUTOMATIC_RETRY");assert.equal(await page.evaluate(()=>window.synthetic.submitDispatches),1,"ONE_POSSIBLE_DISPATCH");record.unknownRetained=true;
     }else if(fixture.statusPlans[name]){
