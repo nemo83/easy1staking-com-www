@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { DelegationView, createDelegationController } from "@/lib/site/delegation/controller";
+import { DISMISSAL_COPY } from "@/lib/site/delegation/messages";
 import styles from "./EditorialPages.module.css";
 
 type Controller = ReturnType<typeof createDelegationController>;
@@ -17,6 +18,8 @@ export function DelegatePanel() {
   const [view, setView] = useState<DelegationView | null>(null);
   const [wallets, setWallets] = useState<string[]>([]);
   const [chosen, setChosen] = useState("");
+  // The typed attestation is panel-local: the controller sees it only on Confirm.
+  const [attestation, setAttestation] = useState("");
   useEffect(() => {
     let active = true;
     let dispose: (() => void) | undefined;
@@ -41,6 +44,9 @@ export function DelegatePanel() {
   const prior = view?.recovery.status !== "absent";
   // A confirmed result keeps its own label whatever the wallet/action phase shows, but only while its ID is the active one; other IDs are labelled by phase.
   const confirmed = view?.confirmation && view.confirmation.txId === view.txId ? view.confirmation : null;
+  const dismissed = view?.dismissed && view.dismissed.txId === view.txId ? view.dismissed : null;
+  const dialog = view?.dismissal?.stage === "open" || view?.dismissal?.stage === "confirming";
+  useEffect(() => { if (!dialog) setAttestation(""); }, [dialog]);
   return <section id="delegate" className={`wrap section ${styles.authored}`} aria-labelledby="delegate-title">
     <div className="eyebrow">Stake-only delegation / staged candidate</div>
     <h2 id="delegate-title">Stake with <em>EASY1.</em></h2>
@@ -56,16 +62,33 @@ export function DelegatePanel() {
         <p role="status" aria-live="polite" aria-atomic="true">{view.message}</p>
         {view.walletDisconnected && <p className="mt-4">Wallet disconnected.</p>}
         {view.account && <div className={styles.poolIdentity}>Connected stake credential<code>{view.account}</code></div>}
-        {prior && <p className="mt-4">A prior operation is unresolved in this browser. Keep its ID. This page can check its status, but it cannot yet clear an unconfirmed record or retry it.</p>}
-        {view.txId && view.txId !== confirmed?.txId && <div className={styles.poolIdentity}>Transaction ID — {view.phase === "submitted" ? "submitted, confirmation pending" : "outcome pending or unknown"}<code>{view.txId}</code></div>}
+        {prior && <p className="mt-4">{DISMISSAL_COPY.priorNotice}</p>}
+        {view.txId && view.txId !== confirmed?.txId && view.txId !== dismissed?.txId && <div className={styles.poolIdentity}>Transaction ID — {view.phase === "submitted" ? "submitted, confirmation pending" : "outcome pending or unknown"}<code>{view.txId}</code></div>}
         {confirmed && <div className="mt-4" aria-label="Delegation confirmation">
           <div className={styles.poolIdentity}>Transaction ID — confirmed on chain<code>{confirmed.txId}</code></div>
           {view.message !== confirmed.message && <p>{confirmed.message}</p>}
           <div className={styles.poolIdentity}>Stake credential in this transaction<code>{confirmed.credential}</code></div>
           <p>{accountCopy[confirmed.account]}</p>
         </div>}
+        {dismissed && <div className="mt-4" aria-label={DISMISSAL_COPY.dismissedRegion}>
+          <div className={styles.poolIdentity}>{DISMISSAL_COPY.dismissedCaption}<code>{dismissed.txId}</code></div>
+        </div>}
         {view.statusRunning && <p className="mt-4">Checking the chain for this transaction. This uses read-only chain data, never your wallet.</p>}
         {view.canCheckStatus && !busy && <button type="button" className="btn btn-primary mt-6" onClick={() => { void controller.current?.checkStatus(); }}>Check status</button>}
+        {view.dismissal?.stage === "offered" && <button type="button" className="btn btn-primary mt-6" onClick={() => { if (view.dismissal) controller.current?.openDismissal(view.dismissal); }}>{DISMISSAL_COPY.offer}</button>}
+        {view.dismissal && dialog && <div className="mt-6" aria-label={DISMISSAL_COPY.region}>
+          <p>{DISMISSAL_COPY.disclosure}</p>
+          {view.dismissal.spentElsewhere && <p>{DISMISSAL_COPY.spentElsewhere}</p>}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <label htmlFor="dismiss-attestation">{DISMISSAL_COPY.attestationLabel}</label>
+            <input id="dismiss-attestation" type="text" autoComplete="off" value={attestation} onChange={event => setAttestation(event.target.value)} className="max-w-full rounded border border-line bg-bg p-3" />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-4">
+            <button type="button" className="btn btn-primary" disabled={attestation !== DISMISSAL_COPY.attestationPhrase || view.dismissal.stage !== "open"}
+              onClick={() => { if (view.dismissal) void controller.current?.confirmDismissal(view.dismissal, attestation); }}>{DISMISSAL_COPY.confirm}</button>
+            <button type="button" className="text-link" onClick={() => { if (view.dismissal) controller.current?.closeDismissal(view.dismissal); }}>{DISMISSAL_COPY.keep}</button>
+          </div>
+        </div>}
         {!busy && !prior && <div className="mt-6 flex flex-wrap items-center gap-3">
           <label htmlFor="wallet-choice">Wallet</label>
           <select id="wallet-choice" value={chosen} onChange={event => setChosen(event.target.value)} className="max-w-full rounded border border-line bg-bg p-3">

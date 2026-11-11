@@ -109,7 +109,25 @@
     "sign-declined",
     "insufficient-funds",
     "pool-ineligible",
-    "confirm-then-other-tab-removed"
+    "confirm-then-other-tab-removed",
+    "dismiss-expired",
+    "dismiss-at-ttl",
+    "dismiss-before-expiry",
+    "dismiss-spent-by-id",
+    "dismiss-spent-elsewhere",
+    "dismiss-missing-rows",
+    "dismiss-then-already-easy1",
+    "dismiss-cancel",
+    "dismiss-without-attestation",
+    "dismiss-double-confirm",
+    "dismiss-reload",
+    "dismiss-busy",
+    "dismiss-dispose",
+    "dismiss-stale-record",
+    "dismiss-rollback-on-confirm",
+    "dismiss-confirmed-on-confirm",
+    "dismiss-seen-then-404",
+    "dismiss-poll-after-expiry"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -466,6 +484,78 @@
     "confirm-then-other-tab-removed": {
       "submitDispatches": 1,
       "posts": 1
+    },
+    "dismiss-expired": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-at-ttl": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-before-expiry": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-spent-by-id": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-spent-elsewhere": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-missing-rows": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-then-already-easy1": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-cancel": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-without-attestation": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-double-confirm": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-reload": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-busy": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-dispose": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-stale-record": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-rollback-on-confirm": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-confirmed-on-confirm": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-seen-then-404": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-poll-after-expiry": {
+      "submitDispatches": 1,
+      "posts": 1
     }
   },
   "statusPlans": {
@@ -565,6 +655,60 @@
     "confirm-then-other-tab-removed": {
       "notFound": 0,
       "otherTab": true
+    },
+    "dismiss-expired": {
+      "notFound": null
+    },
+    "dismiss-at-ttl": {
+      "notFound": null
+    },
+    "dismiss-before-expiry": {
+      "notFound": null
+    },
+    "dismiss-spent-by-id": {
+      "notFound": null
+    },
+    "dismiss-spent-elsewhere": {
+      "notFound": null
+    },
+    "dismiss-missing-rows": {
+      "notFound": null
+    },
+    "dismiss-then-already-easy1": {
+      "notFound": null
+    },
+    "dismiss-cancel": {
+      "notFound": null
+    },
+    "dismiss-without-attestation": {
+      "notFound": null
+    },
+    "dismiss-double-confirm": {
+      "notFound": null
+    },
+    "dismiss-reload": {
+      "notFound": null
+    },
+    "dismiss-busy": {
+      "notFound": null
+    },
+    "dismiss-dispose": {
+      "notFound": null
+    },
+    "dismiss-stale-record": {
+      "notFound": null
+    },
+    "dismiss-rollback-on-confirm": {
+      "notFound": null
+    },
+    "dismiss-confirmed-on-confirm": {
+      "notFound": null
+    },
+    "dismiss-seen-then-404": {
+      "notFound": null
+    },
+    "dismiss-poll-after-expiry": {
+      "notFound": null
     }
   },
   "otherTabRecord": {
@@ -667,8 +811,22 @@
     "idle": "Cancelled here. Nothing was sent.",
     "disconnected": "Wallet disconnected."
   },
+  "dismissalCopy": {
+    "disclosure": "Dismiss clears the pending record in this browser. Save the transaction ID for later checks. The transaction may already have confirmed, or it may confirm later after a rollback. A new delegation requires your approval and may incur another fee and a registration deposit.",
+    "spentElsewhere": "One of its inputs was spent by a different transaction, so it can no longer be included on the chain as observed.",
+    "attestationLabel": "Type \"I checked this ID\" to confirm that you checked this exact transaction ID in your wallet or a chain explorer.",
+    "attestationPhrase": "I checked this ID",
+    "offer": "Dismiss this record",
+    "confirm": "Confirm dismissal",
+    "keep": "Keep the record",
+    "region": "Dismiss pending record",
+    "dismissedRegion": "Dismissed record",
+    "dismissedCaption": "Transaction ID \u2014 dismissed by you",
+    "priorNotice": "A prior operation is unresolved in this browser. Keep its ID. This page can check its status and, after it expires, let you dismiss it once you have checked the ID yourself. It cannot retry it."
+  },
   "insufficientFundsLovelace": "500000",
   "statusTexts": [
+    "An earlier chain-data response reported this transaction, but verification is still unresolved. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.",
     "Another delegation from this browser is pending. Keep its transaction ID and check its status.",
     "Another delegation operation is active in this browser.",
     "Approve this stake-only transaction in your wallet. Your voting delegation stays unchanged.",
@@ -703,6 +861,7 @@
     "Submission outcome is unknown. Keep this transaction ID and check from this browser.",
     "Submission outcome is unknown. Keep this transaction ID; do not build or send another delegation.",
     "Submitted to Blockfrost. Chain confirmation is still pending. Keep the ID for independent checking.",
+    "The record was kept in this browser. To dismiss it, check status again, or check the ID in your wallet or a chain explorer.",
     "The selected wallet is not available in this browser. Open this page in your wallet's browser or enable its extension, then choose it again.",
     "The wallet changed or became unavailable. Reconnect to assess again.",
     "The wallet changed while connecting. Connect again.",
@@ -712,10 +871,13 @@
     "This account already delegates to EASY1. No transaction is needed.",
     "This operation's saved status changed in another tab of this browser. Keep the transaction ID and check it in your wallet or a chain explorer.",
     "This page's chain data service is not set up correctly, so delegation is unavailable here. Use your wallet directly.",
+    "This transaction has expired and was not found on chain when checked. That does not prove it was never included. After you check its ID in your wallet or a chain explorer, you can dismiss this record.",
+    "This transaction was not found, but one of its inputs is recorded as spent by this same transaction ID, so it may be on chain. Nothing was cleared. Check it in your wallet or a chain explorer.",
     "This wallet account cannot be used here. Switch the wallet to Cardano mainnet and choose an ordinary key-based account, then connect again.",
     "This wallet has no ADA available for a delegation. Add ADA to this account, then connect again.",
     "Verifying signatures and fresh account, input and pool observations before sending.",
-    "We found this transaction but couldn't verify it consistently. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer."
+    "We found this transaction but couldn't verify it consistently. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.",
+    "You dismissed this record after checking the transaction ID yourself. This page did not confirm it. Keep the ID; a new delegation needs a new review and your approval."
   ],
   "confirmedPattern": "^Your delegation transaction was confirmed on chain in block \\d+ \\(\\d+ confirmations?\\)\\.$"
 }

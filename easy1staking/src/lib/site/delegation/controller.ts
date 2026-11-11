@@ -1,6 +1,6 @@
 import { createWalletSession, WalletSignatureError } from "./wallet-session";
 import { createDelegationCoordinator, CoordinationError, DELEGATION_POOL_ID } from "./coordination";
-import type { DelegationLease, DelegationIntent, RecoveryState } from "./coordination";
+import type { DelegationLease, DelegationIntent, DismissalAuthority, RecoveryState } from "./coordination";
 import { assessChainContext } from "./chain-context";
 import type { ChainAssessment } from "./chain-context";
 import { MAINNET_SOURCE } from "./blockfrost-reader";
@@ -9,7 +9,7 @@ import { createRecoveryVerifier } from "./recovery-verifier";
 import type { AccountState, StatusOutcome } from "./recovery-verifier";
 import { GuardError } from "./types";
 import type { AcceptedTransaction, Review } from "./types";
-import { failureCode, failureMessage } from "./messages";
+import { DISMISSAL_COPY, failureCode, failureMessage } from "./messages";
 import type { FailureKind, StopReason } from "./messages";
 
 const clock = Date.now, invoke = Reflect.apply;
@@ -32,9 +32,20 @@ export interface DelegationConfirmation {
   readonly credential: string;
   readonly account: AccountState;
 }
+/** The W7 dismissal offer for an expired, unseen record; offered only by a deliberate check, opened and confirmed only by explicit actions. */
+export interface DelegationDismissal {
+  readonly stage: "offered" | "open" | "confirming";
+  readonly txId: string;
+  readonly spentElsewhere: boolean;
+}
+/** A record the visitor dismissed after checking its ID themselves; never a chain confirmation. Kept for the page lifetime only. */
+export interface DelegationDismissed {
+  readonly txId: string;
+  readonly message: string;
+}
 export interface DelegationView {
   readonly phase: "disconnected" | "connecting" | "assessing" | "ready" | "building" | "review" | "signing" | "checking" | "submitting" | "submitted" | "unknown" | "already-EASY1" | "refused" |
-    "confirmed" | "check-later" | "inconsistent" | "changed" | "other-pending";
+    "confirmed" | "check-later" | "inconsistent" | "changed" | "other-pending" | "expired-unseen" | "dismissed";
   readonly message: string;
   readonly walletId: string | null;
   readonly account: string | null;
@@ -48,6 +59,10 @@ export interface DelegationView {
   /** Machine outcome and reason code of the last completed status check, for example "inconsistent:BODY_ID". */
   readonly statusReason: string | null;
   readonly confirmation: DelegationConfirmation | null;
+  /** A frozen object whose identity changes only with its stage, or null. */
+  readonly dismissal: DelegationDismissal | null;
+  /** Shown only while its ID is the active one. */
+  readonly dismissed: DelegationDismissed | null;
   /** Machine kind:code of the last failure message, for example "wallet:REFUSED" or "stop:cancel-idle". Never rendered. */
   readonly failureReason: string | null;
   /** Set by Disconnect while a result or a cancelled operation stays on screen; cleared by the next Connect. */
@@ -73,12 +88,26 @@ interface StatusWork {
   readonly deadline: number | null;
   expired: boolean;
   resolved: Extract<StatusOutcome, { status: "confirmed" }> | null;
+  /** The dismissal authority a deliberate check obtained under its lease; it never leaves the controller. */
+  offered: { readonly authority: DismissalAuthority; readonly spentElsewhere: boolean } | null;
+  /** The confirm recheck of a dismissal offer, run with the offer's generation. */
+  readonly confirming: boolean;
 }
-type StatusStep = { readonly kind: "confirmed"; readonly outcome: Extract<StatusOutcome, { status: "confirmed" }> } | { readonly kind: "continue" | "busy" | "inconsistent" | "changed" };
+/** A live dismissal offer: its authority, its open generation and the single confirm attempt it allows. */
+interface Offer {
+  readonly txId: string;
+  readonly generation: number;
+  readonly authority: DismissalAuthority;
+  used: boolean;
+  work: StatusWork | null;
+}
+type Unseen = Extract<StatusOutcome, { readonly spentElsewhere: boolean }>;
+type StatusStep = { readonly kind: "confirmed"; readonly outcome: Extract<StatusOutcome, { status: "confirmed" }> } |
+  { readonly kind: "continue" | "busy" | "inconsistent" | "changed" | "offered" | "spent" | "seen" };
 const OTHER_PENDING = "Another delegation from this browser is pending. Keep its transaction ID and check its status.";
 const CHANGED = "This operation's saved status changed in another tab of this browser. Keep the transaction ID and check it in your wallet or a chain explorer.";
 // Transaction-result phases that an idle Disconnect leaves exactly as they are.
-const RESULT_PHASES: readonly DelegationView["phase"][] = ["submitted", "unknown", "confirmed", "check-later", "inconsistent", "changed", "other-pending"];
+const RESULT_PHASES: readonly DelegationView["phase"][] = ["submitted", "unknown", "confirmed", "check-later", "inconsistent", "changed", "other-pending", "expired-unseen", "dismissed"];
 const APOLOGY = "Sorry, we couldn't confirm your delegation yet. Confirmation usually takes about 20 seconds but can take longer. Please check again here in a few minutes, or check later in your wallet.";
 /** The page receives display data and deliberate actions; handles, reviews and bytes stay private. */
 export function createDelegationController(projectId: string) {
@@ -91,6 +120,10 @@ export function createDelegationController(projectId: string) {
   let status: StatusWork | null = null, resolved: DelegationConfirmation | null = null, statusReason: string | null = null;
   let phase: DelegationView["phase"] = "disconnected", message = "Choose a wallet to connect.", review: DelegationReview | null = null;
   let txId: string | null = null, failureReason: string | null = null, walletDisconnected = false, connecting: number | null = null, walletCalls = 0;
+  // W7 manual dismissal: at most one live offer; the dismissed result is held apart from the wallet/action phase like the confirmed one.
+  let offer: Offer | null = null, dismissal: DelegationDismissal | null = null, dismissed: DelegationDismissed | null = null;
+  // Page-lifetime latches, never stored: an ID once spent by its own ID, or once positively witnessed, is never offered for dismissal here.
+  const spentIds = new Set<string>(), witnessedIds = new Set<string>();
   const fail = (): never => { throw new FlowFailure(); };
   function recovery(): RecoveryState { return coordinator.getState(); }
   /** Counts a wallet call this page started (connect, an operation's recheck, a signature) until it settles; background refreshes are not counted. */
@@ -130,6 +163,7 @@ export function createDelegationController(projectId: string) {
       review, txId: active, recovery: prior,
       walletBrowseHref: browse ? "web+cardano://browse/v1?uri=" + encodeURIComponent(origin + "/pool") : null,
       statusRunning: status !== null, statusUntil: status?.deadline ?? null, confirmation: resolved !== null && resolved.txId === active ? resolved : null, statusReason,
+      dismissal, dismissed: dismissed !== null && dismissed.txId === active ? dismissed : null,
       canCheckStatus: !disposed && !status && !operation && prior.status === "pending" && prior.record !== null, failureReason, walletDisconnected });
   }
   function emit(): void { if (!disposed) for (const listener of listeners) { try { listener(); } catch { /* Display only. */ } } }
@@ -158,6 +192,8 @@ export function createDelegationController(projectId: string) {
   const onStorage = () => {
     // Another tab's pending record for a different ID supersedes this page's last ID, and any confirmation it holds.
     const prior = recovery();
+    // A dismissal offer is withdrawn once its record is no longer pending under its ID; a same-ID pending update keeps it (Confirm checks the exact record).
+    if (!disposed && offer && (prior.status !== "pending" || prior.txId !== offer.txId)) { withdraw(); show("changed", CHANGED); return; }
     if (!disposed && !operation && txId !== null && phase !== "other-pending" && prior.status === "pending" && prior.txId !== txId) { txId = prior.txId; show("other-pending", OTHER_PENDING); }
     // Once shown, the other tab's ID is this page's ID: its removal or replacement shows the changed guidance and never restores an earlier confirmation.
     else if (!disposed && phase === "other-pending" && prior.status !== "pending") show("changed", CHANGED);
@@ -333,26 +369,41 @@ export function createDelegationController(projectId: string) {
     // The automatic budget already ended (for example a tab suspended past dispatch + 180 s): apologise now, without a check.
     if (deadline !== null && clock() >= deadline) { txId = id; show("check-later", APOLOGY); return; }
     let generation: number; try { generation = coordinator.beginStatus(); } catch { return; }
-    const work: StatusWork = { abort: new AbortController(), generation, txId: id, deadline, expired: false, resolved: null };
+    const work: StatusWork = { abort: new AbortController(), generation, txId: id, deadline, expired: false, resolved: null, offered: null, confirming: false };
     status = work; emit();
     void runStatus(work);
+  }
+  function latch(result: StatusOutcome): void {
+    if (result.witnessed) witnessedIds.add(result.txId);
+    if (result.status === "inconsistent" && result.reason === "SPENT_BY_ID") spentIds.add(result.txId);
+  }
+  function dismissible(result: StatusOutcome): result is Unseen {
+    return result.status === "not-found" && result.reason === "EXPIRED_UNSEEN" && !spentIds.has(result.txId) && !witnessedIds.has(result.txId);
   }
   /** One bounded read session under the recovery lock; it never enables or calls the wallet, builds, signs or posts. */
   async function statusCheck(work: StatusWork): Promise<StatusStep> {
     let outcome: StatusOutcome;
     try {
       outcome = await coordinator.withRecoveryOperation(work.txId, async lease => {
-        const result = await verifier.check(lease, { generation: work.generation, deadline: work.deadline, signal: work.abort.signal });
+        // Only the deliberate check (and the confirm recheck) asks for the W7 eligibility reads; the automatic poll never does.
+        const result = await verifier.check(lease, { generation: work.generation, deadline: work.deadline, signal: work.abort.signal, dismissal: work.deadline === null || work.confirming });
+        latch(result);
         if (live(work)) statusReason = result.status + ":" + result.reason;
         if (result.status === "confirmed" && live(work)) { coordinator.resolveConfirmed(lease, result.resolution); work.resolved = result; }
+        else if (dismissible(result) && work.deadline === null && live(work)) work.offered = { authority: coordinator.offerDismissal(lease, result.resolution), spentElsewhere: result.spentElsewhere };
         return result;
       }, { signal: work.abort.signal });
     } catch (error) {
       if (work.resolved) return { kind: "confirmed", outcome: work.resolved };
+      if (work.offered) return { kind: "offered" };
       const code = error instanceof CoordinationError ? error.code : "OPERATION";
       return { kind: code === "BUSY" ? "busy" : code === "LOST" || code === "PENDING" || code === "RECORD" ? "changed" : "continue" };
     }
     if (work.resolved) return { kind: "confirmed", outcome: work.resolved };
+    if (work.offered) return { kind: "offered" };
+    // A latched ID: a later expired-unseen answer makes no offer, and a spend by its own ID is never cleared.
+    if (outcome.status === "inconsistent" && outcome.reason === "SPENT_BY_ID" || outcome.status === "not-found" && outcome.reason === "EXPIRED_UNSEEN")
+      return { kind: spentIds.has(work.txId) ? "spent" : witnessedIds.has(work.txId) ? "seen" : "continue" };
     return { kind: outcome.status === "inconsistent" ? "inconsistent" : "continue" };
   }
   async function runStatus(work: StatusWork): Promise<void> {
@@ -373,19 +424,76 @@ export function createDelegationController(projectId: string) {
       }
     } finally { if (timer !== undefined) clearTimeout(timer); }
     if (!live(work)) return;
-    status = null; coordinator.endStatus(work.generation); txId = work.txId;
-    if (step.kind === "confirmed") {
-      const o = step.outcome, text = `Your delegation transaction was confirmed on chain in block ${o.blockHeight} (${o.confirmations} confirmation${o.confirmations === "1" ? "" : "s"}).`;
-      resolved = Object.freeze({ txId: work.txId, message: text, blockHeight: o.blockHeight, confirmations: o.confirmations, credential: o.credential, account: o.account });
-      show("confirmed", text);
-    } else if (step.kind === "inconsistent") show("inconsistent", "We found this transaction but couldn't verify it consistently. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.");
+    // A live offer keeps its generation open (no endStatus) until it is used or withdrawn.
+    status = null; if (step.kind !== "offered") coordinator.endStatus(work.generation); txId = work.txId;
+    if (step.kind === "offered" && work.offered) {
+      offer = { txId: work.txId, generation: work.generation, authority: work.offered.authority, used: false, work: null };
+      dismissal = Object.freeze<DelegationDismissal>({ stage: "offered", txId: work.txId, spentElsewhere: work.offered.spentElsewhere });
+      show("expired-unseen", failureMessage("recovery", "expired-unseen"));
+    } else if (step.kind === "confirmed") confirmedResult(work.txId, step.outcome);
+    else if (step.kind === "spent") show("inconsistent", failureMessage("recovery", "spent-by-id"));
+    else if (step.kind === "seen") show("check-later", failureMessage("recovery", "seen-unverified"));
+    else if (step.kind === "inconsistent") show("inconsistent", "We found this transaction but couldn't verify it consistently. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.");
     else if (step.kind === "changed") show("changed", "This operation's saved status changed in another tab of this browser. Keep the transaction ID and check it in your wallet or a chain explorer.");
     else show("check-later", APOLOGY);
+  }
+  function confirmedResult(id: string, o: Extract<StatusOutcome, { status: "confirmed" }>): void {
+    const text = `Your delegation transaction was confirmed on chain in block ${o.blockHeight} (${o.confirmations} confirmation${o.confirmations === "1" ? "" : "s"}).`;
+    resolved = Object.freeze({ txId: id, message: text, blockHeight: o.blockHeight, confirmations: o.confirmations, credential: o.credential, account: o.account });
+    show("confirmed", text);
   }
   /** One deliberate bounded check, also after a reload; there is no automatic poll on reload. */
   async function checkStatus(): Promise<void> {
     const prior = recovery();
-    if (prior.status === "pending" && prior.txId) startStatus(prior.txId, null);
+    if (prior.status === "pending" && prior.txId) { if (!disposed && !status && !operation) withdraw(); startStatus(prior.txId, null); }
+  }
+  /** Drops a live offer's authority, abandons its confirm recheck and ends its generation. The record is never touched. */
+  function withdraw(): void {
+    const o = offer; if (!o) return;
+    offer = null; dismissal = null;
+    if (o.work && status === o.work) { status = null; o.work.abort.abort(); }
+    coordinator.endStatus(o.generation);
+  }
+  function openDismissal(view: DelegationDismissal): void {
+    if (disposed || !offer || view !== dismissal || view.stage !== "offered") return;
+    dismissal = Object.freeze<DelegationDismissal>({ ...view, stage: "open" }); emit();
+  }
+  /** The keep action, also during the confirm recheck, whose late result then has no effect. */
+  function closeDismissal(view: DelegationDismissal): void {
+    if (disposed || !offer || view !== dismissal) return;
+    withdraw(); statusReason = "dismiss:KEPT"; show("check-later", failureMessage("recovery", "dismiss-kept"));
+  }
+  /** The typed attestation plus a distinct Confirm: one recheck under a new lease; only a fresh, eligible resolution for the same record removes it.
+   * It never calls the wallet, builds, signs or posts. */
+  async function confirmDismissal(view: DelegationDismissal, attestation: unknown): Promise<void> {
+    const o = offer;
+    if (disposed || !o || view !== dismissal || view.stage !== "open" || o.used || typeof attestation !== "string" || attestation !== DISMISSAL_COPY.attestationPhrase) return;
+    o.used = true; dismissal = Object.freeze<DelegationDismissal>({ ...view, stage: "confirming" });
+    const work: StatusWork = { abort: new AbortController(), generation: o.generation, txId: o.txId, deadline: null, expired: false, resolved: null, offered: null, confirming: true };
+    o.work = work; status = work; emit();
+    let removed = false, code: unknown = null;
+    try {
+      await coordinator.withRecoveryOperation(work.txId, async lease => {
+        const result = await verifier.check(lease, { generation: work.generation, deadline: null, signal: work.abort.signal, dismissal: true });
+        latch(result);
+        if (!live(work)) return;
+        statusReason = result.status + ":" + result.reason;
+        if (result.status === "confirmed") { coordinator.resolveConfirmed(lease, result.resolution); work.resolved = result; }
+        else if (dismissible(result)) { coordinator.resolveDismissed(lease, o.authority, result.resolution); removed = true; }
+      }, { signal: work.abort.signal });
+    } catch (error) { code = error instanceof CoordinationError ? error.code : "OPERATION"; }
+    if (!live(work)) return;
+    // The end of any confirm attempt withdraws the offer.
+    status = null; offer = null; dismissal = null; coordinator.endStatus(work.generation); txId = work.txId;
+    if (work.resolved) { statusReason = "confirmed:CONFIRMED"; confirmedResult(work.txId, work.resolved); }
+    else if (removed) {
+      const text = failureMessage("recovery", "dismissed");
+      statusReason = "dismissed:USER"; dismissed = Object.freeze({ txId: work.txId, message: text }); show("dismissed", text);
+    } else if (code === "LOST" || code === "PENDING" || code === "RECORD") { statusReason = "dismiss:" + code; show("changed", CHANGED); }
+    else if (code !== null) { statusReason = "dismiss:" + String(code); show("check-later", failureMessage("recovery", "dismiss-kept")); }
+    else if (spentIds.has(work.txId)) show("inconsistent", failureMessage("recovery", "spent-by-id"));
+    else if (witnessedIds.has(work.txId)) show("check-later", failureMessage("recovery", "seen-unverified"));
+    else show("check-later", failureMessage("recovery", "dismiss-kept"));
   }
   function approve(display: DelegationReview): void {
     const op = operation;
@@ -400,9 +508,9 @@ export function createDelegationController(projectId: string) {
     if (kept) { walletDisconnected = true; emit(); } else { walletDisconnected = false; show("disconnected", "Choose a wallet to connect."); }
   }
   function dispose(): void {
-    if (disposed) return; cancel(); disposed = true; status?.abort.abort(); status = null;
+    if (disposed) return; cancel(); disposed = true; withdraw(); status?.abort.abort(); status = null;
     window.removeEventListener("storage", onStorage); owner.dispose(); coordinator.dispose(); listeners.clear();
   }
-  return Object.freeze({ getView: view, connect, prepare, approve, cancel, disconnect, dispose, checkStatus,
+  return Object.freeze({ getView: view, connect, prepare, approve, cancel, disconnect, dispose, checkStatus, openDismissal, closeDismissal, confirmDismissal,
     subscribe(listener: () => void): () => void { listeners.add(listener); return () => { listeners.delete(listener); }; } });
 }

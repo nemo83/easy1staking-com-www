@@ -71,7 +71,7 @@ async function main(){
    // Route-handler page actions may race case teardown; record their failures instead of throwing.
    const routeStep=async step=>{try{await step();}catch(error){record.routeHandlerErrors.push(String(error?.message??error).split("\n")[0]);}};const s=scenario(name!=="unregistered"),golden=vectors.find(v=>v.registered===(name!=="unregistered"));
    // Status reads for the submitted ID: 404 unless the case's plan includes it; an included transaction is one coherent synthetic chain point.
-   const plan=fixture.statusPlans[name]||{notFound:null},otherPool=raw.poolBech32(chain.otherHash),st={lookups:0,inclusion:null,lastTip:null,pinned:null,cborReads:0,historyReads:0,reloaded:false,trace:[]},NOT_FOUND=Symbol("404");
+   const plan=fixture.statusPlans[name]||{notFound:null},otherPool=raw.poolBech32(chain.otherHash),st={lookups:0,inclusion:null,lastTip:null,pinned:null,cborReads:0,historyReads:0,reloaded:false,trace:[],consumed:null,rowsServed:[],holdRows:false,found:false},NOT_FOUND=Symbol("404");
    // Another tab's pending record and a second operation's transaction are not on chain: their status lookups answer 404.
    const unseen=new Set([plan.otherTab&&"/txs/"+fixture.otherTabRecord.txId,plan.secondOperation&&"/txs/"+fixture.secondOperation.txId].filter(Boolean));
    const statusPath=p=>p==="/txs/"+golden.txId||p.startsWith("/txs/"+golden.txId+"/")||!!st.inclusion&&(p==="/blocks/"+st.inclusion.hash||plan.lag&&p==="/accounts/"+account+"/delegations");
@@ -85,6 +85,8 @@ async function main(){
     if(plan.tipHashReuse){slot=BigInt(st.pinned.slot)-5n;height=slot-100000000n;hash=st.pinned.hash;}
     // T1 hash reuse: T2 is pinned two slots above T1 and the inclusion block reports T1's hash 5 slots and 5 heights lower.
     if(plan.t1HashReuse){slot=BigInt(t.slot)-5n;height=slot-100000000n;hash=t.hash;}
+    // Dismissal cases may place the inclusion at a fixed slot (TTL-10: landed before expiry behind a lagging index).
+    if(st.inclusionSlot!==undefined){slot=st.inclusionSlot;height=slot-100000000n;hash=id(Number(slot));}
     const time=(1596059091000+Number(slot-4492800n)*1000)/1000,acc=s.routes.get("/accounts/"+account);st.inclusion={slot:Number(slot),height:Number(height),time,hash,index:0};
     acc.pool_id=plan.unreconciled?otherPool:chain.poolId;acc.active=true;
     st.ownHistory={active_epoch:666,tx_hash:golden.txId,amount:"100000000",pool_id:chain.poolId,tx_slot:Number(slot),block_time:time,block_height:Number(height)};
@@ -99,14 +101,14 @@ async function main(){
     const tx=golden.txId;
     if(p==="/txs/"+tx){
      st.lookups++;
-     if(!st.inclusion){if(plan.notFound===null||name==="check-status-after-reload"&&!st.reloaded||st.lookups<=plan.notFound){st.trace.push({lookup:st.lookups,found:false});return NOT_FOUND;}include();}
+     if(!st.inclusion){if(!st.found&&(plan.notFound===null||name==="check-status-after-reload"&&!st.reloaded||st.lookups<=plan.notFound)){st.trace.push({lookup:st.lookups,found:false});return NOT_FOUND;}include();}
      st.trace.push({lookup:st.lookups,found:true});const i=st.inclusion;
      return{hash:tx,block:i.hash,block_height:i.height,block_time:i.time,slot:i.slot,index:i.index,output_amount:[{unit:"lovelace",quantity:golden.change}],fees:golden.fee,deposit:golden.deposit,size:golden.signedSize,
       invalid_before:null,invalid_hereafter:golden.ttl,utxo_count:2,withdrawal_count:0,mir_cert_count:0,delegation_count:1,stake_cert_count:golden.registered?0:1,pool_update_count:0,pool_retire_count:0,asset_mint_or_burn_count:0,redeemer_count:0,valid_contract:true,treasury_donation:"0"};
     }
     if(!st.inclusion)return NOT_FOUND;
     st.trace.push({lookup:st.lookups,path:p.replace(tx,"{tx}")});const i=st.inclusion;
-    if(p===`/txs/${tx}/cbor`){st.cborReads++;if(plan.lag&&st.cborReads===1)return NOT_FOUND;const sig=record.signatures[0];return{cbor:plan.wrongBody?"84"+golden.bodyHex.replace("021a0002a389","021a0002a38a")+sig.witness+"f5f6":sig.signedHex};}
+    if(p===`/txs/${tx}/cbor`){st.cborReads++;if((plan.lag||st.lagCbor)&&st.cborReads===1)return NOT_FOUND;const sig=record.signatures[0];return{cbor:plan.wrongBody?"84"+golden.bodyHex.replace("021a0002a389","021a0002a38a")+sig.witness+"f5f6":sig.signedHex};}
     if(p===`/txs/${tx}/delegations`)return[{index:0,cert_index:0,address:account,pool_id:chain.poolId,active_epoch:666}];
     if(p===`/txs/${tx}/stakes`)return[{cert_index:0,address:account,registration:true}];
     if(p==="/blocks/"+i.hash)return{time:i.time,height:i.height,hash:i.hash,slot:i.slot,epoch:664,epoch_slot:(i.slot-4492800)%432000,slot_leader:chain.poolId,size:1024,tx_count:1,output:"100000000",fees:golden.fee,
@@ -170,6 +172,7 @@ async function main(){
       if(mode==="long-consent")await new Promise(r=>setTimeout(r,31000));const witness=await window.syntheticSign(unsigned);state.replyAt=performance.now();
       if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)){const before=document.visibilityState;Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});state.visibilityTransition={before,after:document.visibilityState,at:performance.now()};document.dispatchEvent(new Event("visibilitychange"));}
       if(mode.startsWith("presubmit-"))state.clockDeltaMs+=baseTime+(600-Number(mode.slice(10)))*1000-Date.now();
+      if(mode==="dismiss-poll-after-expiry")state.clockDeltaMs+=baseTime+(600-130)*1000-Date.now();
       if(mode==="final-barrier-expiry")state.clockDeltaMs+=baseTime+(600-124)*1000-Date.now();
       return witness;},signData:deny("signData"),submitTx:deny("wallet-submit")};
      // After a flagged reload every wallet method throws and is counted; status checking must never call one.
@@ -215,7 +218,9 @@ async function main(){
       if(name==="submit-timeout"||name==="confirm-unknown-outcome")await new Promise(r=>setTimeout(r,61000));
       // The tab "resumes" after the POST is dispatched and before status starts: the existing synthetic page clock moves past dispatch + 180 s.
       if(name==="confirm-resumed-after-deadline"||plan.visibleRefresh)await routeStep(async()=>{record.walletAtPost=await page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,signCalls:window.synthetic.signCalls,walletReads:window.synthetic.walletReads||0,throwing:window.synthetic.throwingWalletCalls}));});
-      if(name==="confirm-resumed-after-deadline")await routeStep(async()=>{record.clockJump=await page.evaluate(()=>{const before=Date.now();window.synthetic.clockDeltaMs+=181000;return{ms:181000,before,after:Date.now()};});});
+      // Dismissal cases resume the same way (except the poll case), so status work shows the apology with no reads; the poll case moves to TTL + 2 s instead.
+      if(name==="dismiss-poll-after-expiry")await routeStep(async()=>{record.clockJump=await page.evaluate(target=>{const before=Date.now();window.synthetic.clockDeltaMs+=target-Date.now();return{target,before,after:Date.now()};},baseTime+600*1000+2000);});
+      if(name==="confirm-resumed-after-deadline"||name.startsWith("dismiss-")&&name!=="dismiss-poll-after-expiry")await routeStep(async()=>{record.clockJump=await page.evaluate(()=>{const before=Date.now();window.synthetic.clockDeltaMs+=181000;return{ms:181000,before,after:Date.now()};});});
       if(name==="cancel-transmission"){await routeStep(()=>page.getByRole("button",{name:"Cancel here"}).click());await new Promise(r=>setTimeout(r,100));}
       if(name==="storage-after-transmission"){await routeStep(async()=>{const other=await context.newPage();await other.goto(origin+"/pool");await other.evaluate(()=>{localStorage.removeItem("easy1staking:delegation-recovery");});await other.close();});await page.waitForTimeout(100);}
       if(name==="submit-bad-status")return route.fulfill({status:500,contentType:"application/json",body:'{"error":"SYNTHETIC_PRIVATE_CANARY"}'});
@@ -243,6 +248,13 @@ async function main(){
       value=statusValue(p);entry.status=value===NOT_FOUND?404:200;
       if(value===NOT_FOUND)return route.fulfill({status:404,contentType:"application/json",body:'{"status_code":404,"error":"Not Found","message":"The requested component has not been found."}',headers:{"access-control-allow-origin":"*"}});
      }else if(unseen.has(p)){entry.status=404;return route.fulfill({status:404,contentType:"application/json",body:'{"status_code":404,"error":"Not Found","message":"The requested component has not been found."}',headers:{"access-control-allow-origin":"*"}});
+     }else if(name.startsWith("dismiss-")&&name!=="dismiss-missing-rows"&&p===`/txs/${chain.fundingId}/utxos`&&record.posts.length){
+      // W7 eligibility rows after the POST: every funding output carries an own consumed_by_tx key (the case's spender, null by default); a held read waits 3 s first.
+      const held=st.holdRows;if(held){st.holdRows=false;st.heldAt=Date.now();await new Promise(r=>setTimeout(r,3000));st.heldUntil=Date.now();}
+      value=clone(s.routes.get(p));value.outputs=value.outputs.map(o=>({...o,consumed_by_tx:st.consumed}));entry.consumed=st.consumed;
+      st.rowsServed.push({consumed:st.consumed,ownKey:value.outputs.every(o=>Object.prototype.hasOwnProperty.call(o,"consumed_by_tx")),held});
+      // A held read can outlive its page (Keep, dispose, navigation): its late fulfilment is recorded, never thrown from the route handler.
+      if(held)try{return await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(value),headers:{"access-control-allow-origin":"*"}});}catch(error){st.heldFulfilment=String(error?.message??error).split("\n")[0];return;}
      }else if(p==="/blocks/latest"){
       // A navigation or reload can destroy the page context mid-read; that read then fails as transport, never as a handler crash.
       const observed=await page.evaluate(()=>({now:Date.now(),afterReply:window.synthetic.replyAt!==null,jump:window.synthetic.clockDeltaMs})).catch(()=>null);if(!observed)return route.abort();
@@ -250,6 +262,8 @@ async function main(){
       const at=n=>({slot:Number(n),epoch:664,hash:n===baseSlot?chain.tipHash:id(Number(n)),height:Number(n-100000000n),time:(baseTime+Number(n-baseSlot)*1000)/1000});
       // Split tips: the first read after the POST pins T2 at the live tip and answers T1 two slots below it, so T1 and T2 differ.
       if((plan.tipHashReuse||plan.t1HashReuse||plan.laterTipFork)&&record.posts.length&&!st.pinned){st.pinned=at(slot);value=at(slot-2n);}
+      // Rollback during final confirmation: the recheck's first tip read answers the live tip and its second 3 slots lower.
+      else if(st.rollback&&st.rollback.reads<2){if(!st.rollback.live)st.rollback.live=at(slot);value=st.rollback.reads++===0?st.rollback.live:at(BigInt(st.rollback.live.slot)-3n);}
       else value=st.pinned??at(slot);entry.slot=value.slot;st.lastTip=value;
      }else value=s.routes.has(p)?s.routes.get(p):p.startsWith("/txs/")?s.txs[p.slice(5)]:undefined;
      assert.notEqual(value,undefined,"EXPLICIT_SOURCE_FIXTURE "+p);if(Array.isArray(value)&&u.searchParams.has("page")){const n=Number(u.searchParams.get("page"));value=value.slice((n-1)*100,n*100);}
@@ -425,6 +439,7 @@ async function main(){
       assert.equal(await page.getByRole("button",{name:"Check status"}).count(),1,"CHECK_STATUS_AFTER_RESUME");assert.equal(v.statusRunning,false,"NO_POLL_AFTER_RESUME");
       assert.equal(record.http.filter(x=>x.method==="GET"&&x.at>postAt&&(x.path.startsWith("/txs/")||x.path.startsWith("/blocks/")||x.path.startsWith("/accounts/"))).length,0,"ZERO_STATUS_READS_AFTER_RESUME");
       assert.deepEqual(await walletAt(),record.walletAtPost,"ZERO_WALLET_EFFECTS_AFTER_POST");
+      assert.equal(await page.getByRole("button",{name:fixture.dismissalCopy.offer}).count(),0,"NO_DISMISS_OFFER");
      }else if(name==="confirm-then-disconnect"){
       await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");record.statusCutoff=Date.now();assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
       await page.getByRole("button",{name:"Disconnect wallet"}).click();await page.waitForTimeout(300);
@@ -519,6 +534,190 @@ async function main(){
       await page.waitForURL(origin+"/",{timeout:20000});await until(()=>st.navigatedAt,15000,"DISPOSED_DURING_CHECK");await page.waitForTimeout(12000);
       record.afterDispose={reads:statusReads(st.navigatedAt+1000),raw:await stored()};assert.equal(record.afterDispose.reads,0,"NO_STATUS_AFTER_DISPOSE");
       assert(record.afterDispose.raw&&JSON.parse(record.afterDispose.raw).stage==="submitted","DISPOSE_RETAINS_RECORD");
+     }else if(name.startsWith("dismiss-")){
+      // W7 manual dismissal. Each deliberate check waits for its first tip read and for the status work to end, then asserts the exact statusReason first.
+      const R={expiredUnseen:"This transaction has expired and was not found on chain when checked. That does not prove it was never included. After you check its ID in your wallet or a chain explorer, you can dismiss this record.",
+       spentById:"This transaction was not found, but one of its inputs is recorded as spent by this same transaction ID, so it may be on chain. Nothing was cleared. Check it in your wallet or a chain explorer.",
+       seenUnverified:"An earlier chain-data response reported this transaction, but verification is still unresolved. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.",
+       dismissed:"You dismissed this record after checking the transaction ID yourself. This page did not confirm it. Keep the ID; a new delegation needs a new review and your approval.",
+       kept:"The record was kept in this browser. To dismiss it, check status again, or check the ID in your wallet or a chain explorer."};
+      const copy=fixture.dismissalCopy,rowsPath=`/txs/${chain.fundingId}/utxos`,TTL=baseSlot+600n,slotTime=n=>baseTime+Number(n-baseSlot)*1000,i0=record.layout.samples.length;record.dismiss={checks:[]};
+      const tipAt=n=>({slot:Number(n),epoch:664,hash:n===baseSlot?chain.tipHash:id(Number(n)),height:Number(n-100000000n),time:slotTime(n)/1000});
+      const clockTo=target=>page.evaluate(t=>{window.synthetic.clockDeltaMs+=t-Date.now();},target);
+      // Tips follow the page clock unless pinned; a pinned tip gets the page clock at its time + 1000 ms.
+      const follow=n=>{st.pinned=null;return clockTo(slotTime(n));},pin=n=>{st.pinned=tipAt(n);return clockTo(slotTime(n)+1000);};
+      const offerCount=()=>page.getByRole("button",{name:copy.offer}).count(),region=()=>page.locator(`[aria-label="${copy.region}"]`),dismissedRegion=()=>page.locator(`[aria-label="${copy.dismissedRegion}"]`);
+      const reads=after=>record.http.filter(x=>x.at>after),rowsReads=after=>reads(after).filter(x=>x.method==="GET"&&x.path===rowsPath).length,lookupsAfter=after=>reads(after).filter(x=>x.method==="GET"&&x.path==="/txs/"+golden.txId).length;
+      const retained=async label=>{const raw=await stored();assert(raw!==null&&JSON.parse(raw).txId===golden.txId,label);return raw;};
+      const storageKeys=()=>page.evaluate(()=>({local:Object.keys(localStorage).sort(),session:Object.keys(sessionStorage).sort()}));
+      const testController=()=>page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve){window.testController=c;return;}state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');});
+      async function check(expected){
+       await page.getByRole("button",{name:"Check status"}).waitFor({timeout:15000});const at=Date.now();await page.getByRole("button",{name:"Check status"}).click();
+       await until(()=>record.http.some(x=>x.at>=at&&x.path==="/blocks/latest"),15000,"CHECK_STARTED");
+       for(let i=0;i<300&&(await viewOf()).statusRunning;i++)await page.waitForTimeout(100);await page.waitForTimeout(500);
+       const v=await viewOf();record.statusReason=v.statusReason;record.dismiss.checks.push({statusReason:v.statusReason,phase:v.phase,text:await statusText(),dismissal:v.dismissal});
+       assert.equal(v.statusReason,expected,"DISMISS_STATUS_REASON");return at;
+      }
+      const open=async()=>{await page.getByRole("button",{name:copy.offer}).click();await region().waitFor({timeout:5000});};
+      const fill=value=>page.getByLabel(copy.attestationLabel,{exact:true}).fill(value??copy.attestationPhrase);
+      // A confirm attempt has ended when no status work runs and no dismissal is confirming; then a fixed settle.
+      async function settled(){for(let i=0;i<300;i++){const v=await viewOf();if(!v.statusRunning&&v.dismissal?.stage!=="confirming")break;await page.waitForTimeout(100);}await page.waitForTimeout(500);return Date.now();}
+      async function confirmClick(){const at=Date.now();await page.getByRole("button",{name:copy.confirm}).click();await settled();return at;}
+      const noBuild=end=>{const phases=record.layout.samples.slice(i0,end).map(x=>x.phase);record.dismiss.phases=[...new Set(phases)];assert(!phases.some(p=>["building","review","signing","checking","submitting"].includes(p)),"NO_BUILD_DURING_DISMISSAL");};
+      async function cutoff(){record.statusCutoff=Date.now();const end=record.layout.samples.length;assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");noBuild(end);}
+      // The full dismissal: offer at TTL+5 (tips follow the clock), open, the exact phrase, Confirm; then the dismissed state and nothing new stored.
+      async function dismissAll(spender){
+       st.consumed=spender;await follow(TTL+5n);const checkAt=await check("not-found:EXPIRED_UNSEEN");
+       assert.equal(await statusText(),R.expiredUnseen,"DISMISS_STATUS_TEXT");assert.equal(await offerCount(),1,"DISMISS_OFFERED");await retained("RECORD_RETAINED_ON_OFFER");
+       assert(st.rowsServed.length>0&&st.rowsServed.every(x=>x.ownKey&&x.consumed===spender),"ROWS_SERVED_WITH_CONSUMED");
+       await open();const lines=await region().locator("p").allInnerTexts();record.dismiss.region=lines;assert(lines.includes(copy.disclosure),"DISCLOSURE_COPY");
+       if(spender===null)assert(!lines.includes(copy.spentElsewhere),"NO_SPENT_ELSEWHERE_LINE");else assert(lines.includes(copy.spentElsewhere),"SPENT_ELSEWHERE_LINE");
+       const before=await storageKeys();await fill();await confirmClick();const doneAt=Date.now();
+       assert.equal(await stored(),null,"DISMISSED_RECORD_REMOVED");
+       assert.equal(await statusText(),R.dismissed,"DISMISSED_COPY");const v=await viewOf();assert.equal(v.statusReason,"dismissed:USER","DISMISSED_REASON");
+       assert(v.dismissed&&v.dismissed.txId===golden.txId,"DISMISSED_VIEW_ID");assert.equal(v.confirmation,null,"DISMISSED_NOT_CONFIRMED");
+       const shown=await dismissedRegion().innerText(),code=dismissedRegion().locator("code");assert(shown.includes(copy.dismissedCaption)&&(await code.innerText())===golden.txId,"DISMISSED_REGION");
+       assert.notEqual(await code.evaluate(e=>getComputedStyle(e).userSelect),"none","DISMISSED_ID_COPYABLE");
+       const body=await page.locator('#delegate').innerText();assert(!body.includes("outcome pending or unknown")&&!body.includes("confirmed on chain"),"DISMISSED_NO_OTHER_CAPTION");
+       const after=await storageKeys();record.dismiss.storage={before,after};
+       assert(before.local.includes("easy1staking:delegation-recovery")&&JSON.stringify(after.local)===JSON.stringify(before.local.filter(k=>k!=="easy1staking:delegation-recovery"))&&after.session.every(k=>k.startsWith("synthetic:")),"NOTHING_NEW_STORED");
+       const span=record.http.filter(x=>x.at>=checkAt&&x.at<=doneAt);record.dismiss.span=span.map(x=>x.method+" "+x.path);
+       assert.equal(span.filter(x=>x.path===rowsPath).length,2,"TWO_ELIGIBILITY_ROW_READS");
+       assert.deepEqual(span.filter(x=>!(x.method==="GET"&&(x.path==="/blocks/latest"||x.path===rowsPath||x.path==="/txs/"+golden.txId||x.path.startsWith("/txs/"+golden.txId+"/")))).map(x=>x.method+" "+x.path),[],"NO_OTHER_READS_DURING_DISMISSAL");
+      }
+      const dismissedKept=async label=>{const n=await dismissedRegion().count(),shown=n?await dismissedRegion().innerText():"",code=n?await dismissedRegion().locator("code").innerText():"";assert(n===1&&shown.includes(copy.dismissedCaption)&&code===golden.txId,label);};
+      async function reconnect(){
+       await page.getByLabel("Wallet",{exact:true}).selectOption("synthetic");await page.getByRole("button",{name:"Connect selected wallet"}).click();
+       await page.waitForFunction(()=>["refused","already-EASY1","ready"].includes(window.synthetic.renderedPhase()),{},{timeout:20000,polling:100});await page.waitForTimeout(500);
+       const v=await viewOf();record.dismiss.reconnect={text:await statusText(),phase:v.phase,failureReason:v.failureReason};return v;
+      }
+      if(name==="dismiss-poll-after-expiry"){
+       // The automatic poll runs past TTL within its budget; it never asks for eligibility, so no offer, no expired-unseen phase and no rows read until the apology.
+       let offered=0;const started=Date.now();
+       while(!/^Sorry, we couldn't confirm/.test(await statusText())&&Date.now()-started<90000){offered+=await offerCount();await page.waitForTimeout(250);}
+       const phases=record.layout.samples.map(x=>x.phase),tips=record.http.filter(x=>x.at>postAt&&x.path==="/blocks/latest").map(x=>x.slot);
+       record.dismiss.poll={offered,phases:[...new Set(phases)],rows:rowsReads(postAt),lookups:st.lookups,tips,text:await statusText()};
+       assert(record.dismiss.poll.text===apology&&offered===0&&await offerCount()===0&&!phases.includes("expired-unseen")&&rowsReads(postAt)===0,"NO_DISMISSAL_DURING_POLL");
+       assert(st.lookups>0&&tips.some(s=>s>=Number(TTL)),"POLL_RAN_PAST_TTL");
+       await check("not-found:EXPIRED_UNSEEN");assert.equal(await offerCount(),1,"DISMISS_OFFERED");await retained("RECORD_RETAINED_ON_OFFER");
+      }else if(name==="dismiss-expired"){
+       await dismissAll(null);await cutoff();
+       // Reconnect after the cutoff: a fresh review builds and is never approved.
+       const v=await reconnect();assert.equal(v.phase,"ready","RECONNECT_READY");await page.getByRole("button",{name:"Build delegation review"}).waitFor({timeout:5000});
+       await dismissedKept("DISMISSED_LABEL_KEPT_AFTER_CONNECT");
+       await page.getByRole("button",{name:"Build delegation review"}).click();await page.getByRole("button",{name:"Approve and sign in wallet"}).waitFor({timeout:20000});
+       await dismissedKept("DISMISSED_LABEL_KEPT_AFTER_REVIEW");
+       assert(await page.evaluate(()=>window.synthetic.signCalls)===1&&record.posts.length===1,"OWN_REVIEW_NOT_APPROVED");
+      }else if(name==="dismiss-at-ttl"){
+       assert.equal(await offerCount(),0,"NO_OFFER_BEFORE_CHECK");await pin(TTL);await check("not-found:EXPIRED_UNSEEN");assert.equal(await offerCount(),1,"DISMISS_OFFERED");
+       assert.equal(await page.getByText(copy.priorNotice,{exact:true}).count(),1,"PRIOR_NOTICE_COPY");await retained("RECORD_RETAINED_ON_OFFER");
+       assert((await viewOf()).confirmation===null&&await page.locator('[aria-label="Delegation confirmation"]').count()===0,"NOTHING_CONFIRMED");
+      }else if(name==="dismiss-before-expiry"){
+       // The tip is fresh at TTL-1 while the local clock is past the TTL's wall time: only the eligibility guard decides.
+       st.pinned=tipAt(TTL-1n);await clockTo(slotTime(TTL-1n)+20000);const at=await check("not-found:NOT_FOUND");
+       assert.equal(await statusText(),apology,"APOLOGY_BEFORE_EXPIRY");assert.equal(await offerCount(),0,"NO_DISMISS_OFFER");assert.equal(rowsReads(at),0,"NO_ELIGIBILITY_READS_BEFORE_EXPIRY");await retained("RECORD_RETAINED_BEFORE_EXPIRY");
+      }else if(name==="dismiss-spent-by-id"){
+       st.consumed=golden.txId;await follow(TTL+5n);await check("inconsistent:SPENT_BY_ID");
+       assert.equal(await statusText(),R.spentById,"DISMISS_STATUS_TEXT");assert.equal(await offerCount(),0,"NO_DISMISS_OFFER");await retained("RECORD_RETAINED_ON_SPENT_BY_ID");
+       // A later all-null answer does not erase the page-lifetime spend veto.
+       st.consumed=null;await check("not-found:EXPIRED_UNSEEN");
+       assert.equal(await statusText(),R.spentById,"LATER_404_DOES_NOT_ERASE");assert.equal(await offerCount(),0,"NO_DISMISS_OFFER");await retained("RECORD_RETAINED_AFTER_LATER_404");
+      }else if(name==="dismiss-spent-elsewhere"){
+       await dismissAll(id(0x5b5b));await cutoff();
+       const v=await reconnect();
+       assert.equal(record.dismiss.reconnect.text,"Current chain information could not be verified. Use your wallet directly or reconnect later.","SOURCE_FALLBACK_COPY");assert.equal(v.failureReason,"source:INPUT","SOURCE_INPUT_REASON");
+       assert.equal(await page.getByRole("button",{name:"Build delegation review"}).count(),0,"NO_BUILD_AFTER_SPENT_ELSEWHERE");
+      }else if(name==="dismiss-missing-rows"){
+       await follow(TTL+5n);await check("unavailable:INPUT_ROWS");
+       assert.equal(await statusText(),apology,"APOLOGY_ON_MISSING_ROWS");assert.equal(await offerCount(),0,"NO_DISMISS_OFFER");await retained("RECORD_RETAINED_ON_MISSING_ROWS");
+      }else if(name==="dismiss-then-already-easy1"){
+       await dismissAll(null);await cutoff();
+       s.txs[chain.registrationId].delegation_count=1;
+       s.routes.set(`/txs/${chain.registrationId}/delegations`,[{cert_index:0,index:0,address:account,pool_id:chain.poolId,active_epoch:666}]);
+       s.routes.set("/accounts/"+account+"/delegations",[{...s.history(chain.registrationId),pool_id:chain.poolId,amount:"0",active_epoch:666}]);s.routes.get("/accounts/"+account).pool_id=chain.poolId;
+       await reconnect();assert.equal(record.dismiss.reconnect.text,"This account already delegates to EASY1. No transaction is needed.","ALREADY_EASY1_COPY");
+       assert.equal(await page.getByRole("button",{name:"Build delegation review"}).count(),0,"NO_BUILD_WHEN_ALREADY_EASY1");await dismissedKept("DISMISSED_LABEL_KEPT_AFTER_CONNECT");
+      }else if(name==="dismiss-cancel"){
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await fill();const typedAt=Date.now();await page.waitForTimeout(3000);
+       const locks=await page.evaluate(()=>navigator.locks.query());record.dismiss.typing={reads:reads(typedAt).length,held:locks.held.length};
+       assert.equal(reads(typedAt).length,0,"NO_READS_WHILE_TYPING");await retained("RECORD_RETAINED_WHILE_TYPING");assert.equal(locks.held.length,0,"LOCK_NOT_HELD_WHILE_TYPING");
+       await page.getByRole("button",{name:copy.keep}).click();await page.waitForTimeout(300);
+       let v=await viewOf();assert(await region().count()===0&&await offerCount()===0&&v.dismissal===null,"KEEP_CLOSES_OFFER");
+       assert.equal(await statusText(),R.kept,"KEPT_COPY");assert.equal(v.statusReason,"dismiss:KEPT","KEPT_REASON");await retained("RECORD_RETAINED_ON_KEEP");
+       // Keep during the confirm recheck: the held rows read is abandoned and no removal follows its end.
+       await check("not-found:EXPIRED_UNSEEN");await open();await fill();st.holdRows=true;await page.getByRole("button",{name:copy.confirm}).click();
+       await until(()=>st.heldAt!==undefined,15000,"RECHECK_HELD");await page.getByRole("button",{name:copy.keep}).click();await page.waitForTimeout(300);
+       v=await viewOf();assert.equal(await statusText(),R.kept,"KEPT_COPY_DURING_RECHECK");assert.equal(v.statusReason,"dismiss:KEPT","KEPT_REASON_DURING_RECHECK");await retained("RECORD_RETAINED_ON_CANCEL");
+       await until(()=>st.heldUntil!==undefined,10000,"HOLD_ENDED");await page.waitForTimeout(2000);await retained("NO_REMOVAL_AFTER_HOLD");
+       assert.equal(await statusText(),R.kept,"KEPT_AFTER_HOLD");
+      }else if(name==="dismiss-without-attestation"){
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await testController();
+       const callAt=Date.now();record.dismiss.calls=await page.evaluate(async()=>{const c=window.testController,v=c.getView().dismissal;const a=await c.confirmDismissal(v,"");const b=await c.confirmDismissal(v,"i checked this id");return{empty:a===undefined,folded:b===undefined};});
+       await page.waitForTimeout(3000);await retained("RECORD_RETAINED_WITHOUT_ATTESTATION");
+       assert.equal(reads(callAt).length,0,"NO_STATUS_READS_WITHOUT_ATTESTATION");assert.equal((await viewOf()).dismissal?.stage,"open","STAGE_STILL_OPEN");
+       await fill("I checked this");assert(await page.getByRole("button",{name:copy.confirm}).isDisabled(),"CONFIRM_DISABLED_WITHOUT_PHRASE");
+       await fill();assert(await page.getByRole("button",{name:copy.confirm}).isEnabled(),"CONFIRM_ENABLED_WITH_PHRASE");
+      }else if(name==="dismiss-double-confirm"){
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await fill();await testController();
+       const callAt=Date.now();await page.evaluate(phrase=>{const c=window.testController,v=c.getView().dismissal;c.confirmDismissal(v,phrase);c.confirmDismissal(v,phrase);},copy.attestationPhrase);
+       await settled();await page.waitForTimeout(1000);record.dismiss.double={lookups:lookupsAfter(callAt),rows:rowsReads(callAt)};
+       assert(lookupsAfter(callAt)===1&&rowsReads(callAt)===1,"ONE_RECHECK");assert.equal(await stored(),null,"DISMISSED_ONCE");assert.equal(await statusText(),R.dismissed,"DISMISSED_COPY");
+       assert.deepEqual(record.errors,[],"NO_PAGE_ERROR");
+      }else if(name==="dismiss-reload"){
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await fill();await cutoff();
+       await page.evaluate(()=>sessionStorage.setItem("synthetic:throwingWallet","1"));const reloadAt=Date.now();await page.reload();await page.locator('#delegate [role="status"]').waitFor();
+       await page.getByRole("button",{name:"Check status"}).waitFor({timeout:15000});await page.waitForTimeout(3000);
+       assert(await region().count()===0&&await offerCount()===0,"NO_OFFER_AFTER_RELOAD");assert.equal(await page.getByText(copy.priorNotice,{exact:true}).count(),1,"PRIOR_NOTICE_AFTER_RELOAD");
+       await retained("RECORD_RETAINED_AFTER_RELOAD");assert.equal(reads(reloadAt).length,0,"NO_AUTOMATIC_READS_AFTER_RELOAD");
+       assert.deepEqual(await walletAt(),{enableCalls:0,signCalls:0,walletReads:0,throwing:0},"ZERO_WALLET_CALLS_AFTER_RELOAD");
+      }else if(name==="dismiss-busy"){
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await fill();
+       const second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
+       await second.evaluate(()=>{window.held=navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},()=>new Promise(r=>{window.releaseHeld=r;}));});
+       await second.waitForFunction(()=>typeof window.releaseHeld==="function",{},{timeout:15000});
+       const clickAt=await confirmClick(),v=await viewOf();
+       assert.equal(await statusText(),R.kept,"KEPT_COPY_ON_BUSY");assert.equal(v.statusReason,"dismiss:BUSY","BUSY_REASON");await retained("RECORD_RETAINED_ON_BUSY");assert.equal(reads(clickAt).length,0,"NO_STATUS_READS_WHEN_BUSY");
+       await second.evaluate(()=>window.releaseHeld());await second.close();
+      }else if(name==="dismiss-dispose"){
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await fill();st.holdRows=true;await page.getByRole("button",{name:copy.confirm}).click();
+       await until(()=>st.heldAt!==undefined,15000,"RECHECK_HELD");await page.locator('a[aria-label="easy1staking home"]').first().click();const navAt=Date.now();await page.waitForURL(origin+"/",{timeout:20000});
+       await until(()=>st.heldUntil!==undefined,10000,"HOLD_ENDED");await page.waitForTimeout(3000);
+       record.dismiss.dispose={raw:await stored(),reads:reads(navAt+1000).map(x=>x.path),heldFulfilment:st.heldFulfilment??null};
+       assert(record.dismiss.dispose.raw&&JSON.parse(record.dismiss.dispose.raw).txId===golden.txId,"DISMISS_DISPOSE_RETAINS_RECORD");assert.deepEqual(record.dismiss.dispose.reads,[],"NO_READS_AFTER_DISPOSE");
+      }else if(name==="dismiss-stale-record"){
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await fill();
+       // A second tab rewrites the same-ID record under the origin lock with stage "unknown"; the open offer stays until Confirm.
+       const original=await stored(),changed=JSON.stringify({...JSON.parse(original),stage:"unknown"}),second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
+       await second.evaluate(r=>navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},async()=>{localStorage.setItem("easy1staking:delegation-recovery",r);}),changed);await page.waitForTimeout(1000);
+       assert((await viewOf()).dismissal?.stage==="open"&&await region().count()===1,"OFFER_KEPT_ON_SAME_ID_UPDATE");
+       await confirmClick();assert.equal(await stored(),changed,"RECORD_RETAINED_AFTER_CHANGE");
+       let v=await viewOf();assert.equal(await statusText(),R.kept,"KEPT_COPY_ON_CHANGE");assert.equal(v.statusReason,"dismiss:RESOLUTION","RESOLUTION_REASON");
+       // A new deliberate check binds a new offer to the rewritten record; its removal in the other tab withdraws the offer and heals nothing.
+       await check("not-found:EXPIRED_UNSEEN");assert.equal(await offerCount(),1,"DISMISS_OFFERED");
+       await second.evaluate(()=>navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},async()=>{localStorage.removeItem("easy1staking:delegation-recovery");}));await second.close();await page.waitForTimeout(1000);
+       v=await viewOf();assert.equal(await statusText(),changedText,"CHANGED_ON_REMOVAL");assert(v.dismissal===null&&await offerCount()===0&&await region().count()===0,"NO_OFFER_AFTER_REMOVAL");
+       assert(!v.canCheckStatus&&await page.getByRole("button",{name:"Check status"}).count()===0,"NO_CHECK_STATUS");assert.equal(await stored(),null,"NOTHING_HEALED");
+      }else if(name==="dismiss-rollback-on-confirm"){
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await fill();st.rollback={reads:0};await confirmClick();
+       const v=await viewOf();record.statusReason=v.statusReason;record.dismiss.rollback=st.rollback;
+       assert.equal(v.statusReason,"unavailable:TIP","CONFIRM_RECHECK_REASON");assert.equal(await statusText(),R.kept,"KEPT_COPY_ON_ROLLBACK");await retained("RECORD_RETAINED_ON_ROLLBACK");
+       assert(v.dismissal===null&&await offerCount()===0&&await region().count()===0,"NO_OFFER_AFTER_ROLLBACK");
+      }else if(name==="dismiss-confirmed-on-confirm"){
+       // Offer on a 404; the confirm recheck finds a coherent inclusion at TTL-10 that landed before expiry behind the lagging index.
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");assert.equal(await offerCount(),1,"DISMISS_OFFERED");await open();await fill();
+       st.found=true;st.inclusionSlot=TTL-10n;await confirmClick();
+       await confirmedState("This stake account currently delegates to EASY1.");
+       const v=await viewOf();record.statusReason=v.statusReason;assert.equal(v.statusReason,"confirmed:CONFIRMED","CONFIRMED_ON_CONFIRM_REASON");assert.equal(v.dismissed,null,"NOT_DISMISSED");
+       assert.equal(await page.getByText(copy.dismissedCaption,{exact:false}).count(),0,"NO_DISMISSED_CAPTION");assert.equal(await offerCount(),0,"NO_DISMISS_OFFER");
+       assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+      }else if(name==="dismiss-seen-then-404"){
+       // A credible inclusion (TTL-10) whose first cbor read lags latches the witness; the route then forgets it.
+       await follow(TTL+5n);st.found=true;st.inclusionSlot=TTL-10n;st.lagCbor=true;await check("pending:INDEX_LAG");
+       assert.equal(await statusText(),apology,"APOLOGY_ON_INDEX_LAG");assert.equal(await offerCount(),0,"NO_DISMISS_OFFER");
+       st.found=false;st.inclusion=null;await check("not-found:EXPIRED_UNSEEN");
+       assert.equal(await statusText(),R.seenUnverified,"DISMISS_STATUS_TEXT");assert.equal(await offerCount(),0,"NO_DISMISS_OFFER");await retained("RECORD_RETAINED_AFTER_SEEN");
+      }else throw Error("UNHANDLED_DISMISS_CASE "+name);
+      if(record.statusCutoff===undefined)noBuild(record.layout.samples.length);
      }else if(name==="check-status-after-reload"){
       await until(()=>st.lookups>=1,15000,"FIRST_TICK");await page.waitForTimeout(1000);
       await page.evaluate(()=>sessionStorage.setItem("synthetic:throwingWallet","1"));const reloadAt=Date.now();await page.reload();await page.locator('#delegate [role="status"]').waitFor();
@@ -528,7 +727,7 @@ async function main(){
       const w=await walletAt();record.afterReload.wallet=w;assert.deepEqual(w,{enableCalls:0,signCalls:0,walletReads:0,throwing:0},"ZERO_WALLET_CALLS_AFTER_RELOAD");
      }
      // Cases that act after confirmation (disconnect, reconnect, refresh, a second operation) check status-work wallet effects at their cutoff.
-     if(!["check-status-after-reload","confirm-then-disconnect","confirm-then-refresh-failure","status-visible-refresh","confirm-then-second-operation"].includes(name))assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+     if(!["check-status-after-reload","confirm-then-disconnect","confirm-then-refresh-failure","status-visible-refresh","confirm-then-second-operation","dismiss-expired","dismiss-spent-elsewhere","dismiss-then-already-easy1","dismiss-reload"].includes(name))assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
      assert.equal(record.posts.length,fixture.expectedCounts[name].posts,"STATUS_ZERO_POST");
      const foreign=record.http.filter(x=>x.at>postAt&&x.at<=(record.statusCutoff??Infinity)&&!(x.method==="GET"&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/")||x.path.startsWith("/blocks/")||x.path.startsWith("/accounts/"+account))));
      assert.deepEqual(foreign.map(x=>x.method+" "+x.path),[],"STATUS_READ_ONLY_NO_BUILD_READS");

@@ -6,7 +6,9 @@ import type { CoordinationCode } from "./coordination";
 
 /** Plain W8 status text chosen only from owned error codes; no foreign message, header or payload is ever rendered. */
 export type StopReason = "cancel-open" | "cancel-idle" | "changed" | "expired";
-export type FailureKind = "wallet" | "source" | "source-stop" | "signature" | "guard" | "build" | "stop" | "coordination";
+export type FailureKind = "wallet" | "source" | "source-stop" | "signature" | "guard" | "build" | "stop" | "coordination" | "recovery";
+/** W7 manual-dismissal status texts, shown only by the deliberate check and the dismissal paths. */
+export type RecoveryText = "expired-unseen" | "spent-by-id" | "seen-unverified" | "dismissed" | "dismiss-kept";
 const CONNECT_FALLBACK = "The wallet or current chain information could not be verified. Only mainnet key accounts are supported.";
 const SOURCE_FALLBACK = "Current chain information could not be verified. Use your wallet directly or reconnect later.";
 const STOP_FALLBACK = "Delegation stopped before sending. Information changed or a safety check failed. Reconnect to build a new review.";
@@ -26,6 +28,7 @@ const POOL_STOP = "Delegation stopped before sending. EASY1 cannot accept new de
 const PROVIDER_CONFIG_STOP = "Delegation stopped before sending. This page's chain data service is not set up correctly. Use your wallet directly.";
 const PROVIDER_DOWN_STOP = "Delegation stopped before sending. Chain data became unavailable. Try again in a few minutes.";
 const COORDINATION = "Browser coordination or the operation is unavailable. Check any prior operation from its originating browser.";
+const DISMISS_KEPT = "The record was kept in this browser. To dismiss it, check status again, or check the ID in your wallet or a chain explorer.";
 const wallet: Record<SessionError, string> = {
   UNAVAILABLE: "The selected wallet is not available in this browser. Open this page in your wallet's browser or enable its extension, then choose it again.",
   REFUSED: "The wallet did not allow the connection or refused a request. Approve the request in your wallet, then connect again.",
@@ -64,11 +67,32 @@ const coordination: Record<CoordinationCode, string> = {
   BUSY: "Another delegation operation is active in this browser.", CANCELLED: STOP_FALLBACK, UNAVAILABLE: COORDINATION, PENDING: COORDINATION, LOST: COORDINATION,
   RECORD: COORDINATION, LEASE: COORDINATION, INTENT: COORDINATION, RESOLUTION: COORDINATION, OPERATION: COORDINATION,
 };
+const recovery: Record<RecoveryText, string> = {
+  "expired-unseen": "This transaction has expired and was not found on chain when checked. That does not prove it was never included. After you check its ID in your wallet or a chain explorer, you can dismiss this record.",
+  "spent-by-id": "This transaction was not found, but one of its inputs is recorded as spent by this same transaction ID, so it may be on chain. Nothing was cleared. Check it in your wallet or a chain explorer.",
+  "seen-unverified": "An earlier chain-data response reported this transaction, but verification is still unresolved. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.",
+  dismissed: "You dismissed this record after checking the transaction ID yourself. This page did not confirm it. Keep the ID; a new delegation needs a new review and your approval.",
+  "dismiss-kept": DISMISS_KEPT,
+};
 const tables: Readonly<Record<FailureKind, Readonly<Record<string, string>>>> = Object.freeze({ wallet: Object.freeze(wallet), source: Object.freeze(source),
   "source-stop": Object.freeze(sourceStop), signature: Object.freeze(signature), guard: Object.freeze(guard), build: Object.freeze(build), stop: Object.freeze(stop),
-  coordination: Object.freeze(coordination) });
+  coordination: Object.freeze(coordination), recovery: Object.freeze(recovery) });
 const fallbacks: Readonly<Record<FailureKind, string>> = Object.freeze({ wallet: CONNECT_FALLBACK, source: SOURCE_FALLBACK, "source-stop": STOP_FALLBACK,
-  signature: STOP_FALLBACK, guard: STOP_FALLBACK, build: STOP_FALLBACK, stop: STOP_FALLBACK, coordination: COORDINATION });
+  signature: STOP_FALLBACK, guard: STOP_FALLBACK, build: STOP_FALLBACK, stop: STOP_FALLBACK, coordination: COORDINATION, recovery: DISMISS_KEPT });
+/** W7 manual-dismissal copy for the panel: the offer, the disclosure and attestation dialog, the dismissed region and the prior-operation notice. */
+export const DISMISSAL_COPY = Object.freeze({
+  disclosure: "Dismiss clears the pending record in this browser. Save the transaction ID for later checks. The transaction may already have confirmed, or it may confirm later after a rollback. A new delegation requires your approval and may incur another fee and a registration deposit.",
+  spentElsewhere: "One of its inputs was spent by a different transaction, so it can no longer be included on the chain as observed.",
+  attestationLabel: 'Type "I checked this ID" to confirm that you checked this exact transaction ID in your wallet or a chain explorer.',
+  attestationPhrase: "I checked this ID",
+  offer: "Dismiss this record",
+  confirm: "Confirm dismissal",
+  keep: "Keep the record",
+  region: "Dismiss pending record",
+  dismissedRegion: "Dismissed record",
+  dismissedCaption: "Transaction ID — dismissed by you",
+  priorNotice: "A prior operation is unresolved in this browser. Keep its ID. This page can check its status and, after it expires, let you dismiss it once you have checked the ID yourself. It cannot retry it.",
+});
 /** The code itself when it is an own key of the kind's table; "__proto__", "constructor", "toString" and non-strings give null. */
 export function failureCode(kind: FailureKind, code: unknown): string | null {
   return typeof code === "string" && Object.prototype.hasOwnProperty.call(tables[kind], code) ? code : null;

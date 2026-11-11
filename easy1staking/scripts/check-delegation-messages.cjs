@@ -38,6 +38,22 @@ const T = {
   CANCEL_IDLE: "Cancelled here. Nothing was sent.",
   BUSY: "Another delegation operation is active in this browser.",
 };
+// W7 manual-dismissal status texts (kind "recovery"); DISMISS_KEPT is also its fallback.
+const R = {
+  EXPIRED_UNSEEN: "This transaction has expired and was not found on chain when checked. That does not prove it was never included. After you check its ID in your wallet or a chain explorer, you can dismiss this record.",
+  SPENT_BY_ID: "This transaction was not found, but one of its inputs is recorded as spent by this same transaction ID, so it may be on chain. Nothing was cleared. Check it in your wallet or a chain explorer.",
+  SEEN_UNVERIFIED: "An earlier chain-data response reported this transaction, but verification is still unresolved. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.",
+  DISMISSED: "You dismissed this record after checking the transaction ID yourself. This page did not confirm it. Keep the ID; a new delegation needs a new review and your approval.",
+  DISMISS_KEPT: "The record was kept in this browser. To dismiss it, check status again, or check the ID in your wallet or a chain explorer.",
+};
+const DISMISSAL = {
+  disclosure: "Dismiss clears the pending record in this browser. Save the transaction ID for later checks. The transaction may already have confirmed, or it may confirm later after a rollback. A new delegation requires your approval and may incur another fee and a registration deposit.",
+  spentElsewhere: "One of its inputs was spent by a different transaction, so it can no longer be included on the chain as observed.",
+  attestationLabel: 'Type "I checked this ID" to confirm that you checked this exact transaction ID in your wallet or a chain explorer.',
+  attestationPhrase: "I checked this ID", offer: "Dismiss this record", confirm: "Confirm dismissal", keep: "Keep the record",
+  region: "Dismiss pending record", dismissedRegion: "Dismissed record", dismissedCaption: "Transaction ID — dismissed by you",
+  priorNotice: "A prior operation is unresolved in this browser. Keep its ID. This page can check its status and, after it expires, let you dismiss it once you have checked the ID yourself. It cannot retry it.",
+};
 const expected = {
   wallet: { UNAVAILABLE: T.WALLET_MISSING, REFUSED: T.CONNECT_DENIED, TIMEOUT: T.WALLET_TIMEOUT, UNSUPPORTED: T.WALLET_UNSUPPORTED, CHANGED: T.WALLET_CHANGED },
   source: { CONFIGURATION: T.PROVIDER_CONFIG, AUTHORIZATION: T.PROVIDER_CONFIG, TRANSPORT: T.PROVIDER_DOWN, QUOTA: T.PROVIDER_DOWN, TIMEOUT: T.PROVIDER_DOWN,
@@ -55,9 +71,10 @@ const expected = {
   stop: { "cancel-open": T.CANCEL_OPEN, "cancel-idle": T.CANCEL_IDLE, changed: T.CHANGED, expired: T.EXPIRED },
   coordination: { BUSY: T.BUSY, CANCELLED: STOP_FALLBACK, UNAVAILABLE: COORDINATION, PENDING: COORDINATION, LOST: COORDINATION, RECORD: COORDINATION,
     LEASE: COORDINATION, INTENT: COORDINATION, RESOLUTION: COORDINATION, OPERATION: COORDINATION },
+  recovery: { "expired-unseen": R.EXPIRED_UNSEEN, "spent-by-id": R.SPENT_BY_ID, "seen-unverified": R.SEEN_UNVERIFIED, dismissed: R.DISMISSED, "dismiss-kept": R.DISMISS_KEPT },
 };
 const fallbacks = { wallet: CONNECT_FALLBACK, source: SOURCE_FALLBACK, "source-stop": STOP_FALLBACK, signature: STOP_FALLBACK, guard: STOP_FALLBACK,
-  build: STOP_FALLBACK, stop: STOP_FALLBACK, coordination: COORDINATION };
+  build: STOP_FALLBACK, stop: STOP_FALLBACK, coordination: COORDINATION, recovery: R.DISMISS_KEPT };
 // The owned unions, parsed from the production declarations (not from messages.ts).
 function union(file, name) {
   const text = fs.readFileSync(path.join(dir, file), "utf8"), match = new RegExp("export type " + name + " =([^;]+);").exec(text);
@@ -66,7 +83,7 @@ function union(file, name) {
 }
 const unions = { wallet: ["wallet-session.ts", "SessionError"], source: ["provider-json.ts", "SourceCode"], "source-stop": ["provider-json.ts", "SourceCode"],
   signature: ["wallet-session.ts", "SignatureCode"], guard: ["types.ts", "GuardCode"], build: ["builder.ts", "BuildCode"], coordination: ["coordination.ts", "CoordinationCode"],
-  stop: ["messages.ts", "StopReason"] };
+  stop: ["messages.ts", "StopReason"], recovery: ["messages.ts", "RecoveryText"] };
 const kinds = Object.keys(expected);
 
 test("the failure kinds are exactly the expected kinds", () => assert.deepEqual(kinds.slice().sort(), Object.keys(unions).sort()));
@@ -99,6 +116,20 @@ test("every message is plain: it ends with a period and has no markup, error wor
 });
 test("every produced message is in the browser flow's enumerated status texts", () => {
   for (const text of produced()) assert(flow.statusTexts.includes(text), text);
+});
+test("DISMISSAL_COPY has exactly the expected keys and literals", () => {
+  const copy = messages.DISMISSAL_COPY;
+  assert(Object.isFrozen(copy), "DISMISSAL_COPY_FROZEN");
+  assert.deepEqual(Object.keys(copy).sort(), Object.keys(DISMISSAL).sort());
+  for (const [key, text] of Object.entries(DISMISSAL)) assert.equal(copy[key], text, key);
+});
+test("DISMISSAL_COPY is plain: no markup, error words or code identifiers, and its sentences end with a period", () => {
+  const copy = messages.DISMISSAL_COPY;
+  for (const [key, text] of Object.entries(copy)) {
+    for (const banned of ["{", "<", "Error", "undefined"]) assert(!text.includes(banned), key);
+    for (const token of text.match(/\b[A-Z][A-Z0-9_]{2,}\b/g) ?? []) assert(["EASY1", "ADA"].includes(token), key);
+  }
+  for (const key of ["disclosure", "spentElsewhere", "attestationLabel", "priorNotice"]) assert(copy[key].endsWith("."), key);
 });
 test("the compiled module has no require calls", () => {
   const file = path.join(dir, "messages.ts"), original = fs.readFileSync(file, "utf8");
