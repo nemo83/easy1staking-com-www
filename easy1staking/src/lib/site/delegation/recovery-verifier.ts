@@ -13,12 +13,15 @@ import type { DelegationCoordinator, DelegationLease, DelegationResolution, Reco
 const ZERO_SLOT = BigInt(4492800), ZERO_TIME = BigInt("1596059091000"), THOUSAND = BigInt(1000), ZERO = BigInt(0), ONE = BigInt(1);
 export type StatusReason = "CONFIRMED" | "NOT_FOUND" | "NEWER_THAN_TIP" | "INDEX_LAG" | "TX_IDENTITY" | "TX_CONTRACT" | "TX_VALIDITY" | "TX_COUNTS" |
   "BODY_ENCODING" | "BODY_ID" | "BODY_INPUTS" | "BODY_TTL" | "CERTIFICATES" | "CREDENTIAL" | "DEPOSIT" | "CERTIFICATE_ROWS" | "BLOCK_IDENTITY" |
-  "POINT_FIELDS" | "POINT_RELATION" | "POINT_PAIR" | "HISTORY" | "LATER_EVENT" | "ACCOUNT" | "TIP" | "PROVIDER" | "LIMIT" | "TIMEOUT" | "CANCELLED";
+  "POINT_FIELDS" | "POINT_RELATION" | "POINT_PAIR" | "HISTORY" | "LATER_EVENT" | "ACCOUNT" | "TIP" | "PROVIDER" | "LIMIT" | "TIMEOUT" | "CANCELLED" |
+  "EXPIRED_UNSEEN" | "SPENT_BY_ID" | "INPUT_ROWS";
 export type AccountState = "EASY1" | "other-pool" | "deregistered" | "undelegated";
+/** `witnessed`: this check read the exact transaction (TX_IDENTITY passed) or an input consumed by it. A bare boolean, never a provider payload. */
 export type StatusOutcome =
   | { readonly status: "confirmed"; readonly reason: "CONFIRMED"; readonly txId: string; readonly blockHeight: string; readonly confirmations: string;
-      readonly credential: string; readonly stakeAddress: string; readonly account: AccountState; readonly resolution: DelegationResolution }
-  | { readonly status: "not-found" | "pending" | "inconsistent" | "unavailable"; readonly reason: StatusReason; readonly txId: string };
+      readonly credential: string; readonly stakeAddress: string; readonly account: AccountState; readonly resolution: DelegationResolution; readonly witnessed: boolean }
+  | { readonly status: "not-found"; readonly reason: "EXPIRED_UNSEEN"; readonly txId: string; readonly spentElsewhere: boolean; readonly witnessed: false; readonly resolution: DelegationResolution }
+  | { readonly status: "not-found" | "pending" | "inconsistent" | "unavailable"; readonly reason: StatusReason; readonly txId: string; readonly witnessed: boolean };
 export interface LiveTip { readonly slot: bigint; readonly hash: string; readonly epoch: bigint; readonly observedAt: number; readonly height: bigint; readonly time: bigint }
 export interface HistoricalPoint {
   readonly slot: bigint; readonly height: bigint; readonly time: bigint; readonly hash: string;
@@ -97,13 +100,14 @@ function compare(a: Event, b: Event): number {
 function guarded<T>(reason: StatusReason, read: () => T): T {
   try { return read(); } catch (error) { if (error instanceof Verdict) throw error; throw new Verdict("inconsistent", reason); }
 }
-export interface StatusRequest { readonly generation: number; readonly deadline: number | null; readonly signal?: AbortSignal }
+/** `dismissal`: only the deliberate check and the confirm recheck ask for the W7 dismissal eligibility reads; the automatic poll never does. */
+export interface StatusRequest { readonly generation: number; readonly deadline: number | null; readonly signal?: AbortSignal; readonly dismissal?: boolean }
 /** The verifier owns the coordinator's single resolution issuer: only a fully agreeing check obtains a confirmed Resolution. */
 export function createRecoveryVerifier(projectId: string, coordinator: DelegationCoordinator, runtime?: SourceRuntime) {
   const issue = coordinator.resolutionIssuer();
   async function check(lease: DelegationLease, request: StatusRequest): Promise<StatusOutcome> {
     const record: RecoveryRecord = coordinator.recoveryRecord(lease), txId = record.txId;
-    let source: ReturnType<typeof createBlockfrostRead> | undefined;
+    let source: ReturnType<typeof createBlockfrostRead> | undefined, witnessed = false;
     try {
       source = createBlockfrostRead(projectId, request.signal, runtime); const read = source, started = read.clock();
       const after = async (path: string): Promise<Json> => {
@@ -112,14 +116,51 @@ export function createRecoveryVerifier(projectId: string, coordinator: Delegatio
       const history = async (path: string): Promise<readonly Json[]> => {
         try { return list((await read.pages(path)).value); } catch (error) { if (error instanceof SourceError && error.code === "NOT_FOUND") throw new Verdict("pending", "INDEX_LAG"); throw error; }
       };
+      // W7 manual-dismissal eligibility after an explicit not-found, in this same bounded session: every recorded input in record order, then T2.
+      const unseen = async (t1: LiveTip): Promise<StatusOutcome> => {
+        let spentById = false, spentElsewhere = false, failure: unknown = null;
+        for (const ref of record.inputRefs) {
+          const [funding, at] = ref.split("#"), index = BigInt(at);
+          try {
+            const rows = (await read.get(`/txs/${funding}/utxos`)).value;
+            ensure(hash(field(rows, "hash")) === funding, "COHERENCE");
+            const matching = list(field(rows, "outputs")).filter(o => integer(field(o, "output_index"), BigInt(65535)) === index);
+            ensure(matching.length === 1 && boolean(field(matching[0], "collateral")) === false, "COHERENCE");
+            // consumed_by_tx is nullable and optional in the provider schema: absence is not "unconsumed".
+            const consumed = field(matching[0], "consumed_by_tx");
+            ensure(consumed === null || typeof consumed === "string" && /^[0-9a-f]{64}$/.test(consumed), "RESPONSE");
+            if (consumed === txId) { spentById = true; witnessed = true; } else if (consumed !== null) spentElsewhere = true;
+          } catch (error) {
+            const code = error instanceof SourceError ? error.code : null;
+            if (failure === null) failure = code === "NOT_FOUND" || code === "RESPONSE" || code === "JSON" || code === "COHERENCE" ? new Verdict("unavailable", "INPUT_ROWS") : error;
+          }
+        }
+        let t2: LiveTip | null = null, closing: unknown = null;
+        try { t2 = liveTip(await read.get("/blocks/latest"), read.clock()); progress([t1, t2]); }
+        catch (error) { closing = error instanceof SourceError && (error.code === "STALE" || error.code === "COHERENCE") ? new Verdict("unavailable", "TIP") : error; }
+        // A spend by the recovery ID outranks every other input failure; then the first input failure; then T2.
+        contradict(!spentById, "SPENT_BY_ID");
+        if (failure !== null) throw failure;
+        if (closing !== null || t2 === null) throw closing;
+        read.check();
+        const deadline = Math.min(started + 30000, request.deadline ?? Number.POSITIVE_INFINITY);
+        const resolution = issue(lease, Object.freeze({ kind: "dismissible", record: JSON.stringify(record), generation: request.generation,
+          point: Object.freeze({ slot: t2.slot.toString(), hash: t2.hash, height: t2.height.toString() }), deadline }));
+        return Object.freeze({ status: "not-found", reason: "EXPIRED_UNSEEN", txId, spentElsewhere, witnessed: false, resolution });
+      };
       // T1.
       let t1: LiveTip;
       try { t1 = liveTip(await read.get("/blocks/latest"), read.clock()); } catch (error) { throw error instanceof SourceError && (error.code === "STALE" || error.code === "COHERENCE") ? new Verdict("unavailable", "TIP") : error; }
       // Transaction content.
       let content: Json;
       try { content = (await read.get("/txs/" + txId)).value; }
-      catch (error) { if (error instanceof SourceError && error.code === "NOT_FOUND") return Object.freeze({ status: "not-found", reason: "NOT_FOUND", txId }); throw error; }
-      contradict(hash(field(content, "hash")) === txId, "TX_IDENTITY");
+      catch (error) {
+        if (!(error instanceof SourceError && error.code === "NOT_FOUND")) throw error;
+        // The single eligibility guard: T1's slot against the exclusive TTL. Local time never establishes expiry.
+        if (request.dismissal !== true || t1.slot < BigInt(record.invalidHereafterSlot)) return Object.freeze({ status: "not-found", reason: "NOT_FOUND", txId, witnessed: false });
+        return await unseen(t1);
+      }
+      contradict(hash(field(content, "hash")) === txId, "TX_IDENTITY"); witnessed = true;
       contradict(boolean(field(content, "valid_contract")) === true, "TX_CONTRACT");
       const ttl = BigInt(record.invalidHereafterSlot), upper = field(content, "invalid_hereafter");
       contradict(upper !== null && decimal(upper, BigInt(Number.MAX_SAFE_INTEGER)) === ttl, "TX_VALIDITY");
@@ -259,12 +300,12 @@ export function createRecoveryVerifier(projectId: string, coordinator: Delegatio
       const resolution = issue(lease, Object.freeze({ kind: "confirmed", record: JSON.stringify(record), generation: request.generation,
         point: Object.freeze({ slot: t2.slot.toString(), hash: t2.hash, height: t2.height.toString() }), deadline }));
       return Object.freeze({ status: "confirmed", reason: "CONFIRMED", txId, blockHeight: point.height.toString(), confirmations: inclusion.confirmations!.toString(),
-        credential, stakeAddress: stake, account: accountPool === EASY1_HASH ? "EASY1" : accountPool !== null ? "other-pool" : accountRegistered ? "undelegated" : "deregistered", resolution });
+        credential, stakeAddress: stake, account: accountPool === EASY1_HASH ? "EASY1" : accountPool !== null ? "other-pool" : accountRegistered ? "undelegated" : "deregistered", resolution, witnessed });
     } catch (error) {
       if (error instanceof CoordinationError) throw error;
-      if (error instanceof Verdict) return Object.freeze({ status: error.status, reason: error.reason, txId });
+      if (error instanceof Verdict) return Object.freeze({ status: error.status, reason: error.reason, txId, witnessed });
       const code = error instanceof SourceError ? error.code : null;
-      return Object.freeze({ status: "unavailable", reason: code === "TIMEOUT" ? "TIMEOUT" : code === "CANCELLED" ? "CANCELLED" : code === "LIMIT" ? "LIMIT" : "PROVIDER", txId });
+      return Object.freeze({ status: "unavailable", reason: code === "TIMEOUT" ? "TIMEOUT" : code === "CANCELLED" ? "CANCELLED" : code === "LIMIT" ? "LIMIT" : "PROVIDER", txId, witnessed });
     } finally { source?.close(); }
   }
   return Object.freeze({ check });

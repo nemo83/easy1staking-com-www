@@ -79,12 +79,15 @@ export function parseRecoveryRecord(raw: unknown): RecoveryRecord {
 declare const leaseBrand: unique symbol;
 declare const intentBrand: unique symbol;
 declare const resolutionBrand: unique symbol;
+declare const dismissalBrand: unique symbol;
 export interface DelegationLease { readonly [leaseBrand]: true }
 export interface DelegationIntent { readonly [intentBrand]: true }
 export interface DelegationResolution { readonly [resolutionBrand]: true }
-/** What a confirmed status check binds: the exact record, status generation, observed T2 and issuer deadline. */
+/** Single-use W7 manual-dismissal authority: bound to the exact record, status generation and action. */
+export interface DismissalAuthority { readonly [dismissalBrand]: true }
+/** What a confirmed (or, after expiry, dismissible) status check binds: the exact record, status generation, observed T2 and issuer deadline. */
 export interface ResolutionClaim {
-  readonly kind: "confirmed";
+  readonly kind: "confirmed" | "dismissible";
   readonly record: string;
   readonly generation: number;
   readonly point: { readonly slot: string; readonly hash: string; readonly height: string };
@@ -100,7 +103,8 @@ export interface IntentDetails {
 interface LeaseState { active: boolean; mode: "new" | "recovery"; txId: string | null }
 interface Candidate { record: RecoveryRecord; attempted: boolean }
 interface IntentState { lease: DelegationLease; candidate: Candidate }
-interface ResolutionState { lease: DelegationLease; kind: "confirmed"; record: string; generation: number; point: ResolutionClaim["point"]; deadline: number; consumed: boolean }
+interface ResolutionState { lease: DelegationLease; kind: ResolutionClaim["kind"]; record: string; generation: number; point: ResolutionClaim["point"]; deadline: number; consumed: boolean }
+interface AuthorityState { record: string; generation: number; action: "dismiss"; consumed: boolean }
 export interface DelegationCoordinator {
   getState(): RecoveryState;
   withNewOperation<T>(callback: (lease: DelegationLease) => Promise<T>, options?: { signal?: AbortSignal }): Promise<T>;
@@ -117,6 +121,8 @@ export interface DelegationCoordinator {
   endStatus(generation: number): void;
   resolutionIssuer(): ResolutionIssuer;
   resolveConfirmed(lease: DelegationLease, resolution: DelegationResolution): void;
+  offerDismissal(lease: DelegationLease, resolution: DelegationResolution): DismissalAuthority;
+  resolveDismissed(lease: DelegationLease, authority: DismissalAuthority, resolution: DelegationResolution): void;
   dispose(): void;
 }
 
@@ -124,7 +130,7 @@ export function createDelegationCoordinator(): DelegationCoordinator {
   let disposed = false, known: RecoveryRecord | null = null, lost = false, invalid = false, unavailable = false;
   let persisted: boolean | null = null, candidate: Candidate | null = null, statusGeneration = 0, issuerTaken = false;
   const leases = new WeakMap<DelegationLease, LeaseState>(), intents = new WeakMap<DelegationIntent, IntentState>();
-  const resolutions = new WeakMap<DelegationResolution, ResolutionState>();
+  const resolutions = new WeakMap<DelegationResolution, ResolutionState>(), authorities = new WeakMap<DismissalAuthority, AuthorityState>();
   const cancellations = new Set<() => void>();
   function storage(): Storage {
     try { return window.localStorage; } catch { throw new CoordinationError("UNAVAILABLE"); }
@@ -330,13 +336,13 @@ export function createDelegationCoordinator(): DelegationCoordinator {
       issuerTaken = true;
       return Object.freeze((lease: DelegationLease, claim: ResolutionClaim): DelegationResolution => {
         const state = recovering(lease);
-        insist(claim !== null && typeof claim === "object" && claim.kind === "confirmed" && claim.generation === statusGeneration &&
+        insist(claim !== null && typeof claim === "object" && (claim.kind === "confirmed" || claim.kind === "dismissible") && claim.generation === statusGeneration &&
           typeof claim.deadline === "number" && Number.isFinite(claim.deadline) && Date.now() < claim.deadline &&
           typeof claim.point?.slot === "string" && typeof claim.point.hash === "string" && typeof claim.point.height === "string", "RESOLUTION");
         const record = read();
         insist(record && record.txId === state.txId && JSON.stringify(record) === claim.record, "RESOLUTION");
         const token = Object.freeze({}) as DelegationResolution;
-        resolutions.set(token, { lease, kind: "confirmed", record: claim.record, generation: claim.generation,
+        resolutions.set(token, { lease, kind: claim.kind, record: claim.record, generation: claim.generation,
           point: Object.freeze({ slot: claim.point.slot, hash: claim.point.hash, height: claim.point.height }), deadline: claim.deadline, consumed: false });
         return token;
       });
@@ -349,6 +355,38 @@ export function createDelegationCoordinator(): DelegationCoordinator {
       insist(record && record.txId === state.txId && JSON.stringify(record) === issued.record, "RESOLUTION");
       insist(Date.now() < issued.deadline, "RESOLUTION"); // Checked immediately before removal.
       issued.consumed = true;
+      try {
+        const store = storage(); store.removeItem(DELEGATION_RECORD_KEY);
+        insist(store.getItem(DELEGATION_RECORD_KEY) === null, "UNAVAILABLE");
+      } catch { lost = true; unavailable = true; throw new CoordinationError("UNAVAILABLE"); }
+      candidate = null; known = null; statusGeneration++;
+    },
+    /** Consumes a dismissible resolution of this lease; the authority alone removes nothing. */
+    offerDismissal(lease: DelegationLease, resolution: DelegationResolution): DismissalAuthority {
+      const state = recovering(lease);
+      const offered = resolution !== null && typeof resolution === "object" ? resolutions.get(resolution) : undefined;
+      insist(offered && !offered.consumed && offered.lease === lease && offered.kind === "dismissible" && offered.generation === statusGeneration, "RESOLUTION");
+      const record = read();
+      insist(record && record.txId === state.txId && JSON.stringify(record) === offered.record && Date.now() < offered.deadline, "RESOLUTION");
+      offered.consumed = true;
+      const token = Object.freeze({}) as DismissalAuthority;
+      authorities.set(token, { record: offered.record, generation: offered.generation, action: "dismiss", consumed: false });
+      return token;
+    },
+    /** Every clause is checked synchronously immediately before removal; both tokens are consumed only then. */
+    resolveDismissed(lease: DelegationLease, authority: DismissalAuthority, resolution: DelegationResolution): void {
+      const state = recovering(lease);
+      const granted = authority !== null && typeof authority === "object" ? authorities.get(authority) : undefined;
+      insist(granted && !granted.consumed && granted.action === "dismiss", "RESOLUTION");
+      insist(granted.generation === statusGeneration, "RESOLUTION"); // Authority generation.
+      const minted = resolution !== null && typeof resolution === "object" ? resolutions.get(resolution) : undefined;
+      insist(minted && !minted.consumed && minted.kind === "dismissible" && minted.generation === statusGeneration, "RESOLUTION");
+      insist(minted.lease === lease, "RESOLUTION"); // Resolution from this same lease.
+      const record = read();
+      insist(record && record.txId === state.txId && JSON.stringify(record) === minted.record, "RESOLUTION");
+      insist(JSON.stringify(record) === granted.record, "RESOLUTION"); // Authority record.
+      insist(Date.now() < minted.deadline, "RESOLUTION"); // Resolution deadline.
+      granted.consumed = true; minted.consumed = true;
       try {
         const store = storage(); store.removeItem(DELEGATION_RECORD_KEY);
         insist(store.getItem(DELEGATION_RECORD_KEY) === null, "UNAVAILABLE");

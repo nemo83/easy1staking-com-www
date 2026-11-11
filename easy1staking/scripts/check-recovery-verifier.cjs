@@ -373,6 +373,209 @@ test("ended status work revokes an issued resolution", async () => {
   const s = scenario(), seen = await check(s, { inside: ({ lease, outcome, coordinator, generation }) => { coordinator.endStatus(generation); return codeOf(() => coordinator.resolveConfirmed(lease, outcome.resolution)); } });
   assert.equal(seen.result, "RESOLUTION"); assert.equal(store.get(KEY), s.recordJson); seen.coordinator.dispose();
 });
+// Manual dismissal after expiry (W7): a deliberate check (dismissal: true) whose T1 is at or past the exclusive TTL, an explicit not-found and a
+// complete usable observation of every recorded input offer a single-use dismissal. New API is reached only inside test bodies.
+const FIRST = registered.inputId + "#0", SECOND = "34".repeat(32) + "#1";
+const output = (index, consumed = null, extra = {}) => ({ address: "addr1" + "q".repeat(98), amount: [{ unit: "lovelace", quantity: "5000000" }], output_index: index, data_hash: null,
+  inline_datum: null, collateral: false, reference_script_hash: null, consumed_by_tx: consumed, ...extra });
+// Every input gets complete usable rows, plus a decoy output at the next index already consumed by another transaction.
+function expired(tipSlot = TTL + 1n, refs = [FIRST]) {
+  const s = scenario("2", { tipSlot }); s.missing.add("/txs/" + s.txId);
+  s.record = { ...s.record, inputRefs: refs }; s.recordJson = JSON.stringify(s.record); store.set(KEY, s.recordJson);
+  for (const ref of refs) { const [h, i] = ref.split("#"); s.extra.set(`/txs/${h}/utxos`, { hash: h, inputs: [], outputs: [output(Number(i) + 1, id(12)), output(Number(i))] }); }
+  return s;
+}
+const rowsOf = (s, ref) => s.extra.get(`/txs/${ref.split("#")[0]}/utxos`), rowOf = (s, ref) => rowsOf(s, ref).outputs.find(o => o.output_index === Number(ref.split("#")[1]));
+const utxosPath = ref => `/txs/${ref.split("#")[0]}/utxos`;
+// One bounded check with the dismissal request; `inside` runs under the same lease and must not throw (API calls go through codeOf).
+async function review(s, options = {}) {
+  const coordinator = options.coordinator ?? coordination.createDelegationCoordinator();
+  const verifier = options.verifier ?? verifierModule.createRecoveryVerifier(fixture.projectId, coordinator, options.runtime);
+  currentFetch = s.fetch;
+  try {
+    const generation = options.generation ?? coordinator.beginStatus();
+    const result = await coordinator.withRecoveryOperation(s.txId, async lease => {
+      const outcome = await verifier.check(lease, { generation, deadline: options.deadline ?? null, dismissal: options.dismissal ?? true });
+      return options.inside ? options.inside({ lease, outcome, coordinator, verifier, generation }) : outcome;
+    });
+    return { result, coordinator, verifier, generation };
+  } finally { currentFetch = undefined; }
+}
+function eligibility(name, setup, status, reason, options = {}) {
+  test(name, async () => {
+    const s = setup(); const { result, coordinator } = await review(s, options); note(result); coordinator.dispose();
+    assert.equal(result.status, status, JSON.stringify(result)); assert.equal(result.reason, reason, JSON.stringify(result));
+    assert.equal(store.get(KEY), s.recordJson, "RECORD_RETAINED_WITHOUT_DISMISSAL");
+    if (reason === "EXPIRED_UNSEEN") assert.equal(typeof result.resolution, "object"); else assert.equal(result.resolution, undefined);
+    if (options.then) options.then(result, s);
+  });
+}
+const noRows = s => assert(!s.requested.some(p => p.endsWith("/utxos")), "no input rows read");
+eligibility("E1: tip at TTL - 1 is not-found:NOT_FOUND and reads no input rows", () => expired(TTL - 1n), "not-found", "NOT_FOUND", { then: (r, s) => noRows(s) });
+eligibility("E2: tip at TTL offers the dismissal", () => expired(TTL), "not-found", "EXPIRED_UNSEEN", { then: (r, s) => {
+  assert.deepEqual(s.requested, ["/blocks/latest", "/txs/" + s.txId, utxosPath(FIRST), "/blocks/latest"]); assert.equal(r.spentElsewhere, false); assert.equal(r.witnessed, false);
+} });
+eligibility("E3: tip at TTL + 1 offers the dismissal", () => expired(TTL + 1n), "not-found", "EXPIRED_UNSEEN", { then: r => { assert.equal(r.spentElsewhere, false); assert.equal(r.witnessed, false); } });
+eligibility("E4: local time past expiry with the tip at TTL - 1 is NOT_FOUND", () => { const s = expired(TTL - 1n); now += 19500; assert(now > timeAt(TTL)); return s; }, "not-found", "NOT_FOUND",
+  { then: (r, s) => noRows(s) });
+eligibility("E5: the automatic poll (no dismissal) past expiry is NOT_FOUND with no rows and no resolution", () => expired(TTL + 1n), "not-found", "NOT_FOUND",
+  { dismissal: false, then: (r, s) => { noRows(s); assert.deepEqual(s.requested, ["/blocks/latest", "/txs/" + s.txId]); } });
+eligibility("E6: stale T1 is unavailable:TIP", () => { const s = expired(TTL + 1n); now += 31000; return s; }, "unavailable", "TIP");
+eligibility("E7: malformed T1 (epoch inconsistent with slot) is unavailable:TIP", () => { const s = expired(TTL + 1n); s.tips[0].epoch += 1; return s; }, "unavailable", "TIP");
+eligibility("E8: T2 at T1's slot with another hash is unavailable:TIP", () => { const s = expired(TTL + 1n); s.tips.push({ ...tip(TTL + 1n), hash: id(77) }); return s; }, "unavailable", "TIP");
+eligibility("E9: T2 below T1 is unavailable:TIP", () => { const s = expired(TTL + 2n); s.tips.push(tip(TTL + 1n)); return s; }, "unavailable", "TIP");
+test("E10: a transaction found after expiry confirms with a confirmed resolution and no offer", async () => {
+  const s = scenario("2", { slot: TTL - 1n, tipSlot: TTL + 10n });
+  const seen = await review(s, { inside: ({ lease, outcome, coordinator }) => ({ outcome, resolve: codeOf(() => coordinator.resolveConfirmed(lease, outcome.resolution)) }) });
+  note(seen.result.outcome); assert.equal(seen.result.outcome.status, "confirmed", JSON.stringify(seen.result.outcome)); assert.equal(seen.result.outcome.reason, "CONFIRMED");
+  assert.equal(Object.prototype.hasOwnProperty.call(seen.result.outcome, "spentElsewhere"), false, "no offer"); assert.equal(seen.result.resolve, "ACCEPTED", "a confirmed resolution");
+  assert.equal(store.has(KEY), false); seen.coordinator.dispose();
+});
+eligibility("E11: a 404 with the input consumed by the ID is inconsistent:SPENT_BY_ID", () => { const s = expired(); rowOf(s, FIRST).consumed_by_tx = s.txId; return s; }, "inconsistent", "SPENT_BY_ID",
+  { then: r => assert.equal(r.witnessed, true) });
+eligibility("E12: an input consumed by another transaction offers with spentElsewhere", () => { const s = expired(); rowOf(s, FIRST).consumed_by_tx = id(13); return s; }, "not-found", "EXPIRED_UNSEEN",
+  { then: r => { assert.equal(r.spentElsewhere, true); assert.equal(r.witnessed, false); } });
+eligibility("E13: one input consumed by the ID and one by another is SPENT_BY_ID", () => {
+  const s = expired(TTL + 1n, [FIRST, SECOND]); rowOf(s, FIRST).consumed_by_tx = s.txId; rowOf(s, SECOND).consumed_by_tx = id(13); return s;
+}, "inconsistent", "SPENT_BY_ID");
+eligibility("E14: input 1 consumed by the ID while input 2's rows are a 404 is SPENT_BY_ID", () => {
+  const s = expired(TTL + 1n, [FIRST, SECOND]); rowOf(s, FIRST).consumed_by_tx = s.txId; s.missing.add(utxosPath(SECOND)); return s;
+}, "inconsistent", "SPENT_BY_ID");
+eligibility("E14R: input 1's rows a 404 and input 2 consumed by the ID is SPENT_BY_ID after both rows reads and T2", () => {
+  const s = expired(TTL + 1n, [FIRST, SECOND]); s.missing.add(utxosPath(FIRST)); rowOf(s, SECOND).consumed_by_tx = s.txId; return s;
+}, "inconsistent", "SPENT_BY_ID", { then: (r, s) => { assert.deepEqual(s.requested, ["/blocks/latest", "/txs/" + s.txId, utxosPath(FIRST), utxosPath(SECOND), "/blocks/latest"]); assert.equal(r.witnessed, true); } });
+eligibility("E15: a missing consumed_by_tx key is unavailable:INPUT_ROWS", () => { const s = expired(); delete rowOf(s, FIRST).consumed_by_tx; return s; }, "unavailable", "INPUT_ROWS");
+eligibility("E16: no output at the index is unavailable:INPUT_ROWS", () => { const s = expired(); rowsOf(s, FIRST).outputs = rowsOf(s, FIRST).outputs.filter(o => o.output_index !== 0); return s; }, "unavailable", "INPUT_ROWS");
+eligibility("E17: two outputs at the index are unavailable:INPUT_ROWS", () => { const s = expired(); rowsOf(s, FIRST).outputs.push(output(0)); return s; }, "unavailable", "INPUT_ROWS");
+eligibility("E18: a mismatched rows hash is unavailable:INPUT_ROWS", () => { const s = expired(); rowsOf(s, FIRST).hash = id(14); return s; }, "unavailable", "INPUT_ROWS");
+test("E19: a malformed consumed_by_tx (a number, and a 63-hex string) is unavailable:INPUT_ROWS", async () => {
+  for (const value of [5, "ab".repeat(31) + "a"]) {
+    const s = expired(); rowOf(s, FIRST).consumed_by_tx = value; const { result, coordinator } = await review(s); note(result); coordinator.dispose();
+    assert.equal(result.status + ":" + result.reason, "unavailable:INPUT_ROWS", JSON.stringify(value) + " " + JSON.stringify(result)); assert.equal(store.get(KEY), s.recordJson);
+  }
+});
+eligibility("E20: a collateral output at the index is unavailable:INPUT_ROWS", () => { const s = expired(); rowOf(s, FIRST).collateral = true; return s; }, "unavailable", "INPUT_ROWS");
+eligibility("E21: a rows 404 is unavailable:INPUT_ROWS", () => { const s = expired(); s.missing.add(utxosPath(FIRST)); return s; }, "unavailable", "INPUT_ROWS");
+eligibility("E22: two inputs, the second without rows, is unavailable:INPUT_ROWS", () => { const s = expired(TTL + 1n, [FIRST, SECOND]); rowsOf(s, SECOND).outputs = []; return s; }, "unavailable", "INPUT_ROWS");
+eligibility("E23: a rows HTTP 500 is unavailable:PROVIDER", () => {
+  const s = expired(); s.onCall = p => p === utxosPath(FIRST) ? new Response('{"error":"SYNTHETIC_PRIVATE_CANARY"}', { status: 500, headers: { "content-type": "application/json" } }) : undefined; return s;
+}, "unavailable", "PROVIDER");
+eligibility("E24: a rows read timeout is unavailable:TIMEOUT", () => { const s = expired(); s.onCall = p => p === utxosPath(FIRST) ? new Promise(() => {}) : undefined; return s; }, "unavailable", "TIMEOUT",
+  { runtime: { readTimeoutMs: 30 } });
+// Positive witness: a found lookup (TX_IDENTITY passed) stays witnessed whatever follows; nothing before it is.
+eligibility("E25: found, then a cbor 404, is pending:INDEX_LAG with witnessed", () => { const s = scenario("2", { tipSlot: TTL + 10n, slot: TTL - 1n }); s.missing.add(`/txs/${s.txId}/cbor`); return s; },
+  "pending", "INDEX_LAG", { then: r => assert.equal(r.witnessed, true) });
+eligibility("E26: found with invalid_hereafter differing from the record is inconsistent:TX_VALIDITY with witnessed", () => { const s = scenario(); s.content.invalid_hereafter = (TTL + 1n).toString(); return s; },
+  "inconsistent", "TX_VALIDITY", { then: r => assert.equal(r.witnessed, true) });
+eligibility("E27: found with another content hash is inconsistent:TX_IDENTITY without witness", () => { const s = scenario(); s.content.hash = id(9); return s; },
+  "inconsistent", "TX_IDENTITY", { then: r => assert.equal(r.witnessed, false) });
+eligibility("E28: found, then an HTTP 500 on the cbor read, is unavailable:PROVIDER with witnessed", () => {
+  const s = scenario(); s.onCall = p => p === `/txs/${s.txId}/cbor` ? new Response('{"error":"SYNTHETIC_PRIVATE_CANARY"}', { status: 500, headers: { "content-type": "application/json" } }) : undefined; return s;
+}, "unavailable", "PROVIDER", { then: r => assert.equal(r.witnessed, true) });
+test("E29: NOT_FOUND, EXPIRED_UNSEEN and confirmed outcomes carry exactly their documented keys and no provider value", async () => {
+  const shapes = [];
+  for (const [make, options] of [[() => expired(TTL - 1n), {}], [() => expired(TTL + 1n), {}], [() => scenario(), { inside: ({ lease, outcome, coordinator }) => { codeOf(() => coordinator.resolveConfirmed(lease, outcome.resolution)); return outcome; } }]]) {
+    const s = make(), { result, coordinator } = await review(s, options); note(result); coordinator.dispose(); shapes.push(result);
+    assert(!JSON.stringify(result).includes("SYNTHETIC_PRIVATE_CANARY")); assert.equal(result.txId, s.txId);
+  }
+  assert.deepEqual(shapes.map(r => r.status + ":" + r.reason), ["not-found:NOT_FOUND", "not-found:EXPIRED_UNSEEN", "confirmed:CONFIRMED"]);
+  assert.deepEqual(Reflect.ownKeys(shapes[0]).sort(), ["reason", "status", "txId", "witnessed"]);
+  assert.deepEqual(Reflect.ownKeys(shapes[1]).sort(), ["reason", "resolution", "spentElsewhere", "status", "txId", "witnessed"]);
+  assert.deepEqual(Reflect.ownKeys(shapes[2]).sort(), ["account", "blockHeight", "confirmations", "credential", "reason", "resolution", "stakeAddress", "status", "txId", "witnessed"]);
+  assert.deepEqual(shapes.map(r => r.witnessed), [false, false, true]); assert.equal(typeof shapes[1].spentElsewhere, "boolean");
+  for (const r of shapes.slice(1)) { assert(Object.isFrozen(r.resolution)); assert.deepEqual(Reflect.ownKeys(r.resolution), [], "an opaque resolution carries no payload"); }
+});
+// Dismissal authority: offered from a dismissible resolution, consumed once by resolveDismissed with a fresh recheck's resolution.
+async function offered(s) {
+  const first = await review(s, { inside: ({ lease, outcome, coordinator }) => ({ outcome, authority: outcome.reason === "EXPIRED_UNSEEN" ? coordinator.offerDismissal(lease, outcome.resolution) : null }) });
+  note(first.result.outcome); assert.equal(first.result.outcome.reason, "EXPIRED_UNSEEN", JSON.stringify(first.result.outcome)); assert.equal(typeof first.result.authority, "object");
+  return { coordinator: first.coordinator, verifier: first.verifier, generation: first.generation, authority: first.result.authority };
+}
+// A confirm recheck under a new lease; `act` gets the fresh EXPIRED_UNSEEN outcome and returns codeOf results only.
+async function confirmLease(first, s, act, generation = first.generation) {
+  const seen = await review(s, { coordinator: first.coordinator, verifier: first.verifier, generation,
+    inside: ({ lease, outcome, coordinator }) => ({ outcome, value: outcome.reason === "EXPIRED_UNSEEN" ? act({ lease, outcome, coordinator }) : null }) });
+  note(seen.result.outcome); assert.equal(seen.result.outcome.reason, "EXPIRED_UNSEEN", JSON.stringify(seen.result.outcome)); return seen.result.value;
+}
+test("A1: resolveConfirmed refuses a dismissible resolution; offerDismissal refuses a confirmed one", async () => {
+  const s = expired(), seen = await review(s, { inside: ({ lease, outcome, coordinator }) => ({ outcome, code: codeOf(() => coordinator.resolveConfirmed(lease, outcome.resolution)) }) });
+  note(seen.result.outcome); assert.equal(seen.result.outcome.reason, "EXPIRED_UNSEEN"); assert.equal(seen.result.code, "RESOLUTION"); assert.equal(store.get(KEY), s.recordJson); seen.coordinator.dispose();
+  const t = scenario(), found = await review(t, { inside: ({ lease, outcome, coordinator }) => ({ outcome, code: codeOf(() => coordinator.offerDismissal(lease, outcome.resolution)) }) });
+  assert.equal(found.result.outcome.status, "confirmed"); assert.equal(found.result.code, "RESOLUTION"); assert.equal(store.get(KEY), t.recordJson); found.coordinator.dispose();
+});
+test("A2: an offer in lease 1, then a recheck and resolveDismissed in lease 2, removes the record and permits a new operation", async () => {
+  const s = expired(), first = await offered(s);
+  assert.equal(store.get(KEY), s.recordJson, "the offer removes nothing");
+  const code = await confirmLease(first, s, ({ lease, outcome, coordinator }) => codeOf(() => coordinator.resolveDismissed(lease, first.authority, outcome.resolution)));
+  assert.equal(code, "ACCEPTED"); assert.equal(store.has(KEY), false, "DISMISSAL_REMOVES_RECORD"); assert.equal(localStorage.getItem(KEY), null, "reads back null");
+  assert.equal(first.coordinator.getState().status, "absent"); assert.equal(await first.coordinator.withNewOperation(async () => "healthy"), "healthy"); first.coordinator.dispose();
+});
+test("A3: a used authority is refused with no second removal effect", async () => {
+  const s = expired(), first = await offered(s), del = store.delete.bind(store); let removals = 0; store.delete = key => { if (key === KEY) removals++; return del(key); };
+  try {
+    const codes = await confirmLease(first, s, ({ lease, outcome, coordinator }) => {
+      const once = codeOf(() => coordinator.resolveDismissed(lease, first.authority, outcome.resolution)); store.set(KEY, s.recordJson);
+      return [once, codeOf(() => coordinator.resolveDismissed(lease, first.authority, outcome.resolution))];
+    });
+    assert.deepEqual(codes, ["ACCEPTED", "RESOLUTION"]); assert.equal(removals, 1, "exactly one removal"); assert.equal(store.get(KEY), s.recordJson, "the reuse removes nothing");
+  } finally { delete store.delete; first.coordinator.dispose(); }
+});
+test("A4: an authority from an earlier status generation is refused with a valid fresh resolution", async () => {
+  const s = expired(), first = await offered(s), next = first.coordinator.beginStatus(); assert.equal(next, first.generation + 1);
+  const code = await confirmLease(first, s, ({ lease, outcome, coordinator }) => codeOf(() => coordinator.resolveDismissed(lease, first.authority, outcome.resolution)), next);
+  assert.equal(code, "RESOLUTION"); assert.equal(store.get(KEY), s.recordJson); first.coordinator.dispose();
+});
+test("A5: a stage-only record change between offer and confirm is refused", async () => {
+  const s = expired(), first = await offered(s), changed = JSON.stringify({ ...s.record, stage: "unknown" }); store.set(KEY, changed);
+  const code = await confirmLease(first, s, ({ lease, outcome, coordinator }) => codeOf(() => coordinator.resolveDismissed(lease, first.authority, outcome.resolution)));
+  assert.equal(code, "RESOLUTION"); assert.equal(store.get(KEY), changed); first.coordinator.dispose();
+});
+test("A6: a resolution past its deadline under the still-active lease is refused", async () => {
+  const s = expired(), first = await offered(s);
+  const code = await confirmLease(first, s, ({ lease, outcome, coordinator }) => { now += 30000; return codeOf(() => coordinator.resolveDismissed(lease, first.authority, outcome.resolution)); });
+  assert.equal(code, "RESOLUTION"); assert.equal(store.get(KEY), s.recordJson); first.coordinator.dispose();
+});
+test("A7: an inactive lease cannot dismiss", async () => {
+  const s = expired(), first = await offered(s); const saved = await confirmLease(first, s, ({ lease, outcome }) => ({ lease, resolution: outcome.resolution }));
+  assert.equal(codeOf(() => first.coordinator.resolveDismissed(saved.lease, first.authority, saved.resolution)), "LEASE"); assert.equal(store.get(KEY), s.recordJson); first.coordinator.dispose();
+});
+test("A8: dispose after the offer refuses the confirm and retains the record", async () => {
+  const s = expired(); let lease1; const first = await review(s, { inside: ({ lease, outcome, coordinator }) => { lease1 = lease;
+    return { outcome, authority: outcome.reason === "EXPIRED_UNSEEN" ? coordinator.offerDismissal(lease, outcome.resolution) : null }; } });
+  note(first.result.outcome); assert.equal(first.result.outcome.reason, "EXPIRED_UNSEEN"); first.coordinator.dispose();
+  await assert.rejects(review(s, { coordinator: first.coordinator, verifier: first.verifier, generation: first.generation }), e => e.code === "CANCELLED");
+  assert.equal(codeOf(() => first.coordinator.resolveDismissed(lease1, first.result.authority, null)), "LEASE"); assert.equal(store.get(KEY), s.recordJson);
+});
+test("A9: a record removed by another agent is LOST, unknown and never healed", async () => {
+  const s = expired(), first = await offered(s);
+  const code = await confirmLease(first, s, ({ lease, outcome, coordinator }) => { store.delete(KEY); return codeOf(() => coordinator.resolveDismissed(lease, first.authority, outcome.resolution)); });
+  assert.equal(code, "LOST"); assert.equal(first.coordinator.getState().status, "unknown"); assert.equal(first.coordinator.getState().txId, s.txId); first.coordinator.dispose();
+});
+test("A10: forged, cloned and null authorities are refused; the authentic one removes", async () => {
+  const s = expired(), first = await offered(s);
+  const codes = await confirmLease(first, s, ({ lease, outcome, coordinator }) => {
+    const forged = [{}, Object.freeze({}), structuredClone(first.authority), null].map(a => codeOf(() => coordinator.resolveDismissed(lease, a, outcome.resolution)));
+    return { forged, retained: store.get(KEY) === s.recordJson, authentic: codeOf(() => coordinator.resolveDismissed(lease, first.authority, outcome.resolution)) };
+  });
+  assert.deepEqual(codes, { forged: ["RESOLUTION", "RESOLUTION", "RESOLUTION", "RESOLUTION"], retained: true, authentic: "ACCEPTED" }); assert.equal(store.has(KEY), false); first.coordinator.dispose();
+});
+test("A11: another coordinator's authority is refused", async () => {
+  const s = expired(), other = await offered(s);
+  const seen = await review(s, { inside: ({ lease, outcome, coordinator }) => ({ outcome, code: outcome.reason === "EXPIRED_UNSEEN" ? codeOf(() => coordinator.resolveDismissed(lease, other.authority, outcome.resolution)) : null }) });
+  note(seen.result.outcome); assert.equal(seen.result.outcome.reason, "EXPIRED_UNSEEN"); assert.equal(seen.result.code, "RESOLUTION"); assert.equal(store.get(KEY), s.recordJson);
+  seen.coordinator.dispose(); other.coordinator.dispose();
+});
+test("A12: a dismissible resolution minted in lease 1 is refused under lease 2", async () => {
+  const s = expired(); let spare;
+  const first = await review(s, { inside: async ({ lease, outcome, coordinator, verifier, generation }) => {
+    const authority = outcome.reason === "EXPIRED_UNSEEN" ? coordinator.offerDismissal(lease, outcome.resolution) : null;
+    spare = await verifier.check(lease, { generation, deadline: null, dismissal: true }); return { outcome, authority };
+  } });
+  note(first.result.outcome); assert.equal(first.result.outcome.reason, "EXPIRED_UNSEEN"); note(spare); assert.equal(spare.reason, "EXPIRED_UNSEEN", JSON.stringify(spare));
+  const code = await review(s, { coordinator: first.coordinator, verifier: first.verifier, generation: first.generation,
+    inside: ({ lease, coordinator }) => codeOf(() => coordinator.resolveDismissed(lease, first.result.authority, spare.resolution)) });
+  assert.equal(code.result, "RESOLUTION"); assert.equal(store.get(KEY), s.recordJson); first.coordinator.dispose();
+});
 test("every outcome and reason code was produced", () => {
   assert.deepEqual([...seenOutcomes].sort(), [...fixture.outcomes].sort()); assert.deepEqual([...seenReasons].sort(), [...fixture.reasonCodes].sort());
 });
