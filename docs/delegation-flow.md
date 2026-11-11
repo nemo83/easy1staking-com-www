@@ -143,6 +143,64 @@ After a reload there is no automatic poll; Check status runs one bounded check.
 A confirmation at one block can still be rolled back; the record is removed at
 the first coherent confirmation and the ID stays visible.
 
+## Failure messages
+
+Every failure the page can reach shows one fixed plain message with a recovery
+step. The message is chosen only from codes that the page's own modules produce:
+the wallet session's connection errors, the chain source's refusal codes, the
+wallet signature codes, the transaction guard and builder codes, the browser
+coordination codes and the page's own stop reasons. A code is used only when it
+is an own key of its table; anything else, including `__proto__`,
+`constructor`, `toString` or a non-string, gives that kind's fallback. No error
+message, header, wallet payload or provider payload is read or rendered. The
+page's private view also keeps a machine reason such as `wallet:REFUSED`,
+`source:TRANSPORT`, `signature:DECLINED`, `guard:VALIDITY`,
+`build:INSUFFICIENT_FUNDS` or `stop:cancel-idle`; it is never rendered.
+
+At connection, the page names a wallet that is not available in this browser, a
+refused connection or request, a wallet that did not answer in time, an account
+that cannot be used here (a network other than mainnet and an unsupported or
+ambiguous credential share this message, because the wallet session reports one
+code for both) and a wallet that changed while connecting. It also names a chain
+data service that is not set up correctly, chain data that is unavailable right
+now, an EASY1 pool that is retiring, retired or not yet active, and an account
+with no ADA. Every other chain-source failure keeps the existing "could not be
+verified" guidance.
+
+Before anything is sent, each stop begins "Delegation stopped before sending."
+and names the cause and the next step: a declined signature, a wallet that could
+not sign, an expired review (the guard's validity check, the signature window,
+the final remaining-slot and authentic-reply deadline checks and the post-reply
+timer), a changed wallet account, network or funds, too little ADA for the fee,
+any registration deposit and the minimum change, a fee above the page's bound, a
+transaction that could not be built or checked safely, a signature that does not
+match the reviewed transaction, and the chain-source refusals. No message
+promises an automatic clear, retry or rebuild. Once a transaction may have been
+sent, the existing unknown-outcome texts are unchanged: a rejected or uncertain
+submission is never proof that it was not included. Pending confirmation keeps
+its existing texts.
+
+The first stop reason latched on an operation wins: the visitor's cancel, a
+wallet change observed by the wallet owner, or an expiry. A later automatic
+cancel, such as the wallet owner's revision change after Disconnect, never
+replaces it. "Cancelled here. Any open wallet request may still finish; its late
+reply cannot submit." appears only when a wallet call that this page started
+(the connection, an operation's wallet recheck or the signature request) had not
+settled at the moment of the cancel. Otherwise the page shows "Cancelled here.
+Nothing was sent." Background focus and visibility refreshes do not count as an
+open call. Disconnect while nothing is in flight keeps a transaction result,
+including a confirmation, with its status line, and adds a separate "Wallet
+disconnected." line outside the status line; the next Connect clears it. With no
+result to keep, Disconnect returns the page to "Choose a wallet to connect."
+
+When the page shows another tab's pending record, that record's ID becomes the
+page's own ID. If the record is then removed or replaced, the page shows "This
+operation's saved status changed in another tab of this browser. Keep the
+transaction ID and check it in your wallet or a chain explorer.", keeps that ID,
+offers no Check status, and never shows an earlier confirmation again. Handling
+of an expired recorded transaction and a deliberate retry of identical signed
+bytes remain separate later work.
+
 ## Mobile entry
 
 Before connection the page explains how to open its exact URL in a compatible
@@ -218,8 +276,9 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 81 cases and `--cases first` executes six. Selectors
-are strict: `--case` must name one registered case (the 81 plus
+`--cases all` now executes 86 cases (81 before the failure-message cases were
+added) and `--cases first` executes six. Selectors
+are strict: `--case` must name one registered case (the 86 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
 
@@ -287,6 +346,44 @@ refresh (the runner's focus event or an instrumented 30-second tick) with its
 seven wallet reads and no signature. Every other case answers status reads for
 its ID with 404, as it does for the other tab's record and the second operation. The per-run source hashes include `recovery-verifier.ts`.
 
+Five cases cover failure copy and the other-tab removal: `connect-denied` (the
+wallet's enable rejects with code -3), `sign-declined` (signTx rejects with code
+2), `insufficient-funds` (one 500000-lovelace input, identical in the wallet CBOR
+and the provider rows, below fee plus minimum change), `pool-ineligible` (the
+retiring-pool list names EASY1 before navigation) and
+`confirm-then-other-tab-removed` (after `confirm-then-other-tab-pending`'s
+assertions, the second tab removes the other record under the origin lock; the
+page keeps that ID, shows the changed guidance, never restores the earlier
+confirmation, offers no Check status, heals nothing, and makes no status read or
+wallet call). The connect-refusal cases assert their exact text from the
+fixture's `connectRefusals` map, and the listed pre-send stops and cancellations
+assert exact text and machine reason. `confirm-then-disconnect` also asserts
+that Disconnect keeps the confirmed status line, shows the disconnected line and
+no cancellation copy, and that the next Connect clears the line.
+
+Every case samples the page at its 360 px viewport on each DOM mutation batch,
+in every tab of its browser context and across its navigations and reloads. Each
+batch records the status-line text and the rendered phase. The three probes run
+only on batches where styles are applied: the document is no longer loading and
+every stylesheet link has its sheet. Earlier parse-time batches are counted per
+case (`preStyleBatches`) but never probed, because the browser never paints that
+unstyled state. Once styles apply, one probe also runs on the next animation
+frame, so the first styled state is measured even when no further mutation
+follows. The probes are the page (document scroll width beyond its client
+width), the elements inside the delegation panel (a right edge beyond the client
+width plus 0.5 px, outside any overflow-x auto or scroll container) and the
+panel's text nodes (the same bound on `Range` client rects, which sees an
+unbroken ID whose element box still fits). A first-paint self-test plants a
+400 px element and an unbroken 120-character text node in a 100 px block,
+requires the element and text probes to fire, removes both and requires all
+three to clear (`LAYOUT_PROBES_RESPOND`). At teardown a case fails
+`LAYOUT_SAMPLED` if no styled sample was probed, `LAYOUT_360` if any probed
+sample fired, and `STATUS_TEXT_KNOWN` if any sampled status-line text (styled or
+not) is outside the fixture's `statusTexts` (every status text the source can
+show, transient ones included) and the confirmed-block pattern. The first-paint
+`NO_360PX_OVERFLOW` check is kept. The sampler reads the rendered phase from the
+panel's React state and never calls the controller.
+
 Only browser test input supplies the visibility simulation. Production lifecycle,
 source, timers and guards are unchanged, and isolated context cleanup removes it.
 This isolates the deadline test from the legitimate visible-only 30-second wallet
@@ -301,7 +398,11 @@ product source under the existing release exporter.
 Run the existing chain-context, wallet-signature, wallet-session, stake-builder,
 stake-guard and pool-facts suites, the recovery-verifier suite
 (`scripts/check-recovery-verifier.cjs`, every outcome, reason code and
-resolution refusal), native signature/coordination suites, installed
+resolution refusal), the failure-message suite
+(`node scripts/check-delegation-messages.cjs`, 110 tests: every code of every
+owned union, parsed from its declaration, maps to its exact text; forged keys
+give the fallback; every text is plain and in the flow's `statusTexts`; the
+compiled module has no `require`), native signature/coordination suites, installed
 security/compatibility checks, build/lint, raw production/full audits and source
 export checks. Record actual executed/skipped counts and raw audit responses.
 Current registry output is a point-in-time witness; it does not erase the
@@ -376,7 +477,8 @@ equal-slot clause against T2 (only the later event at T2's slot between the tips
 fails without it), and the T1 identity rule: its hash clause (inclusion and later event against T1), its
 height clause, its call removed, and its call replaced by the T2 relation
 against T1, which would reject a later event included between T1 and T2. The
-recovery-verifier suite has 130 tests and the browser flow 81 cases. The POST
+recovery-verifier suite has 130 tests and the browser flow 81 cases (86 since the
+failure-message cases; see the superseding receipt below). The POST
 wait has its own harness-only race control. A 1.5-second delay before the route
 records the POST makes `confirm-later-tip-fork` fail with a TypeError on the
 harness without the wait and pass with it. Suppressing the record runs on
@@ -388,7 +490,8 @@ the POST, so without the record no T2 is pinned and the fixture fails before the
 wait can expire. `confirm-after-poll`'s fixture reads no POST record before the
 wait.
 
-Recorded evidence for this candidate: the browser flow passed 81 of 81 cases with
+Recorded evidence for this candidate (superseded for the flow count by the
+failure-message receipt at the end of this section): the browser flow passed 81 of 81 cases with
 every declared dispatch and POST count, and the recovery-verifier suite 130 of
 130 tests. The bounded controls on `confirm-later-tip-fork`, `confirm-later-fork`,
 `confirm-later-hash-reuse`, `confirm-tip-hash-reuse` and `confirm-t1-hash-reuse`
@@ -402,3 +505,35 @@ served mutant, and rerun the full flow after each restoration. A failure must
 show its named forbidden effect; compiler failures and earlier vetoes are
 reported separately. A case's first failure is its verdict; later cleanup
 failures are recorded separately and never replace it.
+
+Failure-message receipt (supersedes the 81-case flow count above): on the
+earlier harness, a non-wrapping transaction-ID `<code>` still passed
+`registered`, because the first-paint `NO_360PX_OVERFLOW` check never sees a
+state with an ID (F0-L). With the new tests on the earlier source, each new or
+changed expectation failed first at its own label: `connect-denied`,
+`pool-ineligible`, `wrong-network`, `unsupported-account`, `provider-error` and
+the ordinary-build `missing-configuration` at `REFUSAL_COPY`; `sign-declined`,
+`insufficient-funds`, `presign-179`, `account-change` and `partial-witness` at
+`STOP_COPY`; `cancel-approval` at `CANCEL_OPEN_COPY`; `cancel-review` and
+`disconnect-review` at `CANCEL_IDLE_COPY`; `confirm-then-disconnect` at
+`DISCONNECT_KEEPS_STATUS` after its kept-caption check passed; and
+`confirm-then-other-tab-removed` at `CHANGED_MESSAGE` after the kept-ID check
+passed. Sixteen existing cases failed only `STATUS_TEXT_KNOWN`, on the two
+retired stop texts. `provider-404`, `contradictory-account`, `already-EASY1`
+and every case with unchanged text passed, and no layout probe fired on any
+styled sample of the earlier source. One existing case, `status-dispose`, also
+failed once in that table (`DISPOSE_RETAINS_RECORD`: its status check finished
+before the page navigation took effect) and passed on each of three reruns; it
+is a timing race in the case, not a source change, and it is tracked.
+
+The kept-caption check accepts the confirmed text either inside the
+confirmation region or as a status line exactly equal to it, because the panel
+shows that text once: while the status line already reads the confirmation, the
+region does not repeat it. The caption "Transaction ID — confirmed on chain" and
+the ID are still required inside the region, and the pending captions are still
+forbidden. The three cases that use the check were run again on the earlier
+source with this check: `confirm-then-disconnect` still failed first at
+`DISCONNECT_KEEPS_STATUS`, and `confirm-then-refresh-failure` and
+`confirm-then-second-operation` still passed. On the new source the flow
+passes 86 of 86 cases with every declared dispatch and POST count, and the
+failure-message suite passes 110 of 110 tests.

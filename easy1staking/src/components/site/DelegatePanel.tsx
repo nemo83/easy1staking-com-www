@@ -54,6 +54,7 @@ export function DelegatePanel() {
       {!view && <p role="status">Preparing wallet controls…</p>}
       {view && <>
         <p role="status" aria-live="polite" aria-atomic="true">{view.message}</p>
+        {view.walletDisconnected && <p className="mt-4">Wallet disconnected.</p>}
         {view.account && <div className={styles.poolIdentity}>Connected stake credential<code>{view.account}</code></div>}
         {prior && <p className="mt-4">A prior operation is unresolved in this browser. Keep its ID. This page can check its status, but it cannot yet clear an unconfirmed record or retry it.</p>}
         {view.txId && view.txId !== confirmed?.txId && <div className={styles.poolIdentity}>Transaction ID — {view.phase === "submitted" ? "submitted, confirmation pending" : "outcome pending or unknown"}<code>{view.txId}</code></div>}

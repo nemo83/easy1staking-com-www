@@ -1,4 +1,4 @@
-import { createWalletSession } from "./wallet-session";
+import { createWalletSession, WalletSignatureError } from "./wallet-session";
 import { createDelegationCoordinator, CoordinationError, DELEGATION_POOL_ID } from "./coordination";
 import type { DelegationLease, DelegationIntent, RecoveryState } from "./coordination";
 import { assessChainContext } from "./chain-context";
@@ -7,10 +7,15 @@ import { MAINNET_SOURCE } from "./blockfrost-reader";
 import { assembleSignedTransaction, validateBeforeSigning } from "./guard";
 import { createRecoveryVerifier } from "./recovery-verifier";
 import type { AccountState, StatusOutcome } from "./recovery-verifier";
+import { GuardError } from "./types";
 import type { AcceptedTransaction, Review } from "./types";
+import { failureCode, failureMessage } from "./messages";
+import type { FailureKind, StopReason } from "./messages";
 
 const clock = Date.now, invoke = Reflect.apply;
 type Ready = Extract<ChainAssessment, { status: "ready" }>;
+// The builder (and the SDK) is only ever loaded with a dynamic import; this is a type, never a value import.
+type BuilderModule = typeof import("./builder");
 export interface DelegationReview {
   readonly account: string;
   readonly poolId: string;
@@ -43,8 +48,13 @@ export interface DelegationView {
   /** Machine outcome and reason code of the last completed status check, for example "inconsistent:BODY_ID". */
   readonly statusReason: string | null;
   readonly confirmation: DelegationConfirmation | null;
+  /** Machine kind:code of the last failure message, for example "wallet:REFUSED" or "stop:cancel-idle". Never rendered. */
+  readonly failureReason: string | null;
+  /** Set by Disconnect while a result or a cancelled operation stays on screen; cleared by the next Connect. */
+  readonly walletDisconnected: boolean;
 }
-class FlowFailure extends Error {}
+/** A flow veto; a source refusal carries only its owned code out of ready(). */
+class FlowFailure extends Error { constructor(readonly sourceCode: unknown = null) { super(); } }
 interface Operation {
   readonly abort: AbortController;
   readonly revision: number;
@@ -52,6 +62,8 @@ interface Operation {
   attempted: boolean;
   txId: string | null;
   dispatchedAt: number | null;
+  /** The first stop reason latched on this operation; a later automatic cancel never replaces it. */
+  stop: StopReason | null;
 }
 /** Status work has its own cancellation and generation authority, separate from cancel(). */
 interface StatusWork {
@@ -64,6 +76,9 @@ interface StatusWork {
 }
 type StatusStep = { readonly kind: "confirmed"; readonly outcome: Extract<StatusOutcome, { status: "confirmed" }> } | { readonly kind: "continue" | "busy" | "inconsistent" | "changed" };
 const OTHER_PENDING = "Another delegation from this browser is pending. Keep its transaction ID and check its status.";
+const CHANGED = "This operation's saved status changed in another tab of this browser. Keep the transaction ID and check it in your wallet or a chain explorer.";
+// Transaction-result phases that an idle Disconnect leaves exactly as they are.
+const RESULT_PHASES: readonly DelegationView["phase"][] = ["submitted", "unknown", "confirmed", "check-later", "inconsistent", "changed", "other-pending"];
 const APOLOGY = "Sorry, we couldn't confirm your delegation yet. Confirmation usually takes about 20 seconds but can take longer. Please check again here in a few minutes, or check later in your wallet.";
 /** The page receives display data and deliberate actions; handles, reviews and bytes stay private. */
 export function createDelegationController(projectId: string) {
@@ -75,9 +90,35 @@ export function createDelegationController(projectId: string) {
   // The confirmed result is held apart from the wallet/action phase; it is shown only while its ID is the active one.
   let status: StatusWork | null = null, resolved: DelegationConfirmation | null = null, statusReason: string | null = null;
   let phase: DelegationView["phase"] = "disconnected", message = "Choose a wallet to connect.", review: DelegationReview | null = null;
-  let txId: string | null = null;
+  let txId: string | null = null, failureReason: string | null = null, walletDisconnected = false, connecting: number | null = null, walletCalls = 0;
   const fail = (): never => { throw new FlowFailure(); };
   function recovery(): RecoveryState { return coordinator.getState(); }
+  /** Counts a wallet call this page started (connect, an operation's recheck, a signature) until it settles; background refreshes are not counted. */
+  function tracked<T>(call: Promise<T>): Promise<T> {
+    let open = true; walletCalls++;
+    const settle = () => { if (open) { open = false; walletCalls--; } };
+    call.then(settle, settle); return call;
+  }
+  function walletCallOpen(): boolean { return walletCalls > 0; }
+  /** Display text from an owned code only; the machine reason is kept beside it and never rendered. */
+  function failure(kind: FailureKind, code: unknown): string {
+    const known = failureCode(kind, code);
+    failureReason = known === null ? null : (kind === "source-stop" ? "source" : kind) + ":" + known;
+    return failureMessage(kind, code);
+  }
+  function stopped(op: Operation): string { return failure("stop", op.stop); }
+  /** Owned error classes only, by instanceof; `.code` is read inside try/catch and `.message` never. */
+  function classify(error: unknown, builder: BuilderModule | null): string {
+    let kind: FailureKind | null = null, code: unknown;
+    try {
+      if (error instanceof FlowFailure) { if (error.sourceCode !== null) { kind = "source-stop"; code = error.sourceCode; } }
+      else if (error instanceof WalletSignatureError) { kind = "signature"; code = error.code; }
+      else if (error instanceof GuardError) { kind = "guard"; code = error.code; }
+      else if (builder && error instanceof builder.BuildError) { kind = "build"; code = error.code; }
+    } catch { kind = null; }
+    return kind === null ? failure("stop", null) : failure(kind, code);
+  }
+  function expire(op: Operation): never { if (op.stop === null) op.stop = "expired"; return fail(); }
   function view(): DelegationView {
     const state = owner.getState(), prior = recovery();
     // The active ID is the newest operation known to this page: its own attempt, then the recovery record (pending, or kept after it changed), then the retained confirmation.
@@ -89,24 +130,27 @@ export function createDelegationController(projectId: string) {
       review, txId: active, recovery: prior,
       walletBrowseHref: browse ? "web+cardano://browse/v1?uri=" + encodeURIComponent(origin + "/pool") : null,
       statusRunning: status !== null, statusUntil: status?.deadline ?? null, confirmation: resolved !== null && resolved.txId === active ? resolved : null, statusReason,
-      canCheckStatus: !disposed && !status && !operation && prior.status === "pending" && prior.record !== null });
+      canCheckStatus: !disposed && !status && !operation && prior.status === "pending" && prior.record !== null, failureReason, walletDisconnected });
   }
   function emit(): void { if (!disposed) for (const listener of listeners) { try { listener(); } catch { /* Display only. */ } } }
   function show(next: DelegationView["phase"], text: string): void { phase = next; message = text; emit(); }
   function current(op: Operation): void {
     if (disposed || operation !== op || op.abort.signal.aborted || owner.getState().revision !== op.revision) fail();
   }
-  function cancel(): void {
+  /** Stops any connect or operation in flight. The reason is latched on the operation; the first one wins. */
+  function halt(reason: StopReason): void {
     serial++;
     const op = operation;
-    if (op) { op.abort.abort(); op.approval?.decide(false); }
+    if (op) { if (op.stop === null) op.stop = reason; op.abort.abort(); op.approval?.decide(false); }
     review = null;
     if (op?.attempted) { txId = op.txId; show("unknown", "Submission outcome is unknown. Keep this transaction ID and check from this browser."); }
-    else show(owner.getState().walletId ? "refused" : "disconnected", "Cancelled here. Any open wallet request may still finish; its late reply cannot submit.");
+    else show(owner.getState().walletId ? "refused" : "disconnected", op ? stopped(op) : failure("stop", reason));
   }
+  // "Wallet call open" is decided at the trigger, before anything is aborted.
+  function cancel(): void { halt(walletCallOpen() ? "cancel-open" : "cancel-idle"); }
   owner.subscribe(() => {
     const state = owner.getState();
-    if (operation && state.revision !== operation.revision) cancel();
+    if (operation && state.revision !== operation.revision) halt("changed");
     else if (!operation && state.phase === "failed") show("refused", "The wallet changed or became unavailable. Reconnect to assess again.");
     else emit();
   });
@@ -114,7 +158,9 @@ export function createDelegationController(projectId: string) {
   const onStorage = () => {
     // Another tab's pending record for a different ID supersedes this page's last ID, and any confirmation it holds.
     const prior = recovery();
-    if (!disposed && !operation && txId !== null && phase !== "other-pending" && prior.status === "pending" && prior.txId !== txId) show("other-pending", OTHER_PENDING);
+    if (!disposed && !operation && txId !== null && phase !== "other-pending" && prior.status === "pending" && prior.txId !== txId) { txId = prior.txId; show("other-pending", OTHER_PENDING); }
+    // Once shown, the other tab's ID is this page's ID: its removal or replacement shows the changed guidance and never restores an earlier confirmation.
+    else if (!disposed && phase === "other-pending" && prior.status !== "pending") show("changed", CHANGED);
     else emit();
   };
   window.addEventListener("storage", onStorage);
@@ -138,23 +184,29 @@ export function createDelegationController(projectId: string) {
   function ready(result: ChainAssessment): Ready {
     if (result.status === "already-EASY1") { show("already-EASY1", "This account already delegates to EASY1. No transaction is needed."); fail(); }
     if (result.status === "ready") return result;
-    throw new FlowFailure();
+    throw new FlowFailure(result.status === "refused" ? result.code : null);
   }
   async function connect(id: string): Promise<void> {
     if (disposed || operation) return;
-    const token = ++serial; review = null;
+    const token = ++serial; review = null; failureReason = null; walletDisconnected = false; connecting = token;
     show("connecting", "Confirm the connection in your chosen wallet.");
     try {
-      await owner.connect(id); if (disposed || serial !== token) return;
+      await tracked(owner.connect(id)); if (disposed || serial !== token) return;
       observed(); show("assessing", "Checking current account, inputs and EASY1 eligibility.");
       const result = await source(); if (disposed || serial !== token) return;
       if (result.status === "already-EASY1") show("already-EASY1", "This account already delegates to EASY1. No transaction is needed.");
       else if (result.status === "ready") show("ready", "Current account and EASY1 eligibility checked. Build a stake-only review when ready.");
-      else show("refused", "Current chain information could not be verified. Use your wallet directly or reconnect later.");
-    } catch { if (!disposed && serial === token) show("refused", "The wallet or current chain information could not be verified. Only mainnet key accounts are supported."); }
+      else show("refused", failure("source", result.code));
+    } catch {
+      if (disposed || serial !== token) return;
+      let code: unknown = null;
+      try { code = owner.getState().error; } catch { code = null; }
+      show("refused", failure("wallet", code));
+    }
+    finally { if (connecting === token) connecting = null; }
   }
   async function fresh(op: Operation, previous?: Ready): Promise<Ready> {
-    await owner.recheck(); current(op);
+    await tracked(owner.recheck()); current(op);
     return ready(await source(op, previous));
   }
   function finalBarrier(op: Operation, lease: DelegationLease, intent: DelegationIntent, result: Ready, original: Ready,
@@ -162,7 +214,7 @@ export function createDelegationController(projectId: string) {
     coordinator.assertAttempt(lease, intent);
     current(op);
     const state = observed(op), c = result.context, time = clock();
-    if (time >= deadlineAt || time < deadlineAt - 30000) fail(); // authentic-reply-deadline
+    if (time >= deadlineAt || time < deadlineAt - 30000) expire(op); // authentic-reply-deadline
     if (result.provenance.identity.source !== MAINNET_SOURCE || result.provenance.identity.networkId !== 1 ||
       result.provenance.identity.semantics !== original.provenance.identity.semantics ||
       result.provenance.identity.eligibility !== original.provenance.identity.eligibility || c.revision !== state.revision ||
@@ -171,8 +223,8 @@ export function createDelegationController(projectId: string) {
       c.wallet.observedAt, c.provider.observedAt, c.currentTip.observedAt, state.observation!.bindingObservedAt,
       state.observation!.rewardsObservedAt, state.observation!.inputsObservedAt, state.observation!.finalBindingObservedAt]) if (at > time || time - at > 30000) fail();
     const wallSlot = c.slotConfig.zeroSlot + BigInt(Math.floor((time - Number(c.slotConfig.zeroTime)) / c.slotConfig.slotLength));
-    if (issued.invalidHereafter !== original.context.constructionTip.slot + BigInt(600) ||
-      issued.invalidHereafter - c.currentTip.slot < BigInt(120) || issued.invalidHereafter - wallSlot < BigInt(120)) fail();
+    if (issued.invalidHereafter !== original.context.constructionTip.slot + BigInt(600)) fail();
+    if (issued.invalidHereafter - c.currentTip.slot < BigInt(120) || issued.invalidHereafter - wallSlot < BigInt(120)) expire(op);
     if (signed.txId !== issued.txId || !signed.signedHex.startsWith("84" + issued.bodyHex) ||
       bytes.length * 2 !== signed.signedHex.length || signed.signedHex !== Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("")) fail();
     current(op); // No display/provider callbacks or property lookup follows this barrier.
@@ -228,14 +280,15 @@ export function createDelegationController(projectId: string) {
   }
   async function prepare(): Promise<void> {
     if (disposed || operation || phase !== "ready") return;
-    const op: Operation = { abort: new AbortController(), revision: owner.getState().revision, approval: null, attempted: false, txId: null, dispatchedAt: null };
-    operation = op; review = null;
+    const op: Operation = { abort: new AbortController(), revision: owner.getState().revision, approval: null, attempted: false, txId: null, dispatchedAt: null, stop: null };
+    operation = op; review = null; failureReason = null;
     try {
       await coordinator.withNewOperation(async lease => {
+        let builder: BuilderModule | null = null;
         try {
           current(op); show("building", "Checking fresh information and building the exact stake-only review.");
           const initial = await fresh(op);
-          const builder = await import("./builder"); current(op); coordinator.assertActive(lease);
+          builder = await import("./builder"); current(op); coordinator.assertActive(lease);
           const built = builder.buildStakeTransaction({ ...initial.context, now: clock() });
           const issued = built.review;
           const expiresAt = Number(initial.context.slotConfig.zeroTime + (issued.invalidHereafter - initial.context.slotConfig.zeroSlot) * BigInt(1000));
@@ -246,9 +299,9 @@ export function createDelegationController(projectId: string) {
           const presign = await fresh(op, initial); current(op); coordinator.assertActive(lease);
           validateBeforeSigning(issued, { ...presign.context, now: clock() });
           show("signing", "Approve this stake-only transaction in your wallet. Your voting delegation stays unchanged.");
-          const signature = await owner.requestSignature(issued, presign.context, { signal: op.abort.signal });
+          const signature = await tracked(owner.requestSignature(issued, presign.context, { signal: op.abort.signal }));
           current(op); const receipt = owner.signatureReceipt(signature);
-          const postTimer = setTimeout(() => { if (!op.attempted) op.abort.abort(); }, Math.max(0, receipt.deadlineAt - clock()));
+          const postTimer = setTimeout(() => { if (!op.attempted) { if (op.stop === null) op.stop = "expired"; op.abort.abort(); } }, Math.max(0, receipt.deadlineAt - clock()));
           try {
             show("checking", "Verifying signatures and fresh account, input and pool observations before sending.");
             const after = ready(await source(op, presign));
@@ -256,16 +309,19 @@ export function createDelegationController(projectId: string) {
             current(op);
             await submit(op, lease, issued, after, initial, signed, receipt.deadlineAt);
           } finally { clearTimeout(postTimer); }
-        } catch {
+        } catch (error) {
+          // Precedence: an attempt keeps its unknown text, then the latched stop reason, then the owned code, then the fallback.
           if (op.attempted) { txId = op.txId; show("unknown", "Submission outcome is unknown. Keep the transaction ID and check in this browser."); }
-          else if (!["already-EASY1"].includes(phase)) show("refused", "Delegation stopped before sending. Information changed, approval was cancelled, or a safety check failed. Reconnect to assess again.");
+          else if (!["already-EASY1"].includes(phase)) show("refused", op.stop !== null ? stopped(op) : classify(error, builder));
         }
       }, { signal: op.abort.signal });
     } catch (error) {
       if (op.attempted) { txId = op.txId; show("unknown", "Submission outcome is unknown. Keep the transaction ID and check in this browser."); }
-      else if (!["already-EASY1"].includes(phase)) show("refused", error instanceof CoordinationError && error.code === "BUSY" ? "Another delegation operation is active in this browser." :
-        error instanceof CoordinationError && error.code === "CANCELLED" ? "Delegation stopped before sending. The operation was cancelled or the wallet changed. Reconnect to assess again." :
-        "Browser coordination or the operation is unavailable. Check any prior operation from its originating browser.");
+      else if (!["already-EASY1"].includes(phase)) {
+        let code: unknown = null;
+        try { if (error instanceof CoordinationError) code = error.code; } catch { code = null; }
+        show("refused", op.stop !== null ? stopped(op) : failure("coordination", code));
+      }
     } finally { if (operation === op) operation = null; review = null; emit(); }
     // The new-operation lock is released: poll for at most three minutes after dispatch.
     if (op.attempted && op.txId !== null && op.dispatchedAt !== null) startStatus(op.txId, op.dispatchedAt + 180000);
@@ -336,7 +392,13 @@ export function createDelegationController(projectId: string) {
     if (!op || phase !== "review" || op.approval?.view !== display || review !== display || op.abort.signal.aborted) return;
     const decision = op.approval; op.approval = null; phase = "checking"; decision.decide(true);
   }
-  function disconnect(): void { cancel(); owner.disconnect(); review = null; if (!txId) show("disconnected", "Choose a wallet to connect."); }
+  function disconnect(): void {
+    // A connect or operation in flight is cancelled as by Cancel here; an idle transaction result keeps its phase and message.
+    const inFlight = operation !== null || connecting !== null, kept = inFlight || RESULT_PHASES.includes(phase);
+    if (inFlight) cancel(); else { serial++; review = null; }
+    owner.disconnect(); review = null;
+    if (kept) { walletDisconnected = true; emit(); } else { walletDisconnected = false; show("disconnected", "Choose a wallet to connect."); }
+  }
   function dispose(): void {
     if (disposed) return; cancel(); disposed = true; status?.abort.abort(); status = null;
     window.removeEventListener("storage", onStorage); owner.dispose(); coordinator.dispose(); listeners.clear();

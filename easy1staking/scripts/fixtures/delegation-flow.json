@@ -103,7 +103,12 @@
     "confirm-then-other-tab-pending",
     "confirm-then-second-operation",
     "confirm-t1-hash-reuse",
-    "confirm-later-tip-fork"
+    "confirm-later-tip-fork",
+    "connect-denied",
+    "sign-declined",
+    "insufficient-funds",
+    "pool-ineligible",
+    "confirm-then-other-tab-removed"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -436,6 +441,26 @@
     "confirm-later-tip-fork": {
       "submitDispatches": 1,
       "posts": 1
+    },
+    "connect-denied": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "sign-declined": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "insufficient-funds": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "pool-ineligible": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "confirm-then-other-tab-removed": {
+      "submitDispatches": 1,
+      "posts": 1
     }
   },
   "statusPlans": {
@@ -531,6 +556,10 @@
     "confirm-later-tip-fork": {
       "notFound": 0,
       "laterTipFork": true
+    },
+    "confirm-then-other-tab-removed": {
+      "notFound": 0,
+      "otherTab": true
     }
   },
   "otherTabRecord": {
@@ -551,5 +580,121 @@
     "ttl": "201836388",
     "bodyHex": "a600d90102818258203333333333333333333333333333333333333333333333333333333333333333000181825839015ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da1e8a8dd8db193fb3f0c2c1df5cb94620cd86be43e4e05539fc678b1b51a05f33d77021a0002a389031a0c07c76404d901028183028200581ce8a8dd8db193fb3f0c2c1df5cb94620cd86be43e4e05539fc678b1b5581c20df8645abddf09403ba2656cda7da2cd163973a5e439c6e43dcbea90f01",
     "txId": "479f961830a0142b38bb266b4c2eeb1ab8d316b478115addcc50f87a433ea3c3"
-  }
+  },
+  "connectRefusals": {
+    "wrong-network": {
+      "text": "This wallet account cannot be used here. Switch the wallet to Cardano mainnet and choose an ordinary key-based account, then connect again.",
+      "reason": "wallet:UNSUPPORTED"
+    },
+    "unsupported-account": {
+      "text": "This wallet account cannot be used here. Switch the wallet to Cardano mainnet and choose an ordinary key-based account, then connect again.",
+      "reason": "wallet:UNSUPPORTED"
+    },
+    "provider-404": {
+      "text": "Current chain information could not be verified. Use your wallet directly or reconnect later.",
+      "reason": null
+    },
+    "provider-error": {
+      "text": "Chain data is unavailable right now. Try again in a few minutes, or use your wallet directly.",
+      "reason": "source:TRANSPORT"
+    },
+    "contradictory-account": {
+      "text": "Current chain information could not be verified. Use your wallet directly or reconnect later.",
+      "reason": null
+    },
+    "already-EASY1": {
+      "text": "This account already delegates to EASY1. No transaction is needed.",
+      "reason": null
+    },
+    "missing-configuration": {
+      "text": "This page's chain data service is not set up correctly, so delegation is unavailable here. Use your wallet directly.",
+      "reason": "source:CONFIGURATION"
+    },
+    "connect-denied": {
+      "text": "The wallet did not allow the connection or refused a request. Approve the request in your wallet, then connect again.",
+      "reason": "wallet:REFUSED"
+    },
+    "pool-ineligible": {
+      "text": "EASY1 cannot accept new delegations right now: the pool is retiring, retired or not yet active. Nothing was built. Check back later.",
+      "reason": "source:INELIGIBLE"
+    }
+  },
+  "stopCopies": {
+    "presign-179": {
+      "text": "Delegation stopped before sending. The review expired before the transaction could be sent. Reconnect to build a new review.",
+      "reason": "guard:VALIDITY"
+    },
+    "account-change": {
+      "text": "Delegation stopped before sending. Your wallet's account, network or funds changed. Reconnect to build a new review.",
+      "reason": "stop:changed"
+    },
+    "partial-witness": {
+      "text": "Delegation stopped before sending. The wallet's signature did not match the reviewed transaction. Reconnect to build a new review.",
+      "reason": "guard:WITNESS"
+    },
+    "sign-declined": {
+      "text": "Delegation stopped before sending. You declined the signature in your wallet. Reconnect to build a new review.",
+      "reason": "signature:DECLINED"
+    },
+    "insufficient-funds": {
+      "text": "Delegation stopped before sending. This wallet does not have enough ADA for the fee, any registration deposit and the minimum change. Add ADA, then reconnect.",
+      "reason": "build:INSUFFICIENT_FUNDS"
+    }
+  },
+  "cancelCopies": {
+    "open": "Cancelled here. Any open wallet request may still finish; its late reply cannot submit.",
+    "idle": "Cancelled here. Nothing was sent.",
+    "disconnected": "Wallet disconnected."
+  },
+  "insufficientFundsLovelace": "500000",
+  "statusTexts": [
+    "Another delegation from this browser is pending. Keep its transaction ID and check its status.",
+    "Another delegation operation is active in this browser.",
+    "Approve this stake-only transaction in your wallet. Your voting delegation stays unchanged.",
+    "Browser coordination or the operation is unavailable. Check any prior operation from its originating browser.",
+    "Cancelled here. Any open wallet request may still finish; its late reply cannot submit.",
+    "Cancelled here. Nothing was sent.",
+    "Chain data is unavailable right now. Try again in a few minutes, or use your wallet directly.",
+    "Checking current account, inputs and EASY1 eligibility.",
+    "Checking fresh information and building the exact stake-only review.",
+    "Choose a wallet to connect.",
+    "Confirm the connection in your chosen wallet.",
+    "Current account and EASY1 eligibility checked. Build a stake-only review when ready.",
+    "Current chain information could not be verified. Use your wallet directly or reconnect later.",
+    "Delegation stopped before sending. Chain data became unavailable. Try again in a few minutes.",
+    "Delegation stopped before sending. EASY1 cannot accept new delegations right now. Check back later.",
+    "Delegation stopped before sending. Information changed or a safety check failed. Reconnect to build a new review.",
+    "Delegation stopped before sending. The fee was higher than this page allows. Reconnect to build a new review.",
+    "Delegation stopped before sending. The review expired before the transaction could be sent. Reconnect to build a new review.",
+    "Delegation stopped before sending. The transaction could not be built or checked safely. Reconnect to build a new review, or use your wallet directly.",
+    "Delegation stopped before sending. The wallet could not sign this transaction. Reconnect to build a new review, or use your wallet directly.",
+    "Delegation stopped before sending. The wallet's signature did not match the reviewed transaction. Reconnect to build a new review.",
+    "Delegation stopped before sending. This page's chain data service is not set up correctly. Use your wallet directly.",
+    "Delegation stopped before sending. This wallet does not have enough ADA for the fee, any registration deposit and the minimum change. Add ADA, then reconnect.",
+    "Delegation stopped before sending. You declined the signature in your wallet. Reconnect to build a new review.",
+    "Delegation stopped before sending. Your wallet's account, network or funds changed. Reconnect to build a new review.",
+    "EASY1 cannot accept new delegations right now: the pool is retiring, retired or not yet active. Nothing was built. Check back later.",
+    "Preparing wallet controls\u2026",
+    "Review the account, EASY1 target, exact fee, separate deposit and expiry before approving.",
+    "Sending the reviewed transaction once. Submission does not mean confirmation.",
+    "Sorry, we couldn't confirm your delegation yet. Confirmation usually takes about 20 seconds but can take longer. Please check again here in a few minutes, or check later in your wallet.",
+    "Submission outcome is unknown. Keep the transaction ID and check in this browser.",
+    "Submission outcome is unknown. Keep this transaction ID and check from this browser.",
+    "Submission outcome is unknown. Keep this transaction ID; do not build or send another delegation.",
+    "Submitted to Blockfrost. Chain confirmation is still pending. Keep the ID for independent checking.",
+    "The selected wallet is not available in this browser. Open this page in your wallet's browser or enable its extension, then choose it again.",
+    "The wallet changed or became unavailable. Reconnect to assess again.",
+    "The wallet changed while connecting. Connect again.",
+    "The wallet did not allow the connection or refused a request. Approve the request in your wallet, then connect again.",
+    "The wallet did not answer in time. Unlock it, then connect again.",
+    "The wallet or current chain information could not be verified. Only mainnet key accounts are supported.",
+    "This account already delegates to EASY1. No transaction is needed.",
+    "This operation's saved status changed in another tab of this browser. Keep the transaction ID and check it in your wallet or a chain explorer.",
+    "This page's chain data service is not set up correctly, so delegation is unavailable here. Use your wallet directly.",
+    "This wallet account cannot be used here. Switch the wallet to Cardano mainnet and choose an ordinary key-based account, then connect again.",
+    "This wallet has no ADA available for a delegation. Add ADA to this account, then connect again.",
+    "Verifying signatures and fresh account, input and pool observations before sending.",
+    "We found this transaction but couldn't verify it consistently. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer."
+  ],
+  "confirmedPattern": "^Your delegation transaction was confirmed on chain in block \\d+ \\(\\d+ confirmations?\\)\\.$"
 }

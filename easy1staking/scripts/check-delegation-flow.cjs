@@ -44,13 +44,14 @@ function scenario(registered){
 function pythonHash(hex,size=32){const r=spawnSync("python3",["-c",`import sys,hashlib;print(hashlib.blake2b(bytes.fromhex(sys.stdin.read()),digest_size=${size}).hexdigest())`],{input:hex,encoding:"utf8"});assert.equal(r.status,0);return r.stdout.trim();}
 // The second operation's reviewed body is a literal; it must equal the accepted registered vector with only its TTL bytes substituted.
 {const v=vectors.find(x=>x.registered),b=fixture.secondOperation,hex=n=>BigInt(n).toString(16).padStart(8,"0");assert.equal(BigInt(b.ttl),BigInt(b.constructionSlot)+600n,"SECOND_TTL_RULE");assert.equal(v.bodyHex.split("031a"+hex(v.ttl)).length,2,"UNIQUE_TTL_SEGMENT");assert.equal(b.bodyHex,v.bodyHex.replace("031a"+hex(v.ttl),"031a"+hex(b.ttl)),"SECOND_BODY_IS_TTL_SUBSTITUTION");assert.equal(pythonHash(b.bodyHex),b.txId,"SECOND_LITERAL_ID");assert.notEqual(b.txId,v.txId);}
+assert.equal(parseInt("0007a120",16),Number(fixture.insufficientFundsLovelace),"INSUFFICIENT_FUNDS_FIXTURE");
 const signers=[keys.paymentSeed,keys.stakeSeed].map(seed=>{const privateKey=crypto.createPrivateKey({key:Buffer.from("302e020100300506032b657004220420"+seed,"hex"),format:"der",type:"pkcs8"});const publicHex=crypto.createPublicKey(privateKey).export({format:"der",type:"spki"}).subarray(-32).toString("hex");return{privateKey,publicHex,hash:pythonHash(publicHex,28)};}).sort((a,b)=>a.hash.localeCompare(b.hash));
 
 async function freePort(port=0){const s=net.createServer();s.listen(port,"127.0.0.1");await once(s,"listening");const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 function failureText(error){return(error instanceof assert.AssertionError&&!error.generatedMessage?String(error.message):String(error?.name||"Error")+": "+String(error?.message??error)).split("\n")[0];}
 function descendants(pid){try{return fs.readFileSync(`/proc/${pid}/task/${pid}/children`,"utf8").trim().split(/\s+/).filter(Boolean).map(Number).flatMap(p=>[p,...descendants(p)]);}catch{return[];}}
 const report={runnerSha256:sha(fs.readFileSync(__filename)),fixtureSha256:sha(fs.readFileSync(path.join(__dirname,'fixtures/delegation-flow.json'))),node:process.version,source:{},cases:[],chunks:[],unexpected:[],errors:[],cleanup:{},buildId:fs.readFileSync(path.join(app,".next/BUILD_ID"),"utf8").trim()};
-for(const name of ["controller","wallet-session","coordination","recovery-verifier","builder","guard","crypto","chain-context","wallet-codec","source-cbor","blockfrost-reader","provider-json","cbor","types"])report.source[name]=sha(fs.readFileSync(path.join(app,"src/lib/site/delegation",name+".ts")));
+for(const name of ["controller","wallet-session","coordination","recovery-verifier","builder","guard","crypto","chain-context","wallet-codec","source-cbor","blockfrost-reader","provider-json","cbor","types","messages"]){const file=path.join(app,"src/lib/site/delegation",name+".ts");report.source[name]=fs.existsSync(file)?sha(fs.readFileSync(file)):null;}
 // A crash outside the case loop still terminates owned children and leaves a partial report.
 function crash(kind,error){if(report.crashed)return;report.crashed={kind,failure:failureText(error)};for(const pid of descendants(process.pid))try{process.kill(pid,"SIGKILL");}catch{}try{fs.writeFileSync(path.join(output,"report.json"),JSON.stringify(report,null,2));}catch{}process.exit(1);}
 process.on("unhandledRejection",error=>crash("unhandledRejection",error));process.on("uncaughtException",error=>crash("uncaughtException",error));
@@ -66,7 +67,7 @@ async function main(){
   report.chromium={path:executable,sha256:sha(fs.readFileSync(executable))};browser=await chromium.launch({executablePath:executable,headless:true,env:{PATH:env.PATH,HOME:output,TMPDIR:process.env.TMPDIR},args:["--no-sandbox","--disable-background-networking","--disable-component-update","--no-first-run"]});report.chromium.version=browser.version();
   report.chromium.pids=descendants(process.pid).filter(pid=>pid!==server.pid&&!descendants(server.pid).includes(pid));
   for(const name of options.case?[options.case]:options.cases==="all"?fixture.allCases:fixture.firstCases){
-   const record={name,http:[],posts:[],signatures:[],tripwires:[],errors:[],routeHandlerErrors:[],chunkReadErrors:[],chunkIdentityFailures:[],chunkReadsAbandonedAtClose:0};report.cases.push(record);const caseReads=[];
+   const record={name,layout:{samples:[]},http:[],posts:[],signatures:[],tripwires:[],errors:[],routeHandlerErrors:[],chunkReadErrors:[],chunkIdentityFailures:[],chunkReadsAbandonedAtClose:0};report.cases.push(record);const caseReads=[];
    // Route-handler page actions may race case teardown; record their failures instead of throwing.
    const routeStep=async step=>{try{await step();}catch(error){record.routeHandlerErrors.push(String(error?.message??error).split("\n")[0]);}};const s=scenario(name!=="unregistered"),golden=vectors.find(v=>v.registered===(name!=="unregistered"));
    // Status reads for the submitted ID: 404 unless the case's plan includes it; an included transaction is one coherent synthetic chain point.
@@ -119,8 +120,13 @@ async function main(){
     s.routes.set("/accounts/"+account+"/delegations",[{...s.history(chain.registrationId),pool_id:chain.poolId,amount:"0",active_epoch:666}]);s.routes.get("/accounts/"+account).pool_id=chain.poolId;
    }
    if(name==="contradictory-account")s.routes.get("/accounts/"+account).registered=false;
+   if(name==="pool-ineligible")s.routes.set("/pools/retiring",[{pool_id:chain.poolId,epoch:666}]);
+   // One input below fee plus minimum change, identical in the wallet CBOR and the provider rows.
+   if(name==="insufficient-funds"){const amount=[{unit:"lovelace",quantity:fixture.insufficientFundsLovelace}];s.routes.get("/addresses/"+address+"/utxos")[0].amount=amount;s.routes.get(`/txs/${chain.fundingId}/utxos`).outputs[0].amount=clone(amount);}
    const pageOrigin=name==="approved-origin"?"https://easy1staking.com":name==="preview-origin"?"https://preview.easy1staking.com":origin;
    const context=await browser.newContext({viewport:{width:360,height:800},serviceWorkers:"block"});let page,primary,closing=false,onResponse;try{
+    // Page-side 360 px layout samples arrive here from every page of the context, across navigations and reloads.
+    await context.exposeFunction("syntheticLayout",sample=>{record.layout.samples.push(sample);});
     await context.exposeFunction("syntheticSign",unsigned=>{
      const tips=record.http.filter(x=>x.path==="/blocks/latest");assert(tips.length>=6,"SOURCE_ASSESSMENTS");assert.equal(tips[2].slot,Number(baseSlot),"ORIGINAL_CONSTRUCTION_SLOT");
      const second=!!plan.secondOperation&&record.signatures.length===1,expectedBody=second?fixture.secondOperation.bodyHex:golden.bodyHex,expectedId=second?fixture.secondOperation.txId:golden.txId;assert.equal(pythonHash(expectedBody),expectedId,"LITERAL_GOLDEN_ID");
@@ -133,7 +139,7 @@ async function main(){
     });
     await context.addInitScript(({baseTime,chain,mode,delay})=>{
      const NativeDate=Date,realStart=NativeDate.now();class ObservedDate extends NativeDate{constructor(...args){if(args.length)super(...args);else super(baseTime+NativeDate.now()-realStart+(window.synthetic?.clockDeltaMs||0));}static now(){return baseTime+NativeDate.now()-realStart+(window.synthetic?.clockDeltaMs||0);}}window.Date=ObservedDate;
-     const state=window.synthetic={realStart,submitDispatches:0,enableCalls:0,signCalls:0,replyAt:null,signAt:null,mode,release:null,tripwires:[],postReadIndex:0,clockDeltaMs:0,network:mode==="wrong-network"?0:1,address:mode==="unsupported-account"?"61"+"aa".repeat(28):chain.addressHex,utxo:"82825820"+chain.fundingId+"00825839"+chain.addressHex+"1a05f5e100"};
+     const state=window.synthetic={realStart,submitDispatches:0,enableCalls:0,signCalls:0,replyAt:null,signAt:null,mode,release:null,tripwires:[],postReadIndex:0,clockDeltaMs:0,network:mode==="wrong-network"?0:1,address:mode==="unsupported-account"?"61"+"aa".repeat(28):chain.addressHex,utxo:"82825820"+chain.fundingId+"00825839"+chain.addressHex+(mode==="insufficient-funds"?"1a0007a120":"1a05f5e100")};
      const nativeGet=Storage.prototype.getItem,nativeSet=Storage.prototype.setItem,nativeRemove=Storage.prototype.removeItem;let submittingReads=0;
      // Page-level dispatches accumulate across navigations and reloads of this tab through native session storage.
      try{state.submitDispatches=Number(nativeGet.call(sessionStorage,"synthetic:submitDispatches")||0);}catch{}
@@ -159,7 +165,7 @@ async function main(){
      try{navigator.sendBeacon("https://invalid.example");}catch{}state.control=state.tripwires.pop();
      async function read(value){state.walletReads=(state.walletReads||0)+1;if(state.replyAt!==null&&["post-reply-deadline","post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)&&state.postReadIndex++<3)await new Promise(r=>setTimeout(r,delay));return value;}
      if(mode==="status-visible-refresh"){const every=window.setInterval.bind(window);window.setInterval=(fn,ms,...rest)=>every(ms===30000&&typeof fn==="function"?(...a)=>{state.intervalTicks=(state.intervalTicks||0)+1;return fn(...a);}:fn,ms,...rest);}
-     const api={getNetworkId:()=>state.failReads?Promise.reject(Error("SYNTHETIC_REFRESH_FAILURE")):read(state.network),getChangeAddress:()=>read(state.address),getRewardAddresses:()=>read([]),getUtxos:()=>read([state.utxo]),async signTx(unsigned,partial){state.signCalls++;state.signAt=performance.now();if(partial!==false)throw Error("PARTIAL_FLAG");if(["cancel-approval","account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","same-account-focus"].includes(mode))await new Promise(r=>state.release=r);
+     const api={getNetworkId:()=>state.failReads?Promise.reject(Error("SYNTHETIC_REFRESH_FAILURE")):read(state.network),getChangeAddress:()=>read(state.address),getRewardAddresses:()=>read([]),getUtxos:()=>read([state.utxo]),async signTx(unsigned,partial){state.signCalls++;state.signAt=performance.now();if(partial!==false)throw Error("PARTIAL_FLAG");if(mode==="sign-declined")throw {code:2,info:"SYNTHETIC_PRIVATE_CANARY"};if(["cancel-approval","account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","same-account-focus"].includes(mode))await new Promise(r=>state.release=r);
       if(mode==="long-consent")await new Promise(r=>setTimeout(r,31000));const witness=await window.syntheticSign(unsigned);state.replyAt=performance.now();
       if(["post-reply-deadline-hidden","post-reply-timely-hidden"].includes(mode)){const before=document.visibilityState;Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});state.visibilityTransition={before,after:document.visibilityState,at:performance.now()};document.dispatchEvent(new Event("visibilitychange"));}
       if(mode.startsWith("presubmit-"))state.clockDeltaMs+=baseTime+(600-Number(mode.slice(10)))*1000-Date.now();
@@ -167,9 +173,34 @@ async function main(){
      // After a flagged reload every wallet method throws and is counted; status checking must never call one.
      let throwingWallet=false;try{throwingWallet=nativeGet.call(sessionStorage,"synthetic:throwingWallet")==="1";}catch{}
      state.throwingWalletCalls=0;const refuse=()=>{state.throwingWalletCalls++;throw Error("FORBIDDEN_WALLET_AFTER_RELOAD");};
-     window.cardano=mode==="no-wallet"?{}:throwingWallet?{synthetic:{enable:refuse,isEnabled:refuse,getNetworkId:refuse,getChangeAddress:refuse,getRewardAddresses:refuse,getUtxos:refuse,signTx:refuse,signData:refuse,submitTx:refuse}}:{synthetic:{enable:async()=>{state.enableCalls++;return read(api);}}};
+     window.cardano=mode==="no-wallet"?{}:throwingWallet?{synthetic:{enable:refuse,isEnabled:refuse,getNetworkId:refuse,getChangeAddress:refuse,getRewardAddresses:refuse,getUtxos:refuse,signTx:refuse,signData:refuse,submitTx:refuse}}:{synthetic:{enable:async()=>{state.enableCalls++;if(mode==="connect-denied")throw {code:-3,info:"SYNTHETIC_PRIVATE_CANARY"};return read(api);}}};
      state.controls=[];
      for(const probe of [()=>window.fetch('https://invalid.example'),()=>new XMLHttpRequest(),()=>new WebSocket('wss://invalid.example'),()=>new EventSource('https://invalid.example'),()=>navigator.sendBeacon('https://invalid.example'),()=>api.signData(),()=>api.submitTx(),()=>navigator.storage.persist(),()=>window.gtag()]){try{probe();}catch{}state.controls.push(state.tripwires.pop());}
+     // 360 px layout sampler (browser test input only). A MutationObserver on the document records the status-line text and the rendered phase on every batch.
+     // The three overflow probes run only on batches where styles are applied: parsing is done and every stylesheet link has its sheet. Earlier parse-time
+     // batches are counted (styled:false), never probed, because the browser never paints that unstyled state. Once styles apply, one probe also runs on the
+     // next animation frame, so the first styled state is measured even when no further mutation follows.
+     // Page: scrollWidth beyond clientWidth. Elements and text nodes (Range rects) inside #delegate: right edge beyond clientWidth + 0.5, outside overflow-x auto/scroll containers.
+     const scrolled=n=>{for(let e=n.parentElement;e&&e!==document.documentElement;e=e.parentElement){const o=getComputedStyle(e).overflowX;if(o==="auto"||o==="scroll")return true;}return false;};
+     const label=e=>e?e.tagName.toLowerCase()+(e.id?"#"+e.id:"")+(typeof e.className==="string"&&e.className.trim()?"."+e.className.trim().split(/\s+/).join("."):""):null;
+     const probe=()=>{const root=document.documentElement,limit=root.clientWidth+0.5,delegate=document.getElementById("delegate"),out={page:root.scrollWidth>root.clientWidth,elements:[],texts:[]};
+      if(delegate){for(const e of delegate.querySelectorAll("*")){const r=e.getBoundingClientRect();if(r.right>limit&&!scrolled(e))out.elements.push({node:label(e),right:r.right});}
+       const walk=document.createTreeWalker(delegate,NodeFilter.SHOW_TEXT);for(let n=walk.nextNode();n;n=walk.nextNode()){if(!n.textContent.trim())continue;const range=document.createRange();range.selectNodeContents(n);if([...range.getClientRects()].some(r=>r.right>limit)&&!scrolled(n))out.texts.push({parent:label(n.parentElement),text:n.textContent.slice(0,80)});}}
+      return out;};
+     const styled=()=>document.readyState!=="loading"&&[...document.querySelectorAll('link[rel="stylesheet"]')].every(l=>l.sheet!==null);
+     // The rendered phase is read from the panel's React state (a pure read; the controller is never called).
+     const renderedPhase=()=>{try{const d=document.getElementById("delegate"),key=d&&Object.keys(d).find(k=>k.startsWith("__reactFiber$"));for(let f=key?d[key]:null;f;f=f.return)for(let h=f.memoizedState;h&&typeof h==="object"&&"next" in h;h=h.next){const v=h.memoizedState;if(v&&typeof v==="object"&&typeof v.phase==="string"&&"recovery" in v)return v.phase;}}catch{}return null;};
+     state.probe=probe;state.styled=styled;state.renderedPhase=renderedPhase;state.layoutBatches=0;state.preStyleBatches=0;state.probedSamples=0;let lastSample="",framed=false;
+     const send=s=>{if(typeof window.syntheticLayout==="function")window.syntheticLayout(s).catch(()=>{});};
+     const sample=frame=>{try{const status=document.querySelector('#delegate [role="status"]')?.textContent??null,phase=renderedPhase();
+      if(!styled()){state.preStyleBatches++;send({path:location.pathname,status,phase,styled:false,fired:false,at:Date.now()});return;}
+      state.probedSamples++;let p;try{p=probe();}catch(error){p={page:false,elements:[],texts:[],error:String(error)};}
+      const s={path:location.pathname,status,phase,styled:true,frame,page:p.page,elements:p.elements,texts:p.texts,error:p.error??null};
+      s.fired=!!(s.error||s.page||s.elements.length||s.texts.length);const key=JSON.stringify([s.path,s.status,s.phase,s.fired]);if(key===lastSample&&!s.fired&&!frame)return;lastSample=key;s.at=Date.now();send(s);
+      if(!framed){framed=true;requestAnimationFrame(()=>sample(true));}}catch{}};
+     // Styles can apply with no further mutation: a frame watch probes the first styled state once.
+     const watch=()=>{if(framed)return;try{if(styled()){framed=true;sample(true);return;}}catch{}requestAnimationFrame(watch);};requestAnimationFrame(watch);
+     new MutationObserver(()=>{state.layoutBatches++;sample(false);}).observe(document,{subtree:true,childList:true,characterData:true,attributes:true});
     },{baseTime,chain,mode:name,delay:fixture.postReplyReadDelayMs});
     await context.route("**/*",async route=>{
      const request=route.request(),u=new URL(request.url());if(u.origin===pageOrigin&&request.method()==="GET"){
@@ -223,6 +254,10 @@ async function main(){
      return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(value),headers:{"access-control-allow-origin":"*"}});
     });
     page=await context.newPage();page.on("pageerror",e=>record.errors.push(String(e)));
+    const statusLine=()=>page.evaluate(()=>document.querySelector('#delegate [role="status"]')?.textContent||"");
+    const currentView=()=>page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve)return JSON.parse(JSON.stringify(c.getView()));state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');});
+    // Exact stop copy and machine reason for the listed pre-send stops, after a fixed settle; the text is asserted before the reason.
+    const stopCopy=async()=>{const expect=fixture.stopCopies[name];if(!expect)return;await page.waitForTimeout(500);const text=await statusLine(),v=await currentView();record.stop={text,phase:v.phase,failureReason:v.failureReason};assert.equal(text,expect.text,"STOP_COPY");assert.equal(v.failureReason,expect.reason,"STOP_REASON");};
     // Each served-chunk read is handled when created and settled in this case's finally: a mismatch or failed read while active disqualifies the case; one cut off by teardown is counted.
     onResponse=response=>{const u=new URL(response.url());if(u.pathname.startsWith("/_next/static/")&&u.pathname.endsWith(".js")){const read=response.body().then(bytes=>{try{const file=path.join(app,".next",u.pathname.replace("/_next/","")),actual=sha(bytes),expected=sha(fs.readFileSync(file));report.chunks.push({path:u.pathname,sha256:actual,bytes:bytes.length});if(actual!==expected)record.chunkIdentityFailures.push({kind:"mismatch",path:u.pathname,actual,expected});}catch(error){record.chunkIdentityFailures.push({kind:"identity-error",path:u.pathname,failure:failureText(error)});}},error=>{if(closing)record.chunkReadsAbandonedAtClose++;else{record.chunkReadErrors.push(failureText(error));record.chunkIdentityFailures.push({kind:"read-error",path:u.pathname,failure:failureText(error)});}});read.catch(()=>{});caseReads.push(read);pending.push(read);}};page.on("response",onResponse);
     await page.goto(pageOrigin+"/pool?uri=https%3A%2F%2Finvalid.example");await page.locator('#delegate [role="status"]').waitFor();
@@ -230,21 +265,41 @@ async function main(){
     assert(await page.getByText("On mobile, open this exact page",{exact:false}).isVisible());if(pageOrigin===origin)assert.equal(await page.locator('a[href^="web+cardano:"]').count(),0,"LOCAL_ORIGIN_NO_HOP");
     else{await page.locator('a[href^="web+cardano:"]').waitFor();assert.equal(await page.locator('a[href^="web+cardano:"]').getAttribute("href"),"web+cardano://browse/v1?uri="+encodeURIComponent(pageOrigin+"/pool"),"EXACT_APPROVED_ORIGIN_HOP");}
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),"NO_360PX_OVERFLOW");
+    // The page-side probes respond: a planted 400 px element and a planted unbroken 120-character text node in a 100 px block, then all three clear.
+    record.layoutSelfTest=await page.evaluate(()=>{const d=document.getElementById("delegate"),probe=window.synthetic.probe,n=x=>({page:x.page,elements:x.elements.length,texts:x.texts.length});
+     const wide=document.createElement("div");wide.style.width="400px";wide.style.height="1px";d.appendChild(wide);const withWide=n(probe());wide.remove();
+     const box=document.createElement("div");box.style.width="100px";box.style.whiteSpace="nowrap";box.style.wordBreak="normal";box.style.overflowWrap="normal";box.appendChild(document.createTextNode("x".repeat(120)));d.appendChild(box);const withText=n(probe());box.remove();
+     return{withWide,withText,clean:n(probe())};});
+    assert(record.layoutSelfTest.withWide.elements>0&&record.layoutSelfTest.withText.texts>0&&!record.layoutSelfTest.clean.page&&record.layoutSelfTest.clean.elements===0&&record.layoutSelfTest.clean.texts===0,"LAYOUT_PROBES_RESPOND");
     if(name==="no-wallet"){assert.equal(await page.getByLabel("Wallet",{exact:true}).locator("option").count(),1);assert.equal(record.posts.length,0);record.passed=true;console.log("PASS actual /pool "+name);continue;}
-    await page.getByLabel("Wallet",{exact:true}).selectOption("synthetic");if(name==="registered"){await page.getByLabel("Wallet",{exact:true}).focus();await page.keyboard.press("Tab");assert.equal(await page.getByRole("button",{name:"Connect selected wallet"}).evaluate(e=>document.activeElement===e),true,"KEYBOARD_CONNECT_FOCUS");await page.keyboard.press("Enter");}else await page.getByRole("button",{name:"Connect selected wallet"}).click();if(["wrong-network","unsupported-account","provider-404","provider-error","contradictory-account","already-EASY1","missing-configuration"].includes(name)){
-     await page.waitForFunction(()=>/could not be verified|already delegates/.test(document.querySelector('#delegate [role="status"]').textContent));assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0);assert.equal(record.posts.length,0);record.passed=true;console.log("PASS actual /pool "+name);continue;
+    await page.getByLabel("Wallet",{exact:true}).selectOption("synthetic");if(name==="registered"){await page.getByLabel("Wallet",{exact:true}).focus();await page.keyboard.press("Tab");assert.equal(await page.getByRole("button",{name:"Connect selected wallet"}).evaluate(e=>document.activeElement===e),true,"KEYBOARD_CONNECT_FOCUS");await page.keyboard.press("Enter");}else await page.getByRole("button",{name:"Connect selected wallet"}).click();if(fixture.connectRefusals[name]){
+     // Exact per-case copy: wait until the connect settles (rendered phase refused, already-EASY1 or ready), a fixed settle, then the text before the reason.
+     const expect=fixture.connectRefusals[name];await page.waitForFunction(()=>["refused","already-EASY1","ready"].includes(window.synthetic.renderedPhase()),{},{timeout:20000,polling:100});await page.waitForTimeout(500);
+     const text=await statusLine(),v=await currentView();record.refusal={text,phase:v.phase,failureReason:v.failureReason};assert.equal(text,expect.text,"REFUSAL_COPY");if(expect.reason!==null)assert.equal(v.failureReason,expect.reason,"REFUSAL_REASON");
+     if(name==="pool-ineligible")assert.equal(await page.getByRole("button",{name:"Build delegation review"}).count(),0,"NO_BUILD_WHEN_INELIGIBLE");
+     assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0);assert.equal(record.posts.length,0);record.passed=true;console.log("PASS actual /pool "+name);continue;
     }
     await page.getByRole("button",{name:"Build delegation review"}).waitFor({timeout:15000});
     assert.equal(await page.locator('a[href^="web+cardano:"]').count(),0,'NO_CONNECTED_ORIGIN_HOP');
     if(name==="storage-unavailable"||name==="locks-unavailable"){
      await page.getByRole("button",{name:"Build delegation review"}).click();await page.waitForFunction(()=>/coordination/.test(document.querySelector('#delegate [role="status"]').textContent));assert.equal(record.posts.length,0);assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0,'CAPABILITY_REFUSAL_NO_SIGN');record.passed=true;console.log("PASS actual /pool "+name);continue;
     }
+    if(name==="insufficient-funds"){
+     await page.getByRole("button",{name:"Build delegation review"}).click();await page.waitForFunction(()=>/^Delegation stopped before sending/.test(document.querySelector('#delegate [role="status"]')?.textContent||""),{},{timeout:15000});
+     assert.equal(await page.getByRole("button",{name:"Approve and sign in wallet"}).count(),0,"NO_REVIEW_WITHOUT_FUNDS");await stopCopy();assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0,"INSUFFICIENT_FUNDS_NO_SIGN");assert.equal(record.posts.length,0);record.passed=true;console.log("PASS actual /pool "+name);continue;
+    }
     assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0,"NO_SIGN_BEFORE_REVIEW");await page.getByRole("button",{name:"Build delegation review"}).click();await page.getByRole("button",{name:"Approve and sign in wallet"}).waitFor();
     assert(await page.getByText("Exact fee: "+(BigInt(golden.fee)/1000000n)+"."+(BigInt(golden.fee)%1000000n).toString().padStart(6,"0")+" ADA",{exact:true}).isVisible(),"EXACT_FEE_VISIBLE");
     assert(await page.getByText("Separate registration deposit:",{exact:false}).isVisible());assert(await page.getByText("Review expires:",{exact:false}).isVisible());assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0);
     if(["cancel-review","disconnect-review","dispose-review"].includes(name)){
      if(name==="dispose-review")await page.goto(origin+"/");else await page.getByRole("button",{name:name==="cancel-review"?"Cancel here":"Disconnect wallet"}).click();
-     await page.waitForTimeout(100);assert.equal(record.posts.length,0);assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0);record.passed=true;console.log("PASS actual /pool "+name);continue;
+     await page.waitForTimeout(100);assert.equal(record.posts.length,0);assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0);
+     if(name!=="dispose-review"){
+      await page.waitForFunction(review=>document.querySelector('#delegate [role="status"]')?.textContent!==review,"Review the account, EASY1 target, exact fee, separate deposit and expiry before approving.",{timeout:5000,polling:50});await page.waitForTimeout(300);
+      const text=await statusLine(),v=await currentView();record.cancel={text,phase:v.phase,failureReason:v.failureReason,disconnectedLine:await page.getByText(fixture.cancelCopies.disconnected,{exact:true}).count()};
+      assert.equal(text,fixture.cancelCopies.idle,"CANCEL_IDLE_COPY");if(name==="cancel-review")assert.equal(v.failureReason,"stop:cancel-idle","CANCEL_REASON");else assert(await page.getByText(fixture.cancelCopies.disconnected,{exact:true}).isVisible(),"WALLET_DISCONNECTED_LINE");
+     }
+     record.passed=true;console.log("PASS actual /pool "+name);continue;
     }
     if(name==="cloned-approval"||name==="double-approval"){
      await page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve){window.testController=c;return;}state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');});
@@ -255,7 +310,7 @@ async function main(){
     }
     if(name.startsWith("presign-"))await page.evaluate(({baseTime,remaining})=>{window.synthetic.clockDeltaMs+=baseTime+(600-remaining)*1000-Date.now();},{baseTime,remaining:Number(name.slice(8))});
     if(name==="presign-179"){
-     await page.getByRole("button",{name:"Approve and sign in wallet"}).click();await page.getByText("Delegation stopped before sending.",{exact:false}).waitFor();assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0,"PRESIGN_179_NO_SIGN");assert.equal(record.posts.length,0);record.passed=true;console.log("PASS actual /pool "+name);continue;
+     await page.getByRole("button",{name:"Approve and sign in wallet"}).click();await page.getByText("Delegation stopped before sending.",{exact:false}).waitFor();assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0,"PRESIGN_179_NO_SIGN");assert.equal(record.posts.length,0);await stopCopy();record.passed=true;console.log("PASS actual /pool "+name);continue;
     }
     if(name==="double-approval")await page.evaluate(()=>{const c=window.testController,v=c.getView().review;c.approve(v);c.approve(v);});else await page.getByRole("button",{name:"Approve and sign in wallet"}).click();await page.waitForFunction(()=>window.synthetic.signCalls===1);
     if(["account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","same-account-focus"].includes(name)){
@@ -276,10 +331,12 @@ async function main(){
     }
     if(name==="cancel-approval"){
      await page.getByRole("button",{name:"Cancel here"}).click();await page.evaluate(()=>window.synthetic.release());await page.waitForFunction(()=>window.synthetic.replyAt!==null);await page.waitForTimeout(300);assert.equal(record.posts.length,0,"CANCEL_APPROVAL_ZERO_POST");
+     const text=await statusLine(),v=await currentView();record.cancel={text,phase:v.phase,failureReason:v.failureReason};assert.equal(text,fixture.cancelCopies.open,"CANCEL_OPEN_COPY");assert.equal(v.failureReason,"stop:cancel-open","CANCEL_REASON");
     }else if(["post-reply-deadline","post-reply-deadline-hidden"].includes(name)){
      await page.waitForFunction(()=>window.synthetic.replyAt!==null);const reply=await page.evaluate(()=>window.synthetic.replyAt);await page.waitForTimeout(32500);record.realPostReplyElapsedMs=await page.evaluate(reply=>performance.now()-reply,reply);assert(record.realPostReplyElapsedMs>30000,"REAL_TOTAL_REPLY_WINDOW");assert.equal(record.posts.length,0,"POST_REPLY_DEADLINE_ZERO_POST");
-    }else if(["account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","partial-witness","foreign-witness","invalid-signature","storage-prepare-fail","storage-readback-fail","storage-final-loss","storage-final-replaced","presubmit-119"].includes(name)){
+    }else if(["account-change","network-change","input-change","registration-change","parameters-change","eligibility-change","partial-witness","foreign-witness","invalid-signature","storage-prepare-fail","storage-readback-fail","storage-final-loss","storage-final-replaced","presubmit-119","sign-declined"].includes(name)){
      await page.waitForFunction(()=>/Delegation stopped before sending|Submitted to Blockfrost|Submission outcome is unknown/.test(document.querySelector('#delegate [role="status"]')?.textContent||''),{},{timeout:15000});assert.equal(record.posts.length,0,"FORBIDDEN_POST_SIGN_VETO "+name);
+     if(name==="sign-declined")assert.equal(await page.evaluate(()=>window.synthetic.signCalls),1,"ONE_DECLINED_SIGN");await stopCopy();
     }else if(name.startsWith("submit-")||name==="cancel-transmission"||name==="storage-after-transmission"){
      await page.getByText("Submission outcome is unknown.",{exact:false}).waitFor({timeout:65000});assert.equal(record.posts.length,1,"ONE_POSSIBLE_TRANSMISSION");const text=await page.locator('#delegate').innerText();assert(text.includes(record.signatures[0].txId),"UNKNOWN_RETAINS_DERIVED_ID");assert(!text.includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR");await page.waitForTimeout(name==="submit-timeout"?1000:200);assert.equal(record.posts.length,1,"NO_AUTOMATIC_RETRY");assert.equal(await page.evaluate(()=>window.synthetic.submitDispatches),1,"ONE_POSSIBLE_DISPATCH");record.unknownRetained=true;
     }else if(fixture.statusPlans[name]){
@@ -305,7 +362,7 @@ async function main(){
      async function kept(label){
       const n=await page.locator('[aria-label="Delegation confirmation"]').count(),region=n?await page.locator('[aria-label="Delegation confirmation"]').innerText():"",body=await page.locator('#delegate').innerText();
       record.protected=(record.protected||[]).concat([{label,status:await statusText(),region}]);
-      assert(region.includes("Transaction ID — confirmed on chain")&&region.includes(golden.txId)&&region.includes(record.confirmedText)&&!body.includes("outcome pending or unknown")&&!body.includes("submitted, confirmation pending"),label);
+      assert(region.includes("Transaction ID — confirmed on chain")&&region.includes(golden.txId)&&(region.includes(record.confirmedText)||(await statusText())===record.confirmedText)&&!body.includes("outcome pending or unknown")&&!body.includes("submitted, confirmation pending"),label);
      }
      await page.waitForFunction(()=>window.synthetic.attemptClock!==undefined,{},{timeout:15000});
      record.statusAttempt=await page.evaluate(()=>({clock:window.synthetic.attemptClock,at:window.synthetic.attemptAt}));
@@ -362,9 +419,12 @@ async function main(){
       await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");record.statusCutoff=Date.now();assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
       await page.getByRole("button",{name:"Disconnect wallet"}).click();await page.waitForTimeout(300);
       await kept("CONFIRMED_LABEL_KEPT");assert.equal((await viewOf()).walletId,null,"DISCONNECTED_AFTER_CONFIRMATION");
+      // An idle Disconnect keeps the confirmation and its status line, adds the disconnected line and shows no cancellation copy.
+      record.afterDisconnect={status:await statusText(),line:await page.getByText(fixture.cancelCopies.disconnected,{exact:true}).count()};assert.equal(record.afterDisconnect.status,record.confirmedText,"DISCONNECT_KEEPS_STATUS");
+      assert(await page.getByText(fixture.cancelCopies.disconnected,{exact:true}).isVisible(),"WALLET_DISCONNECTED_LINE");assert(!(await page.locator('#delegate').innerText()).includes("Cancelled here"),"NO_CANCELLED_COPY");
       await page.getByLabel("Wallet",{exact:true}).selectOption("synthetic");await page.getByRole("button",{name:"Connect selected wallet"}).click();
       await page.waitForFunction(()=>/already delegates|could not be verified|eligibility checked/.test(document.querySelector('#delegate [role="status"]')?.textContent||""),{},{timeout:20000,polling:100});
-      await kept("CONFIRMED_LABEL_KEPT_AFTER_CONNECT");
+      await kept("CONFIRMED_LABEL_KEPT_AFTER_CONNECT");assert.equal(await page.getByText(fixture.cancelCopies.disconnected,{exact:true}).count(),0,"LINE_CLEARED_ON_CONNECT");
      }else if(name==="confirm-then-refresh-failure"){
       await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");record.statusCutoff=Date.now();assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
       // The page becomes visible again; the wallet owner's refresh read throws.
@@ -372,12 +432,12 @@ async function main(){
       await page.waitForFunction(()=>/wallet changed or became unavailable/.test(document.querySelector('#delegate [role="status"]')?.textContent||""),{},{timeout:15000,polling:100});
       record.refreshFailure=await walletAt();assert.equal(record.refreshFailure.enableCalls,baseline.enableCalls+1,"VISIBLE_REFRESH_RAN");assert.equal((await viewOf()).walletId,"synthetic","WALLET_STILL_SELECTED");
       await kept("CONFIRMED_LABEL_KEPT");
-     }else if(name==="confirm-then-other-tab-pending"){
+     }else if(name==="confirm-then-other-tab-pending"||name==="confirm-then-other-tab-removed"){
       await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");
       // A second same-origin tab writes a well-formed pending record for B under the origin lock (the step its own prepare would take); the first tab only observes.
       const other=fixture.otherTabRecord,raw=JSON.stringify(other),second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
       await second.evaluate(r=>navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},async()=>{localStorage.setItem("easy1staking:delegation-recovery",r);}),raw);
-      record.otherTab={written:await second.evaluate(()=>localStorage.getItem("easy1staking:delegation-recovery"))};await second.close();assert.equal(record.otherTab.written,raw,"OTHER_TAB_RECORD_WRITTEN");
+      record.otherTab={written:await second.evaluate(()=>localStorage.getItem("easy1staking:delegation-recovery"))};if(name!=="confirm-then-other-tab-removed")await second.close();assert.equal(record.otherTab.written,raw,"OTHER_TAB_RECORD_WRITTEN");
       // A fixed settle; the active ID is asserted before any expected text.
       await page.waitForTimeout(1000);const v=await viewOf(),codes=await page.locator('#delegate code').allInnerTexts(),body=await page.locator('#delegate').innerText();
       record.otherTab.view={txId:v.txId,phase:v.phase,message:v.message,confirmation:v.confirmation,canCheckStatus:v.canCheckStatus,recovery:v.recovery.status,codes};
@@ -386,11 +446,26 @@ async function main(){
       assert(v.confirmation===null&&await page.locator('[aria-label="Delegation confirmation"]').count()===0&&!body.includes("confirmed on chain")&&!body.includes(record.confirmedText)&&!body.includes(golden.txId),"PRIOR_CONFIRMATION_HIDDEN");
       assert(body.includes("Transaction ID — outcome pending or unknown")&&!body.includes("submitted, confirmation pending"),"PENDING_CAPTION");
       assert(v.canCheckStatus&&v.recovery.status==="pending"&&await page.getByRole("button",{name:"Check status"}).count()===1,"CHECK_STATUS_OFFERED");
+      if(name==="confirm-then-other-tab-removed"){
+       // The second tab then removes B's record under the origin lock; a fixed 1000 ms settle, then the active ID before any expected text.
+       const removedAt=Date.now();
+       await second.evaluate(()=>navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},async()=>{localStorage.removeItem("easy1staking:delegation-recovery");}));record.otherTab.removedByTab=await second.evaluate(()=>localStorage.getItem("easy1staking:delegation-recovery"));await second.close();await page.waitForTimeout(1000);
+       const w=await viewOf(),wc=await page.locator('#delegate code').allInnerTexts(),wb=await page.locator('#delegate').innerText();
+       record.otherTab.removed={txId:w.txId,phase:w.phase,message:w.message,confirmation:w.confirmation,canCheckStatus:w.canCheckStatus,recovery:w.recovery.status,codes:wc};
+       assert(w.txId===other.txId&&wc.includes(other.txId),"ACTIVE_ID_KEPT");
+       assert.equal(await statusText(),changedText,"CHANGED_MESSAGE");
+       assert(w.confirmation===null&&await page.locator('[aria-label="Delegation confirmation"]').count()===0&&!wb.includes(golden.txId)&&!wb.includes(record.confirmedText),"A_NOT_RESTORED");
+       assert(!w.canCheckStatus&&await page.getByRole("button",{name:"Check status"}).count()===0,"NO_CHECK_STATUS");
+       assert.equal(await stored(),null,"NOTHING_HEALED");
+       record.otherTab.removedReads=record.http.filter(x=>x.at>=removedAt&&x.path.startsWith("/txs/")).map(x=>x.path);assert.deepEqual(record.otherTab.removedReads,[],"ZERO_STATUS_READS_AFTER_REMOVAL");
+       assert.deepEqual(await walletAt(),baseline,"ZERO_WALLET_CALLS_SINCE_BASELINE");
+      }else{
       // Check status applies to B: one bounded check reads B's transaction (404 here), never A's.
       const clickAt=Date.now();await page.getByRole("button",{name:"Check status"}).click();await page.getByText(apology,{exact:true}).waitFor({timeout:35000});
       const reads=record.http.filter(x=>x.at>=clickAt&&x.method==="GET"&&x.path.startsWith("/txs/"));record.otherTab.checkReads=reads.map(x=>x.path+" "+x.status);
       assert(reads.length===1&&reads[0].path==="/txs/"+other.txId&&reads[0].status===404,"CHECK_STATUS_APPLIES_TO_ACTIVE_ID");
       assert.equal(await stored(),raw,"OTHER_RECORD_RETAINED");const after=await viewOf();assert(after.txId===other.txId&&after.confirmation===null,"ACTIVE_ID_AFTER_CHECK");
+      }
      }else if(name==="confirm-then-second-operation"){
       await waitTerminal(60000);await confirmedState("This stake account has since delegated to another pool.");record.statusCutoff=Date.now();assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
       // A fixed construction tip for the separately reviewed second body: the page clock moves to it and the tip is held there until the review shows.
@@ -468,7 +543,7 @@ async function main(){
    }catch(error){primary=error;record.failure=failureText(error);throw error;}finally{
     // Settle this case's served-chunk identity reads before any verdict; an unsettled read also disqualifies.
     if(!await Promise.race([Promise.allSettled(caseReads).then(()=>true),new Promise(r=>setTimeout(()=>r(false),10000))]))record.chunkIdentityFailures.push({kind:"unsettled",reads:caseReads.length});
-    if(page&&!page.isClosed()){try{record.terminal=await page.evaluate(()=>({text:document.querySelector('#delegate')?.textContent||document.body.textContent,submitDispatches:window.synthetic?.submitDispatches??null,signCalls:window.synthetic?.signCalls,tripwires:window.synthetic?.tripwires,replyAt:window.synthetic?.replyAt??null,attemptAt:window.synthetic?.attemptAt??null,enableCalls:window.synthetic?.enableCalls??null,visibility:document?.visibilityState??null,visibilityTransition:window.synthetic?.visibilityTransition??null,faultAt:window.synthetic?.faultAt??null,faultKind:window.synthetic?.faultKind??null,retainedAtAttempt:window.synthetic?.retainedAtAttempt??null}));}catch{}}
+    if(page&&!page.isClosed()){try{record.terminal=await page.evaluate(()=>({text:document.querySelector('#delegate')?.textContent||document.body.textContent,submitDispatches:window.synthetic?.submitDispatches??null,signCalls:window.synthetic?.signCalls,tripwires:window.synthetic?.tripwires,replyAt:window.synthetic?.replyAt??null,attemptAt:window.synthetic?.attemptAt??null,enableCalls:window.synthetic?.enableCalls??null,layoutBatches:window.synthetic?.layoutBatches??null,preStyleBatches:window.synthetic?.preStyleBatches??null,probedSamples:window.synthetic?.probedSamples??null,visibility:document?.visibilityState??null,visibilityTransition:window.synthetic?.visibilityTransition??null,faultAt:window.synthetic?.faultAt??null,faultKind:window.synthetic?.faultKind??null,retainedAtAttempt:window.synthetic?.retainedAtAttempt??null}));}catch{}}
     report.chromium.pids=[...new Set([...report.chromium.pids,...descendants(process.pid).filter(pid=>pid!==server.pid&&!descendants(server.pid).includes(pid))])];
     const later=[],check=fn=>{try{fn();}catch(error){later.push(error);}};
     // Exact declared counts: page dispatches accumulate across this tab's navigations/reloads; intercepted POSTs across the whole context.
@@ -484,6 +559,13 @@ async function main(){
     check(()=>assert.deepEqual(record.chunkReadErrors,[],"NO_CHUNK_READ_ERRORS"));
     check(()=>assert.deepEqual(record.errors,[],"NO_PAGE_ERRORS "+name));
     check(()=>assert(!(record.terminal?.text||'').includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR "+name));
+    // Every sampled state of this case: no 360 px overflow probe fired, and every status-line text is in the enumerated set.
+    const confirmedPattern=new RegExp(fixture.confirmedPattern),samples=record.layout.samples;record.layout.preStyleBatches=samples.filter(x=>!x.styled).length;record.layout.probed=samples.filter(x=>x.styled).length;
+    record.layout.fired=samples.filter(x=>x.styled&&x.fired);record.layout.statusTexts=[...new Set(samples.map(x=>x.status).filter(x=>x!==null))];
+    record.layout.unknownStatus=record.layout.statusTexts.filter(x=>!fixture.statusTexts.includes(x)&&!confirmedPattern.test(x));
+    check(()=>assert(record.layout.probed>0,"LAYOUT_SAMPLED"));
+    check(()=>assert.deepEqual(record.layout.fired,[],"LAYOUT_360"));
+    check(()=>assert.deepEqual(record.layout.unknownStatus,[],"STATUS_TEXT_KNOWN"));
     // A case's first failure is its verdict; later cleanup failures never replace it.
     if(!primary&&later.length){record.passed=false;record.failure=failureText(later[0]);}
     if(later.length>(primary?0:1))record.secondaryFailures=later.slice(primary?0:1).map(failureText);
