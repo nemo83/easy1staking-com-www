@@ -13,7 +13,10 @@ Submitted or Unknown with a known ID, then checks chain status read-only and
 confirms the delegation when every check agrees. It never clears an
 unconfirmed record on its own: after the transaction has expired, a visitor who
 has checked its ID can dismiss the record by hand (see "Expired records and
-manual dismissal"). It cannot retry. Submitted means that the provider returned the
+manual dismissal"). It never resends on its own; after an unknown outcome the tab
+that signed can deliberately send the same signed transaction again (see
+"Deliberate resend of the same signed transaction"). Submitted means that the
+provider returned the
 matching ID, not chain confirmation. Use the originating browser and an
 independent wallet or explorer to check an unresolved operation. Do not delete
 recovery storage to make a new attempt.
@@ -203,8 +206,9 @@ operation's saved status changed in another tab of this browser. Keep the
 transaction ID and check it in your wallet or a chain explorer.", keeps that ID,
 offers no Check status, and never shows an earlier confirmation again. An
 expired recorded transaction can be dismissed by hand as described in the next
-section; a deliberate retry of identical signed bytes remains separate later
-work.
+section. Only the tab that signed a transaction can send its identical signed
+bytes again, as described in "Deliberate resend of the same signed transaction";
+a tab showing another tab's record cannot.
 
 ## Expired records and manual dismissal
 
@@ -277,7 +281,7 @@ transaction ID yourself. This page did not confirm it. Keep the ID; a new
 delegation needs a new review and your approval." and the region "Dismissed
 record" with the caption "Transaction ID — dismissed by you" and the ID. The
 caption is kept through Connect and a new review, and the record is never shown
-as confirmed. While a record is pending the page says: A prior operation is unresolved in this browser. Keep its ID. This page can check its status and, after it expires, let you dismiss it once you have checked the ID yourself. It cannot retry it.
+as confirmed. While a record is pending the page says: A prior operation is unresolved in this browser. Keep its ID. This page can check its status and, after it expires, let you dismiss it once you have checked the ID yourself. Only the tab that signed it can send the same transaction again, until that tab reloads or its wallet disconnects or changes.
 
 Nothing new is stored. The two latches and the dismissed state live in page
 memory only, so a reload forgets them; the record schema is unchanged. A
@@ -285,6 +289,78 @@ dismissed record's transaction can still land (an index lag before expiry, or a
 rollback below the TTL), as the disclosure says. A consistent-looking lagged
 index with no positive witness can still produce an offer: dismissal is a
 manual override, and the visitor's own check of the ID is its safeguard.
+
+## Deliberate resend of the same signed transaction
+
+When the first submission ends with an unknown outcome, the tab that signed it
+keeps a private in-memory copy of the exact signed bytes, together with the
+review they were checked against. It keeps them only when that unknown outcome
+was recorded and the wallet session is unchanged. The bytes are never stored,
+logged or shown; only a yes/no offer and a machine ending code reach the view.
+
+The page then offers a button labelled:
+
+Send the same signed transaction again
+
+with the note:
+
+This sends the exact transaction you already approved, with the same ID, once more. Your wallet is not asked to sign again and nothing new is built.
+
+The offer appears only in the signing tab, only after an unknown outcome, only
+while no status check, operation or dismissal offer is live, only while the
+browser record still names that ID and the wallet session is unchanged, and never
+for an ID already seen on chain or spent by its own ID. Nothing is resent
+automatically: no timer, listener or status result starts a resend.
+
+One click runs these steps in order, under the browser's origin lock and against
+the exact record this page last wrote:
+
+1. the record must still be exactly the one this page wrote;
+2. a status check of the ID: a confirmation is shown and its record removed as
+   usual, and any outcome other than "not found" stops the resend;
+3. a fresh wallet observation and a fresh account assessment without the
+   original review's identities: an account that now delegates to EASY1 stops the
+   resend, and any refusal stops it with its own code;
+4. a fresh assessment bound to the original review's semantics and eligibility;
+   any changed identity stops the resend;
+5. at least 120 slots of validity must remain at that fresh tip;
+6. the retained signed bytes are verified again (body, ID, witnesses and every
+   signature);
+7. the existing final barrier, against a fresh 30-second deadline measured from
+   this click, checks the record again and compares the bytes and the
+   observations once more; then the same bytes are posted once, on the same
+   captured transport, with the existing 60-second response deadline.
+
+A reconciled status other than "not found", an account already delegating to
+EASY1, too little remaining validity, any changed identity or refused check,
+and the 30-second deadline each suppress the POST. Nothing is rebuilt or signed
+again, and the resend never writes the browser record: its stage stays
+"unknown" before, during and after every resend, because the cross-tab stage
+rules do not allow an unknown record to move back. Another tab cannot resend at
+the same time: the origin lock gives it "Another delegation operation is active
+in this browser.", and a second click while one resend runs does nothing. An
+authentic reply shows the submitted text and drops the bytes; any other ending
+after the POST keeps them and shows the unknown text, and the read-only status
+poll runs as after the first attempt. The resend can be offered again once that
+status work ends; each click is a full deliberate resend with its own fresh
+deadline.
+
+A resend that stops before posting sends nothing and changes nothing stored. Its
+status line says why: "This account now delegates to EASY1, but this transaction
+was not confirmed when checked. Nothing was sent again. …", "Too little validity
+remains to send this signed transaction again. Nothing was sent again. …", "The
+signed transaction was not sent again: a check failed or information changed. …"
+or "This transaction's status is not settled, so it was not sent again. …".
+Cancel, Disconnect or an account change during a resend keep their own stop
+text. The bytes are dropped on reload, Disconnect, any change of the wallet
+session, leaving the page, a record removed or replaced in another tab, a
+confirmation or dismissal of the ID, a successful resend, an EASY1 or
+too-little-validity ending, a record that changed during the resend, and a
+status result that latches the ID as seen or spent. A dropped copy is never
+restored. After a reload the record can still be checked, but it cannot be
+resent. Whether a provider reply to a resend of an already-known transaction is
+a definite rejection is not distinguished: every non-authentic reply stays
+unknown.
 
 ## Mobile entry
 
@@ -361,16 +437,18 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 105 cases (86 before the manual-dismissal cases and
-81 before the failure-message cases were added) and `--cases first` executes
+`--cases all` now executes 128 cases (105 before the deliberate-resend cases,
+86 before the manual-dismissal cases and 81 before the failure-message cases
+were added) and `--cases first` executes
 six. Selectors
-are strict: `--case` must name one registered case (the 105 plus
+are strict: `--case` must name one registered case (the 128 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
 
 Every registered case declares its exact page dispatches and intercepted POSTs
-in the fixture: 0 for veto and refusal cases, 1 for single-attempt cases and 2
-for `confirm-then-second-operation`. Page
+in the fixture: 0 for veto and refusal cases, 1 for single-attempt cases, 2
+for `confirm-then-second-operation` and each resend case that sends again, and
+3 for `retry-again-after-unknown`. Page
 dispatches accumulate across the tab's navigations and reloads; both counts are
 asserted on success and recorded on failure. A status case reads the first
 intercepted POST only after the route handler has recorded it: the page-side
@@ -479,6 +557,44 @@ also asserts that no dismissal is offered. A single `dismiss-dispose` failure at
 `DISMISS_DISPOSE_RETAINS_RECORD` in a full run may be re-run once on the same
 tree and build, as for `status-dispose`; every attempt is recorded.
 
+Twenty-three `retry-*` cases cover the deliberate resend. Each makes the
+identical registered submission and moves the page clock 181 seconds on at the
+first POST, which answers 500, so the page shows the unknown outcome and then
+the apology with no status reads. It hides the document, takes the wallet
+baseline, asserts one offer button with the exact note, and captures the record
+and the storage keys. At its end each case asserts one signature request, no
+building, review or signing phase after the first POST, the record unchanged
+(unless the case removes it), nothing new stored, every POST body equal to the
+first, and its exact dispatches and POSTs. After a click it asserts the view's
+machine `retryReason` first, then its failure and status reasons where named,
+then the exact status line. The cases are `retry-same-bytes` (no POST before the
+click; one held origin lock at the second POST; the status lookup precedes the
+account read; Submitted, then no offer), `retry-double-click` (two synchronous
+calls make one status lookup), `retry-busy` (another tab holds the lock: no
+reads, then offered again), `retry-record-changed` (another tab removes the
+record during a held read: the changed guidance, nothing healed),
+`retry-already-easy1` (no POST and no already-delegated acknowledgement),
+`retry-confirmed-first` (the resend's own status check confirms),
+`retry-seen-pending` (a lagging index latches the ID), `retry-parameters-change`
+(`source:COHERENCE`), `retry-pool-retiring` (`source:INELIGIBLE`),
+`retry-presubmit-120` (a tip leaving exactly 120 slots sends),
+`retry-presubmit-119` (119 slots: too little validity), `retry-wallclock-119`
+(the tip leaves 121 slots but the clock leaves 119: the final barrier stops with
+`stop:expired`), `retry-barrier-timeout` (five reads held eight seconds each:
+`stop:expired` with no POST, at least 30 seconds after the click; a second click
+without holds then sends), `retry-post-timeout` (a held second POST ends unknown;
+no automatic POST and no offer while the poll runs), `retry-reload`,
+`retry-disconnect`, `retry-account-change` (no offer afterwards, and a call
+through the controller does nothing), `retry-dispose` (leaving the page during a
+held read sends nothing), `retry-inflight-disconnect`,
+`retry-inflight-account-change` and `retry-inflight-cancel` (an invalidation
+while a fresh assessment or verification is suspended sends nothing and keeps the
+record), `retry-post-unknown-disconnect` (Disconnect during a held resend POST
+ends unknown, with no offer afterwards) and `retry-again-after-unknown` (after an
+unknown resend and its status work, a second resend posts bytes identical to
+both earlier POSTs). `submit-bad-status` also asserts no offer while its poll
+runs, and `confirm-resumed-after-deadline` no offer after Submitted.
+
 Every case samples the page at its 360 px viewport on each DOM mutation batch,
 in every tab of its browser context and across its navigations and reloads. Each
 batch records the status-line text and the rendered phase. The three probes run
@@ -517,11 +633,14 @@ Run the existing chain-context, wallet-signature, wallet-session, stake-builder,
 stake-guard and pool-facts suites, the recovery-verifier suite
 (`scripts/check-recovery-verifier.cjs`, every outcome, reason code and
 resolution refusal), the failure-message suite
-(`node scripts/check-delegation-messages.cjs`, 119 tests: every code of every
+(`node scripts/check-delegation-messages.cjs`, 122 tests, 119 before the resend
+copy: every code of every
 owned union, parsed from its declaration, maps to its exact text, including the
 manual-dismissal `recovery` texts; forged keys give the fallback; every text is
 plain and in the flow's `statusTexts`; the dismissal copy has exactly its keys
-and texts and is plain; the compiled module has no `require`), native signature/coordination suites, installed
+and texts and is plain; the resend copy has exactly its keys and texts, is
+plain, ends every entry except the offer with a period, and its six status-line
+texts are in `statusTexts`; the compiled module has no `require`), native signature/coordination suites, installed
 security/compatibility checks, build/lint, raw production/full audits and source
 export checks. Record actual executed/skipped counts and raw audit responses.
 Current registry output is a point-in-time witness; it does not erase the
@@ -704,7 +823,52 @@ recovery-verifier suite 182 of 182, and the meta-check finds eight node:test
 suites and five helper users. Each of these mutants was killed, its source was
 restored exactly, and the full flow then passed 105 of 105 again: DB1 (the eligibility guard made strict) killed: `dismiss-at-ttl` failed first at `DISMISS_STATUS_REASON` while `dismiss-expired` passed; DB1W (the guard admitting TTL−1) killed: `dismiss-before-expiry` failed first at `DISMISS_STATUS_REASON` while `dismiss-at-ttl` passed; DB2 (a spend by the recovery ID treated as spent elsewhere) killed: `dismiss-spent-by-id` failed first at `DISMISS_STATUS_REASON` while `dismiss-spent-elsewhere` passed; DB3 (the attestation equality removed) killed: `dismiss-without-attestation` failed first at `RECORD_RETAINED_WITHOUT_ATTESTATION` while `dismiss-expired` passed; DB4 (the authority's record equality removed) killed: `dismiss-stale-record` failed first at `RECORD_RETAINED_AFTER_CHANGE` while `dismiss-expired` passed; DB5 (the confirm recheck's confirmed branch removed) killed: `dismiss-confirmed-on-confirm` failed first at `CONFIRMED_RECORD_REMOVED` while `dismiss-expired` passed; DB6 (the witness latch removed) killed: `dismiss-seen-then-404` failed first at `DISMISS_STATUS_TEXT` while `dismiss-expired` passed.
 
-Dependency residue: `npm audit` (production and full) still reports nine
+Deliberate-resend receipt (supersedes the 105-case flow count and the 119-test
+failure-message count above): with the new browser and message tests on the
+earlier source, all 23 `retry-*` cases failed first at `RETRY_OFFERED` (the
+earlier panel has no resend control), `dismiss-at-ttl` failed first at
+`PRIOR_NOTICE_COPY` (the earlier notice), and `submit-bad-status` and
+`confirm-resumed-after-deadline` passed. The message suite failed 4 of 122
+tests: the dismissal-copy literal test and the three resend-copy tests. On the
+new source the flow passes 128 of 128 cases with every declared dispatch and
+POST count and no layout or unknown-status failure, the failure-message suite
+passes 122 of 122 tests, and the meta-check still finds eight node:test suites
+and five helper users. With the offer button as first written, its label kept
+the button style's no-wrap rule and overflowed the 360 px viewport by about 14
+px (`LAYOUT_360`), so the new button alone also wraps its text; no existing
+element or stylesheet changed. Each controller mutant below was run on the
+committed source over every `retry-*` case, one case at a time, and its source
+was then restored exactly: RM1 (every non-confirmed status admitted) killed:
+`retry-seen-pending` failed first at `RETRY_REASON`; RM2 (the confirmed branch
+removed) killed: `retry-confirmed-first` at `CONFIRMED_RECORD_REMOVED`; RM3 (the
+EASY1 branch removed) killed: `retry-already-easy1` at `RETRY_REASON`; RM4 (the
+120-slot check made 119) killed: `retry-presubmit-119` at `RETRY_REASON`, where
+the guard's own validity refusal gave a stop instead of the too-little-validity
+ending; RM4S (made 121) killed: `retry-presubmit-120` at `RETRY_REASON`; RM5 (the
+deadline from the click made 45 seconds) killed: `retry-barrier-timeout` failed
+at `RETRY_REASON` with a resend POST recorded about 40 seconds after the click,
+and the barrier's unchanged lower bound (deadline minus 30 seconds) also stopped
+the fast `retry-same-bytes`, `retry-double-click`, `retry-presubmit-120`,
+`retry-post-timeout` and `retry-again-after-unknown` with `stop:expired` and
+held `retry-post-unknown-disconnect` short of its resend POST; RM6 (the resend's
+final barrier skipped) killed: `retry-wallclock-119` at `RETRY_REASON`; RM8 (a
+successful resend keeps the bytes) killed: `retry-same-bytes` at
+`NO_RETRY_AFTER_SENT`; RM9 (an unknown resend restores the dropped copy, with
+the offer's wallet-session clause removed) killed:
+`retry-post-unknown-disconnect` at `NO_RETRY_RESURRECTION`; RM9N (only that
+wallet-session clause removed) failed no case, because every wallet-session
+change already drops the copy, which is why RM9 removes both; RM10 (the
+operation check after the re-verification removed) killed:
+`retry-inflight-account-change`, `retry-inflight-disconnect` and
+`retry-inflight-cancel` at `RETRY_TEXT`, each sending nothing but losing its own
+stop text. RM7 (the offer's status-work clause removed), run over the whole flow, killed: `submit-bad-status` and `retry-post-timeout` failed first at `NO_RETRY_OFFER_DURING_POLL`, and no other case failed. After the last restore the full flow passed 128 of 128 again.
+
+Dependency residue (superseded by the dependency repair below): `npm audit` (production and full) still reports nine
 moderate entries, all GHSA-chp3-j5qr-2vfr (`@effect/platform` below 0.97.1 via
 `@evolution-sdk/evolution`), with the lockfile unchanged. It is a release-gate
 dependency item, not a manual-dismissal result.
+
+Dependency repair (supersedes the residue above): with `@evolution-sdk/evolution`
+0.5.14 the vulnerable `@effect/platform` package is no longer installed, and
+`npm audit --omit=dev --json` and `npm audit --json` both exit 0 with zero
+findings on this tree.
