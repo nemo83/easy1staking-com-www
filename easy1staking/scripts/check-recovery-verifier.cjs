@@ -388,6 +388,8 @@ function expired(tipSlot = TTL + 1n, refs = [FIRST]) {
 const rowsOf = (s, ref) => s.extra.get(`/txs/${ref.split("#")[0]}/utxos`), rowOf = (s, ref) => rowsOf(s, ref).outputs.find(o => o.output_index === Number(ref.split("#")[1]));
 const utxosPath = ref => `/txs/${ref.split("#")[0]}/utxos`;
 // One bounded check with the dismissal request; `inside` runs under the same lease and must not throw (API calls go through codeOf).
+// `dismissal: OMIT` sends no dismissal key at all, as the automatic status poll does.
+const OMIT = Symbol("no dismissal key");
 async function review(s, options = {}) {
   const coordinator = options.coordinator ?? coordination.createDelegationCoordinator();
   const verifier = options.verifier ?? verifierModule.createRecoveryVerifier(fixture.projectId, coordinator, options.runtime);
@@ -395,11 +397,20 @@ async function review(s, options = {}) {
   try {
     const generation = options.generation ?? coordinator.beginStatus();
     const result = await coordinator.withRecoveryOperation(s.txId, async lease => {
-      const outcome = await verifier.check(lease, { generation, deadline: options.deadline ?? null, dismissal: options.dismissal ?? true });
+      const request = { generation, deadline: options.deadline ?? null };
+      if (options.dismissal !== OMIT) request.dismissal = options.dismissal ?? true;
+      const outcome = await verifier.check(lease, request);
       return options.inside ? options.inside({ lease, outcome, coordinator, verifier, generation }) : outcome;
     });
     return { result, coordinator, verifier, generation };
   } finally { currentFetch = undefined; }
+}
+// One check with exactly the given request beside the generation: the controller's status poll sends { generation, deadline, signal }.
+async function direct(s, request) {
+  const coordinator = coordination.createDelegationCoordinator(), verifier = verifierModule.createRecoveryVerifier(fixture.projectId, coordinator);
+  currentFetch = s.fetch;
+  try { const generation = coordinator.beginStatus(); return await coordinator.withRecoveryOperation(s.txId, lease => verifier.check(lease, { generation, ...request })); }
+  finally { currentFetch = undefined; coordinator.dispose(); }
 }
 function eligibility(name, setup, status, reason, options = {}) {
   test(name, async () => {
@@ -418,8 +429,20 @@ eligibility("E2: tip at TTL offers the dismissal", () => expired(TTL), "not-foun
 eligibility("E3: tip at TTL + 1 offers the dismissal", () => expired(TTL + 1n), "not-found", "EXPIRED_UNSEEN", { then: r => { assert.equal(r.spentElsewhere, false); assert.equal(r.witnessed, false); } });
 eligibility("E4: local time past expiry with the tip at TTL - 1 is NOT_FOUND", () => { const s = expired(TTL - 1n); now += 19500; assert(now > timeAt(TTL)); return s; }, "not-found", "NOT_FOUND",
   { then: (r, s) => noRows(s) });
-eligibility("E5: the automatic poll (no dismissal) past expiry is NOT_FOUND with no rows and no resolution", () => expired(TTL + 1n), "not-found", "NOT_FOUND",
-  { dismissal: false, then: (r, s) => { noRows(s); assert.deepEqual(s.requested, ["/blocks/latest", "/txs/" + s.txId]); } });
+test("E5: the automatic poll (no dismissal) past expiry is NOT_FOUND with no rows and no resolution", async () => {
+  // Only dismissal === true requests eligibility: (i) no key, as the real poll sends; (ii) an explicit false; (iii) truthy values other than true.
+  const poll = async (s, options) => { const { result, coordinator } = await review(s, options); coordinator.dispose(); return result; };
+  const cases = [["(i) no dismissal key", s => poll(s, { dismissal: OMIT })],
+    ["(i) the status-poll request { generation, deadline, signal }", s => direct(s, { deadline: now + 30000, signal: new AbortController().signal })],
+    ["(ii) dismissal: false", s => poll(s, { dismissal: false })],
+    ...["true", 1, {}].map(value => [`(iii) dismissal: ${JSON.stringify(value)}`, s => poll(s, { dismissal: value })])];
+  for (const [label, run] of cases) {
+    const s = expired(TTL + 1n), r = await run(s); note(r);
+    assert.equal(r.status + ":" + r.reason, "not-found:NOT_FOUND", label + " " + JSON.stringify(r));
+    assert.deepEqual(s.requested, ["/blocks/latest", "/txs/" + s.txId], label);
+    assert.equal(Object.prototype.hasOwnProperty.call(r, "resolution"), false, label + ": no resolution"); assert.equal(store.get(KEY), s.recordJson, label + ": record retained");
+  }
+});
 eligibility("E6: stale T1 is unavailable:TIP", () => { const s = expired(TTL + 1n); now += 31000; return s; }, "unavailable", "TIP");
 eligibility("E7: malformed T1 (epoch inconsistent with slot) is unavailable:TIP", () => { const s = expired(TTL + 1n); s.tips[0].epoch += 1; return s; }, "unavailable", "TIP");
 eligibility("E8: T2 at T1's slot with another hash is unavailable:TIP", () => { const s = expired(TTL + 1n); s.tips.push({ ...tip(TTL + 1n), hash: id(77) }); return s; }, "unavailable", "TIP");
@@ -575,6 +598,69 @@ test("A12: a dismissible resolution minted in lease 1 is refused under lease 2",
   const code = await review(s, { coordinator: first.coordinator, verifier: first.verifier, generation: first.generation,
     inside: ({ lease, coordinator }) => codeOf(() => coordinator.resolveDismissed(lease, first.result.authority, spare.resolution)) });
   assert.equal(code.result, "RESOLUTION"); assert.equal(store.get(KEY), s.recordJson); first.coordinator.dispose();
+});
+// Clause pins: each offerDismissal / resolveDismissed clause, and the first-input-failure rule, is the only thing that can fail its test.
+test("R1: the resolution consumed by offerDismissal cannot drive resolveDismissed in the same lease", async () => {
+  const s = expired(); let authority;
+  const seen = await review(s, { inside: ({ lease, outcome, coordinator }) => [outcome.reason, codeOf(() => { authority = coordinator.offerDismissal(lease, outcome.resolution); }),
+    codeOf(() => coordinator.resolveDismissed(lease, authority, outcome.resolution))] });
+  assert.deepEqual(seen.result, ["EXPIRED_UNSEEN", "ACCEPTED", "RESOLUTION"]); assert.equal(store.get(KEY), s.recordJson); seen.coordinator.dispose();
+});
+test("R2: a confirmed resolution cannot drive resolveDismissed", async () => {
+  const s = expired(), first = await offered(s); s.missing.delete("/txs/" + s.txId);
+  const seen = await review(s, { coordinator: first.coordinator, verifier: first.verifier, generation: first.generation,
+    inside: ({ lease, outcome, coordinator }) => ({ status: outcome.status, code: codeOf(() => coordinator.resolveDismissed(lease, first.authority, outcome.resolution)) }) });
+  assert.deepEqual(seen.result, { status: "confirmed", code: "RESOLUTION" }); assert.equal(store.get(KEY), s.recordJson); first.coordinator.dispose();
+});
+test("R3: among two failing inputs the first in record order decides the reason, in both orders", async () => {
+  const fail = () => new Response('{"error":"SYNTHETIC_PRIVATE_CANARY"}', { status: 500, headers: { "content-type": "application/json" } });
+  for (const [failing, missing, expected] of [[FIRST, SECOND, "unavailable:PROVIDER"], [SECOND, FIRST, "unavailable:INPUT_ROWS"]]) {
+    const s = expired(TTL + 1n, [FIRST, SECOND]); s.onCall = p => p === utxosPath(failing) ? fail() : undefined; s.missing.add(utxosPath(missing));
+    const { result, coordinator } = await review(s); note(result); coordinator.dispose();
+    assert.equal(result.status + ":" + result.reason, expected, JSON.stringify(result)); assert.equal(store.get(KEY), s.recordJson);
+    assert.deepEqual(s.requested, ["/blocks/latest", "/txs/" + s.txId, utxosPath(FIRST), utxosPath(SECOND), "/blocks/latest"], "both inputs read");
+  }
+});
+test("R4: offerDismissal refuses a lease-1 resolution under lease 2", async () => {
+  const s = expired(); let saved;
+  const first = await review(s, { inside: ({ outcome }) => { saved = outcome.resolution; return outcome.reason; } });
+  const seen = await review(s, { coordinator: first.coordinator, verifier: first.verifier, generation: first.generation,
+    inside: ({ lease, outcome, coordinator }) => [first.result, outcome.reason, codeOf(() => coordinator.offerDismissal(lease, saved))] });
+  assert.deepEqual(seen.result, ["EXPIRED_UNSEEN", "EXPIRED_UNSEEN", "RESOLUTION"]); assert.equal(store.get(KEY), s.recordJson); first.coordinator.dispose();
+});
+test("R5: offerDismissal refuses after the status generation moved", async () => {
+  const s = expired(), seen = await review(s, { inside: ({ lease, outcome, coordinator }) => { coordinator.beginStatus(); return [outcome.reason, codeOf(() => coordinator.offerDismissal(lease, outcome.resolution))]; } });
+  assert.deepEqual(seen.result, ["EXPIRED_UNSEEN", "RESOLUTION"]); assert.equal(store.get(KEY), s.recordJson); seen.coordinator.dispose();
+});
+test("R6: offerDismissal refuses past the resolution deadline", async () => {
+  const s = expired(), seen = await review(s, { inside: ({ lease, outcome, coordinator }) => { now += 30000; return [outcome.reason, codeOf(() => coordinator.offerDismissal(lease, outcome.resolution))]; } });
+  assert.deepEqual(seen.result, ["EXPIRED_UNSEEN", "RESOLUTION"]); assert.equal(store.get(KEY), s.recordJson); seen.coordinator.dispose();
+});
+test("R7: one dismissible resolution yields at most one authority", async () => {
+  const s = expired(), seen = await review(s, { inside: ({ lease, outcome, coordinator }) =>
+    [codeOf(() => coordinator.offerDismissal(lease, outcome.resolution)), codeOf(() => coordinator.offerDismissal(lease, outcome.resolution))] });
+  assert.deepEqual(seen.result, ["ACCEPTED", "RESOLUTION"]); assert.equal(store.get(KEY), s.recordJson); seen.coordinator.dispose();
+});
+test("R8: offerDismissal refuses after a stage-only record change", async () => {
+  const s = expired(), changed = JSON.stringify({ ...s.record, stage: "unknown" });
+  const seen = await review(s, { inside: ({ lease, outcome, coordinator }) => { store.set(KEY, changed); return [outcome.reason, codeOf(() => coordinator.offerDismissal(lease, outcome.resolution))]; } });
+  assert.deepEqual(seen.result, ["EXPIRED_UNSEEN", "RESOLUTION"]); assert.equal(store.get(KEY), changed); seen.coordinator.dispose();
+});
+test("R9: resolveDismissed refuses an older-generation resolution while the authority is current", async () => {
+  const s = expired();
+  const seen = await review(s, { inside: async ({ lease, outcome, coordinator, verifier }) => {
+    const old = outcome.resolution, g = coordinator.beginStatus(), fresh = await verifier.check(lease, { generation: g, deadline: null, dismissal: true }); let authority;
+    return [outcome.reason, fresh.reason, codeOf(() => { authority = coordinator.offerDismissal(lease, fresh.resolution); }), codeOf(() => coordinator.resolveDismissed(lease, authority, old))];
+  } });
+  assert.deepEqual(seen.result, ["EXPIRED_UNSEEN", "EXPIRED_UNSEEN", "ACCEPTED", "RESOLUTION"]); assert.equal(store.get(KEY), s.recordJson); seen.coordinator.dispose();
+});
+test("R10: resolveDismissed refuses a resolution for an earlier record while the authority binds the current one", async () => {
+  const s = expired(), changed = JSON.stringify({ ...s.record, stage: "unknown" });
+  const seen = await review(s, { inside: async ({ lease, outcome, coordinator, verifier, generation }) => {
+    const old = outcome.resolution; store.set(KEY, changed); const fresh = await verifier.check(lease, { generation, deadline: null, dismissal: true }); let authority;
+    return [outcome.reason, fresh.reason, codeOf(() => { authority = coordinator.offerDismissal(lease, fresh.resolution); }), codeOf(() => coordinator.resolveDismissed(lease, authority, old))];
+  } });
+  assert.deepEqual(seen.result, ["EXPIRED_UNSEEN", "EXPIRED_UNSEEN", "ACCEPTED", "RESOLUTION"]); assert.equal(store.get(KEY), changed); seen.coordinator.dispose();
 });
 test("every outcome and reason code was produced", () => {
   assert.deepEqual([...seenOutcomes].sort(), [...fixture.outcomes].sort()); assert.deepEqual([...seenReasons].sort(), [...fixture.reasonCodes].sort());
