@@ -91,7 +91,18 @@ export const DISMISSAL_COPY = Object.freeze({
   region: "Dismiss pending record",
   dismissedRegion: "Dismissed record",
   dismissedCaption: "Transaction ID — dismissed by you",
-  priorNotice: "A prior operation is unresolved in this browser. Keep its ID. This page can check its status and, after it expires, let you dismiss it once you have checked the ID yourself. It cannot retry it.",
+  priorNotice: "A prior operation is unresolved in this browser. Keep its ID. This page can check its status and, after it expires, let you dismiss it once you have checked the ID yourself. Only the tab that signed it can send the same transaction again, until that tab reloads or its wallet disconnects or changes.",
+});
+/** W7 deliberate-retry copy for the panel and the retry's status lines: the offer, its note, and the checking, sending and ending texts. */
+export const RETRY_COPY = Object.freeze({
+  offer: "Send the same signed transaction again",
+  note: "This sends the exact transaction you already approved, with the same ID, once more. Your wallet is not asked to sign again and nothing new is built.",
+  checking: "Checking this transaction's status and fresh account, input and pool information before sending it again.",
+  sending: "Sending the same signed transaction again. Submission does not mean confirmation.",
+  easy1: "This account now delegates to EASY1, but this transaction was not confirmed when checked. Nothing was sent again. Keep the ID and check its status, or check it in your wallet or a chain explorer.",
+  expired: "Too little validity remains to send this signed transaction again. Nothing was sent again. Keep the ID and check its status, or check it in your wallet or a chain explorer.",
+  stopped: "The signed transaction was not sent again: a check failed or information changed. Keep the ID and check its status, or check it in your wallet or a chain explorer.",
+  unresolved: "This transaction's status is not settled, so it was not sent again. Check its status again later, or check it in your wallet or a chain explorer.",
 });
 /** The code itself when it is an own key of the kind's table; "__proto__", "constructor", "toString" and non-strings give null. */
 export function failureCode(kind: FailureKind, code: unknown): string | null {

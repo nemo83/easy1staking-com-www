@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { DelegationView, createDelegationController } from "@/lib/site/delegation/controller";
-import { DISMISSAL_COPY } from "@/lib/site/delegation/messages";
+import { DISMISSAL_COPY, RETRY_COPY } from "@/lib/site/delegation/messages";
 import styles from "./EditorialPages.module.css";
 
 type Controller = ReturnType<typeof createDelegationController>;
@@ -75,6 +75,10 @@ export function DelegatePanel() {
         </div>}
         {view.statusRunning && <p className="mt-4">Checking the chain for this transaction. This uses read-only chain data, never your wallet.</p>}
         {view.canCheckStatus && !busy && <button type="button" className="btn btn-primary mt-6" onClick={() => { void controller.current?.checkStatus(); }}>Check status</button>}
+        {view.canRetry && !busy && <>
+          <p className="mt-4">{RETRY_COPY.note}</p>
+          <button type="button" className="btn btn-primary mt-6 whitespace-normal" onClick={() => { void controller.current?.retry(); }}>{RETRY_COPY.offer}</button>
+        </>}
         {view.dismissal?.stage === "offered" && <button type="button" className="btn btn-primary mt-6" onClick={() => { if (view.dismissal) controller.current?.openDismissal(view.dismissal); }}>{DISMISSAL_COPY.offer}</button>}
         {view.dismissal && dialog && <div className="mt-6" aria-label={DISMISSAL_COPY.region}>
           <p>{DISMISSAL_COPY.disclosure}</p>

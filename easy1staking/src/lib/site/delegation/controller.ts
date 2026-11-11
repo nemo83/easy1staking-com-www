@@ -1,15 +1,15 @@
 import { createWalletSession, WalletSignatureError } from "./wallet-session";
 import { createDelegationCoordinator, CoordinationError, DELEGATION_POOL_ID } from "./coordination";
-import type { DelegationLease, DelegationIntent, DismissalAuthority, RecoveryState } from "./coordination";
+import type { DelegationLease, DelegationIntent, DismissalAuthority, RecoveryRecord, RecoveryState } from "./coordination";
 import { assessChainContext } from "./chain-context";
 import type { ChainAssessment } from "./chain-context";
 import { MAINNET_SOURCE } from "./blockfrost-reader";
-import { assembleSignedTransaction, validateBeforeSigning } from "./guard";
+import { assembleSignedTransaction, validateBeforeSigning, verifySignedTransaction } from "./guard";
 import { createRecoveryVerifier } from "./recovery-verifier";
 import type { AccountState, StatusOutcome } from "./recovery-verifier";
 import { GuardError } from "./types";
 import type { AcceptedTransaction, Review } from "./types";
-import { DISMISSAL_COPY, failureCode, failureMessage } from "./messages";
+import { DISMISSAL_COPY, RETRY_COPY, failureCode, failureMessage } from "./messages";
 import type { FailureKind, StopReason } from "./messages";
 
 const clock = Date.now, invoke = Reflect.apply;
@@ -43,6 +43,8 @@ export interface DelegationDismissed {
   readonly txId: string;
   readonly message: string;
 }
+/** Machine code of a W7 deliberate retry's ending; never rendered. */
+export type RetryReason = "SENT" | "UNKNOWN" | "STATUS" | "EASY1" | "EXPIRED" | "STOPPED" | "BUSY" | "CHANGED";
 export interface DelegationView {
   readonly phase: "disconnected" | "connecting" | "assessing" | "ready" | "building" | "review" | "signing" | "checking" | "submitting" | "submitted" | "unknown" | "already-EASY1" | "refused" |
     "confirmed" | "check-later" | "inconsistent" | "changed" | "other-pending" | "expired-unseen" | "dismissed";
@@ -67,6 +69,10 @@ export interface DelegationView {
   readonly failureReason: string | null;
   /** Set by Disconnect while a result or a cancelled operation stays on screen; cleared by the next Connect. */
   readonly walletDisconnected: boolean;
+  /** True only while this tab may deliberately send its retained signed transaction again (W7). */
+  readonly canRetry: boolean;
+  /** The last retry's ending, cleared when the next retry starts. Never rendered. */
+  readonly retryReason: RetryReason | null;
 }
 /** A flow veto; a source refusal carries only its owned code out of ready(). */
 class FlowFailure extends Error { constructor(readonly sourceCode: unknown = null) { super(); } }
@@ -101,6 +107,18 @@ interface Offer {
   used: boolean;
   work: StatusWork | null;
 }
+/** The signed transaction of an unknown first attempt in this tab, with the reviews it was checked against. Page memory only: never stored, logged or shown. */
+interface Retained {
+  readonly txId: string;
+  readonly issued: Review;
+  readonly original: Ready;
+  readonly last: Ready;
+  readonly signed: AcceptedTransaction;
+  readonly bytes: Uint8Array;
+  readonly record: RecoveryRecord;
+  readonly revision: number;
+}
+type RetryResult = { readonly reason: RetryReason; readonly kind?: FailureKind; readonly code?: unknown; readonly confirmed?: Extract<StatusOutcome, { status: "confirmed" }> };
 type Unseen = Extract<StatusOutcome, { readonly spentElsewhere: boolean }>;
 type StatusStep = { readonly kind: "confirmed"; readonly outcome: Extract<StatusOutcome, { status: "confirmed" }> } |
   { readonly kind: "continue" | "busy" | "inconsistent" | "changed" | "offered" | "spent" | "seen" };
@@ -124,6 +142,8 @@ export function createDelegationController(projectId: string) {
   let offer: Offer | null = null, dismissal: DelegationDismissal | null = null, dismissed: DelegationDismissed | null = null;
   // Page-lifetime latches, never stored: an ID once spent by its own ID, or once positively witnessed, is never offered for dismissal here.
   const spentIds = new Set<string>(), witnessedIds = new Set<string>();
+  // W7 deliberate retry: the retained bytes (dropped on every invalidating event) and the last retry's ending.
+  let retained: Retained | null = null, retryReason: RetryReason | null = null;
   const fail = (): never => { throw new FlowFailure(); };
   function recovery(): RecoveryState { return coordinator.getState(); }
   /** Counts a wallet call this page started (connect, an operation's recheck, a signature) until it settles; background refreshes are not counted. */
@@ -164,7 +184,8 @@ export function createDelegationController(projectId: string) {
       walletBrowseHref: browse ? "web+cardano://browse/v1?uri=" + encodeURIComponent(origin + "/pool") : null,
       statusRunning: status !== null, statusUntil: status?.deadline ?? null, confirmation: resolved !== null && resolved.txId === active ? resolved : null, statusReason,
       dismissal, dismissed: dismissed !== null && dismissed.txId === active ? dismissed : null,
-      canCheckStatus: !disposed && !status && !operation && prior.status === "pending" && prior.record !== null, failureReason, walletDisconnected });
+      canCheckStatus: !disposed && !status && !operation && prior.status === "pending" && prior.record !== null, failureReason, walletDisconnected,
+      canRetry: retryable(), retryReason });
   }
   function emit(): void { if (!disposed) for (const listener of listeners) { try { listener(); } catch { /* Display only. */ } } }
   function show(next: DelegationView["phase"], text: string): void { phase = next; message = text; emit(); }
@@ -184,6 +205,7 @@ export function createDelegationController(projectId: string) {
   function cancel(): void { halt(walletCallOpen() ? "cancel-open" : "cancel-idle"); }
   owner.subscribe(() => {
     const state = owner.getState();
+    if (retained && state.revision !== retained.revision) retained = null;
     if (operation && state.revision !== operation.revision) halt("changed");
     else if (!operation && state.phase === "failed") show("refused", "The wallet changed or became unavailable. Reconnect to assess again.");
     else emit();
@@ -192,6 +214,7 @@ export function createDelegationController(projectId: string) {
   const onStorage = () => {
     // Another tab's pending record for a different ID supersedes this page's last ID, and any confirmation it holds.
     const prior = recovery();
+    if (retained && (prior.status !== "pending" || prior.txId !== retained.txId)) retained = null;
     // A dismissal offer is withdrawn once its record is no longer pending under its ID; a same-ID pending update keeps it (Confirm checks the exact record).
     if (!disposed && offer && (prior.status !== "pending" || prior.txId !== offer.txId)) { withdraw(); show("changed", CHANGED); return; }
     if (!disposed && !operation && txId !== null && phase !== "other-pending" && prior.status === "pending" && prior.txId !== txId) { txId = prior.txId; show("other-pending", OTHER_PENDING); }
@@ -245,9 +268,9 @@ export function createDelegationController(projectId: string) {
     await tracked(owner.recheck()); current(op);
     return ready(await source(op, previous));
   }
-  function finalBarrier(op: Operation, lease: DelegationLease, intent: DelegationIntent, result: Ready, original: Ready,
+  function finalBarrier(op: Operation, authorize: () => void, result: Ready, original: Ready,
     issued: Review, signed: AcceptedTransaction, bytes: Uint8Array, deadlineAt: number): number {
-    coordinator.assertAttempt(lease, intent);
+    authorize();
     current(op);
     const state = observed(op), c = result.context, time = clock();
     if (time >= deadlineAt || time < deadlineAt - 30000) expire(op); // authentic-reply-deadline
@@ -266,27 +289,23 @@ export function createDelegationController(projectId: string) {
     current(op); // No display/provider callbacks or property lookup follows this barrier.
     return time;
   }
-  async function submit(op: Operation, lease: DelegationLease, issued: Review, result: Ready, original: Ready,
-    signed: AcceptedTransaction, deadlineAt: number): Promise<void> {
-    const bytes = new Uint8Array(signed.signedHex.match(/../g)!.map(b => parseInt(b, 16)));
+  /** The single outward submission, shared by the first attempt and the deliberate retry: the captured fetch, a 60 s deadline over the reply
+   * headers and every body read, and an authentic-reply check. The barrier runs immediately before the POST; this resolves only on an authentic reply. */
+  async function transmit(op: Operation, id: string, bytes: Uint8Array, barrier: () => number): Promise<void> {
     const transport = new AbortController();
     const options: RequestInit = { method: "POST", headers: { project_id: projectId, "content-type": "application/cbor", accept: "application/json" },
       body: bytes, credentials: "omit", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer", signal: transport.signal };
     const abort = () => transport.abort(); op.abort.signal.addEventListener("abort", abort, { once: true });
-    let timer: ReturnType<typeof setTimeout> | undefined, attempted = false;
-    const intent = coordinator.prepare(lease, { txId: issued.txId, invalidHereafterSlot: issued.invalidHereafter.toString(),
-      inputRefs: issued.inputRefs, createdAt: clock() });
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      show("submitting", "Sending the reviewed transaction once. Submission does not mean confirmation.");
-      coordinator.beginAttempt(lease, intent);
       const expired = new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => { transport.abort(); reject(new FlowFailure()); }, 60000);
         transport.signal.addEventListener("abort", () => reject(new FlowFailure()), { once: true });
       });
       // A veto may precede the first race; cleanup can still abort this promise.
       void expired.catch(() => {});
-      op.dispatchedAt = finalBarrier(op, lease, intent, result, original, issued, signed, bytes, deadlineAt);
-      op.txId = issued.txId; op.attempted = true; attempted = true;
+      op.dispatchedAt = barrier();
+      op.txId = id; op.attempted = true;
       const responsePromise = invoke(post, window, [MAINNET_SOURCE + "/tx/submit", options]) as Promise<Response>;
       const response = await Promise.race([responsePromise, expired]);
       current(op);
@@ -300,19 +319,36 @@ export function createDelegationController(projectId: string) {
         if (text.length + part.value.length > 256) { void reader!.cancel().catch(() => {}); fail(); }
         text += new TextDecoder("utf-8", { fatal: true }).decode(part.value);
       }
-      if (!/^"[0-9a-f]{64}"$/.test(text) || text.slice(1, -1) !== issued.txId) fail();
+      if (!/^"[0-9a-f]{64}"$/.test(text) || text.slice(1, -1) !== id) fail();
+    } finally { if (timer !== undefined) clearTimeout(timer); op.abort.signal.removeEventListener("abort", abort); transport.abort(); }
+  }
+  async function submit(op: Operation, lease: DelegationLease, issued: Review, result: Ready, original: Ready,
+    signed: AcceptedTransaction, deadlineAt: number): Promise<void> {
+    const bytes = new Uint8Array(signed.signedHex.match(/../g)!.map(b => parseInt(b, 16)));
+    let replied = false;
+    const intent = coordinator.prepare(lease, { txId: issued.txId, invalidHereafterSlot: issued.invalidHereafter.toString(),
+      inputRefs: issued.inputRefs, createdAt: clock() });
+    try {
+      show("submitting", "Sending the reviewed transaction once. Submission does not mean confirmation.");
+      coordinator.beginAttempt(lease, intent);
+      await transmit(op, issued.txId, bytes, () => finalBarrier(op, () => coordinator.assertAttempt(lease, intent), result, original, issued, signed, bytes, deadlineAt));
+      replied = true;
       coordinator.markOutcome(lease, intent, "submitted");
       txId = issued.txId; show("submitted", "Submitted to Blockfrost. Chain confirmation is still pending. Keep the ID for independent checking.");
     } catch {
-      if (attempted) {
-        try { coordinator.markOutcome(lease, intent, "unknown"); } catch { /* The private ID survives lost storage or lease. */ }
+      if (op.attempted) {
+        let written: RecoveryRecord | null = null;
+        try { written = coordinator.markOutcome(lease, intent, "unknown"); } catch { /* The private ID survives lost storage or lease. */ }
+        // W7: only an unknown outcome this tab recorded keeps a private copy of the exact bytes for a deliberate retry.
+        if (!replied && written !== null && !disposed && owner.getState().revision === op.revision)
+          retained = { txId: issued.txId, issued, original, last: result, signed, bytes: new Uint8Array(bytes), record: written, revision: op.revision };
         txId = issued.txId; show("unknown", "Submission outcome is unknown. Keep this transaction ID; do not build or send another delegation.");
       } else {
         // Only this process can prove that no outward call happened. Preserve any uncertain record.
         try { coordinator.cancelUnattempted(lease, intent); } catch { /* A conservative retained intent blocks another operation. */ }
         throw new FlowFailure();
       }
-    } finally { if (timer !== undefined) clearTimeout(timer); op.abort.signal.removeEventListener("abort", abort); transport.abort(); }
+    }
   }
   async function prepare(): Promise<void> {
     if (disposed || operation || phase !== "ready") return;
@@ -438,6 +474,7 @@ export function createDelegationController(projectId: string) {
     else show("check-later", APOLOGY);
   }
   function confirmedResult(id: string, o: Extract<StatusOutcome, { status: "confirmed" }>): void {
+    if (retained?.txId === id) retained = null;
     const text = `Your delegation transaction was confirmed on chain in block ${o.blockHeight} (${o.confirmations} confirmation${o.confirmations === "1" ? "" : "s"}).`;
     resolved = Object.freeze({ txId: id, message: text, blockHeight: o.blockHeight, confirmations: o.confirmations, credential: o.credential, account: o.account });
     show("confirmed", text);
@@ -487,6 +524,7 @@ export function createDelegationController(projectId: string) {
     status = null; offer = null; dismissal = null; coordinator.endStatus(work.generation); txId = work.txId;
     if (work.resolved) { statusReason = "confirmed:CONFIRMED"; confirmedResult(work.txId, work.resolved); }
     else if (removed) {
+      if (retained?.txId === work.txId) retained = null;
       const text = failureMessage("recovery", "dismissed");
       statusReason = "dismissed:USER"; dismissed = Object.freeze({ txId: work.txId, message: text }); show("dismissed", text);
     } else if (code === "LOST" || code === "PENDING" || code === "RECORD") { statusReason = "dismiss:" + code; show("changed", CHANGED); }
@@ -495,12 +533,96 @@ export function createDelegationController(projectId: string) {
     else if (witnessedIds.has(work.txId)) show("check-later", failureMessage("recovery", "seen-unverified"));
     else show("check-later", failureMessage("recovery", "dismiss-kept"));
   }
+  /** The one W7 retry predicate, shared by the view's offer and retry(). */
+  function retryable(): boolean {
+    if (disposed || retained === null || operation !== null || status !== null || offer !== null || (phase !== "unknown" && phase !== "check-later")) return false;
+    const prior = recovery(), state = owner.getState();
+    return prior.status === "pending" && prior.txId === retained.txId && state.phase === "observed" && state.revision === retained.revision &&
+      !spentIds.has(retained.txId) && !witnessedIds.has(retained.txId);
+  }
+  /** The retry's authority: an active lease whose stored record is exactly the one this page last wrote. */
+  function authority(lease: DelegationLease, kept: Retained): void {
+    coordinator.assertActive(lease);
+    if (JSON.stringify(coordinator.recoveryRecord(lease)) !== JSON.stringify(kept.record)) throw new CoordinationError("RECORD");
+  }
+  /** Any retry error as an owned ending: after the attempt always UNKNOWN; then BUSY, a changed record, a latched stop, the owned code. */
+  function retryEnding(op: Operation, error: unknown): RetryResult {
+    if (op.attempted) return { reason: "UNKNOWN" };
+    let kind: FailureKind = "stop", code: unknown = null;
+    try {
+      const reported = error instanceof CoordinationError ? error.code : null;
+      if (reported === "BUSY") return { reason: "BUSY", kind: "coordination", code: reported };
+      if (reported === "LOST" || reported === "PENDING" || reported === "RECORD") return { reason: "CHANGED" };
+      if (op.stop !== null) return { reason: "STOPPED", kind: "stop", code: op.stop };
+      if (reported !== null && reported !== "CANCELLED") { kind = "coordination"; code = reported; }
+      else if (error instanceof GuardError) { kind = "guard"; code = error.code; }
+      else if (error instanceof FlowFailure && error.sourceCode !== null) { kind = "source"; code = error.sourceCode; }
+    } catch { kind = "stop"; code = null; }
+    return { reason: "STOPPED", kind, code };
+  }
+  /** One presentation step after a retry settles. A stop that halt() latched keeps halt's phase and text. */
+  function present(op: Operation, kept: Retained, result: RetryResult, reconciled: string | null): void {
+    if (reconciled !== null) statusReason = reconciled;
+    retryReason = result.reason; txId = kept.txId;
+    const halted = op.stop === "cancel-open" || op.stop === "cancel-idle" || op.stop === "changed";
+    if (result.reason === "SENT") { retained = null; show("submitted", "Submitted to Blockfrost. Chain confirmation is still pending. Keep the ID for independent checking."); }
+    else if (result.reason === "UNKNOWN") { if (halted) emit(); else show("unknown", "Submission outcome is unknown. Keep this transaction ID; do not build or send another delegation."); }
+    else if (result.reason === "STATUS" && result.confirmed) confirmedResult(kept.txId, result.confirmed);
+    else if (result.reason === "STATUS") { if (spentIds.has(kept.txId) || witnessedIds.has(kept.txId)) retained = null; show("check-later", RETRY_COPY.unresolved); }
+    else if (result.reason === "EASY1") { retained = null; show("check-later", RETRY_COPY.easy1); }
+    else if (result.reason === "EXPIRED") { retained = null; show("check-later", RETRY_COPY.expired); }
+    else if (result.reason === "BUSY") show("check-later", failure("coordination", "BUSY"));
+    else if (result.reason === "CHANGED") { retained = null; show("changed", CHANGED); }
+    else if (halted) emit();
+    else { failure(result.kind ?? "stop", result.code ?? null); show("check-later", RETRY_COPY.stopped); }
+  }
+  /** W7 deliberate retry: the identical signed bytes for the same ID, once per click, under the origin lock and against the exact record
+   * this page wrote. It never rebuilds, re-signs, writes the record or runs automatically. */
+  async function retry(): Promise<void> {
+    if (!retryable()) return;
+    const kept = retained!;
+    const clickAt = clock(), retryDeadline = clickAt + 30000;
+    const op: Operation = { abort: new AbortController(), revision: kept.revision, approval: null, attempted: false, txId: null, dispatchedAt: null, stop: null };
+    operation = op; retryReason = null; failureReason = null;
+    show("checking", RETRY_COPY.checking);
+    // A fresh budget from this click; it never cuts an attempt already dispatched.
+    const timer = setTimeout(() => { if (op.attempted) return; if (op.stop === null) op.stop = "expired"; op.abort.abort(); }, Math.max(0, retryDeadline - clock()));
+    let generation: number | null = null, reconciled: string | null = null, result: RetryResult;
+    try {
+      const g = generation = coordinator.beginStatus();
+      result = await coordinator.withRecoveryOperation(kept.txId, async (lease): Promise<RetryResult> => {
+        try {
+          authority(lease, kept);
+          const found = await verifier.check(lease, { generation: g, deadline: retryDeadline, signal: op.abort.signal, dismissal: false });
+          latch(found); current(op);
+          reconciled = found.status + ":" + found.reason;
+          if (found.status === "confirmed") { coordinator.resolveConfirmed(lease, found.resolution); return { reason: "STATUS", confirmed: found }; }
+          if (found.status !== "not-found" || found.reason !== "NOT_FOUND") return { reason: "STATUS" };
+          await tracked(owner.recheck()); current(op);
+          const unbound = await source(op);
+          if (unbound.status === "already-EASY1") return { reason: "EASY1" };
+          if (unbound.status !== "ready") return { reason: "STOPPED", kind: "source", code: unbound.status === "refused" ? unbound.code : null };
+          const after = await source(op, kept.last);
+          if (after.status !== "ready") return { reason: "STOPPED", kind: "source", code: after.status === "refused" ? after.code : null };
+          if (kept.issued.invalidHereafter - after.context.currentTip.slot < BigInt(120)) return { reason: "EXPIRED" };
+          const verified = await verifySignedTransaction(kept.signed.signedHex, kept.issued, { ...after.context, now: clock() }); current(op);
+          show("submitting", RETRY_COPY.sending);
+          await transmit(op, kept.txId, kept.bytes, () => { authority(lease, kept); return finalBarrier(op, () => authority(lease, kept), after, kept.original, kept.issued, verified, kept.bytes, retryDeadline); });
+          return { reason: "SENT" };
+        } catch (error) { return retryEnding(op, error); }
+      }, { signal: op.abort.signal });
+    } catch (error) { result = retryEnding(op, error); }
+    finally { clearTimeout(timer); if (operation === op) operation = null; if (generation !== null) coordinator.endStatus(generation); }
+    if (!disposed) present(op, kept, result, reconciled);
+    if (op.attempted && op.dispatchedAt !== null) startStatus(kept.txId, op.dispatchedAt + 180000);
+  }
   function approve(display: DelegationReview): void {
     const op = operation;
     if (!op || phase !== "review" || op.approval?.view !== display || review !== display || op.abort.signal.aborted) return;
     const decision = op.approval; op.approval = null; phase = "checking"; decision.decide(true);
   }
   function disconnect(): void {
+    retained = null;
     // A connect or operation in flight is cancelled as by Cancel here; an idle transaction result keeps its phase and message.
     const inFlight = operation !== null || connecting !== null, kept = inFlight || RESULT_PHASES.includes(phase);
     if (inFlight) cancel(); else { serial++; review = null; }
@@ -508,9 +630,9 @@ export function createDelegationController(projectId: string) {
     if (kept) { walletDisconnected = true; emit(); } else { walletDisconnected = false; show("disconnected", "Choose a wallet to connect."); }
   }
   function dispose(): void {
-    if (disposed) return; cancel(); disposed = true; withdraw(); status?.abort.abort(); status = null;
+    if (disposed) return; cancel(); disposed = true; retained = null; withdraw(); status?.abort.abort(); status = null;
     window.removeEventListener("storage", onStorage); owner.dispose(); coordinator.dispose(); listeners.clear();
   }
-  return Object.freeze({ getView: view, connect, prepare, approve, cancel, disconnect, dispose, checkStatus, openDismissal, closeDismissal, confirmDismissal,
+  return Object.freeze({ getView: view, connect, prepare, approve, cancel, disconnect, dispose, checkStatus, openDismissal, closeDismissal, confirmDismissal, retry,
     subscribe(listener: () => void): () => void { listeners.add(listener); return () => { listeners.delete(listener); }; } });
 }

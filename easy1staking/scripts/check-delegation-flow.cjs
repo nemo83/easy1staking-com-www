@@ -147,6 +147,8 @@ async function main(){
      try{state.submitDispatches=Number(nativeGet.call(sessionStorage,"synthetic:submitDispatches")||0);}catch{}
      if(mode==="locks-unavailable")Object.defineProperty(navigator,'locks',{value:undefined});
      if(mode==="final-barrier-expiry"){const verify=crypto.subtle.verify.bind(crypto.subtle);state.verifyJumps=0;state.verifyJumpMs=0;crypto.subtle.verify=async(...args)=>{const result=await verify(...args);if(state.replyAt!==null){state.clockDeltaMs+=1500;state.verifyJumps++;state.verifyJumpMs+=1500;}return result;};}
+     // Retry in-flight cases: one crypto verify continuation after the harness sets holdVerify waits for releaseVerify (browser test input).
+     if(mode.startsWith("retry-inflight-")){const verify=crypto.subtle.verify.bind(crypto.subtle);crypto.subtle.verify=async(...args)=>{if(state.holdVerify){state.holdVerify=false;state.verifyHeldAt=Date.now();await new Promise(r=>{state.releaseVerify=r;});state.verifyReleasedAt=Date.now();}return verify(...args);};}
      if(mode==="same-account-postreply-focus"){const verify=crypto.subtle.verify.bind(crypto.subtle);crypto.subtle.verify=async(...args)=>{state.verifying=true;const result=await verify(...args);await new Promise(r=>setTimeout(r,300));return result;};}
      Storage.prototype.setItem=function(key,value){
       if(mode==="storage-unavailable"||mode==="storage-prepare-fail"&&String(value).includes('"stage":"prepared"'))throw Error("SYNTHETIC_PRIVATE_CANARY");
@@ -223,6 +225,20 @@ async function main(){
       if(name==="confirm-resumed-after-deadline"||name.startsWith("dismiss-")&&name!=="dismiss-poll-after-expiry")await routeStep(async()=>{record.clockJump=await page.evaluate(()=>{const before=Date.now();window.synthetic.clockDeltaMs+=181000;return{ms:181000,before,after:Date.now()};});});
       if(name==="cancel-transmission"){await routeStep(()=>page.getByRole("button",{name:"Cancel here"}).click());await new Promise(r=>setTimeout(r,100));}
       if(name==="storage-after-transmission"){await routeStep(async()=>{const other=await context.newPage();await other.goto(origin+"/pool");await other.evaluate(()=>{localStorage.removeItem("easy1staking:delegation-recovery");});await other.close();});await page.waitForTimeout(100);}
+      // Retry cases: the first POST resumes past the poll budget (+181 s) and answers 500; a later POST is a deliberate retry of the same bytes.
+      if(name.startsWith("retry-")){
+       const n=record.posts.length,bad=()=>route.fulfill({status:500,contentType:"application/json",body:'{"error":"SYNTHETIC_PRIVATE_CANARY"}'}),jump=()=>routeStep(async()=>{record.clockJumps=(record.clockJumps||[]).concat([await page.evaluate(()=>{const before=Date.now();window.synthetic.clockDeltaMs+=181000;return{ms:181000,before,after:Date.now()};})]);});
+       // React commits the emits of one task together, so a transient status line may never reach the DOM sampler: a test listener on the
+       // controller (a pure getView read) records every emitted phase and message from the first POST on.
+       if(n===1){st.samplesAtFirstPost=record.layout.samples.length;await routeStep(()=>page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve){window.syntheticViews=[];c.subscribe(()=>{try{const v=c.getView();window.syntheticViews.push({phase:v.phase,message:v.message});}catch{}});return;}state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');}));await jump();return bad();}
+       const at=Date.now(),attemptClock=await page.evaluate(()=>window.synthetic.attemptClock).catch(()=>null);record.retryPosts=(record.retryPosts||[]).concat([{n,at,attemptClock}]);
+       if(name==="retry-same-bytes")await routeStep(async()=>{record.lockAtPost=await page.evaluate(()=>navigator.locks.query());});
+       // A held POST whose page gave up records its late fulfilment instead of throwing.
+       if(name==="retry-post-timeout"||name==="retry-post-unknown-disconnect"){st.postHeldAt=Date.now();await new Promise(r=>setTimeout(r,name==="retry-post-timeout"?61000:3000));st.postHeldUntil=Date.now();try{await bad();}catch(error){st.lateFulfil=(st.lateFulfil||[]).concat([String(error?.message??error).split("\n")[0]]);}return;}
+       await jump();
+       if(name==="retry-again-after-unknown"&&n===2)return bad();
+       return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(expected.txId),headers:{"access-control-allow-origin":"*"}});
+      }
       if(name==="submit-bad-status")return route.fulfill({status:500,contentType:"application/json",body:'{"error":"SYNTHETIC_PRIVATE_CANARY"}'});
       if(name==="submit-missing-body")return route.fulfill({status:200,contentType:"application/json",body:""});
       if(name==="submit-malformed")return route.fulfill({status:200,contentType:"application/json",body:'{"raw":"SYNTHETIC_PRIVATE_CANARY"}'});
@@ -237,6 +253,16 @@ async function main(){
       if(name==="dispose-postreply")await routeStep(()=>page.goto(origin+'/'));else await routeStep(()=>page.getByRole('button',{name:name==="cancel-postreply"?'Cancel here':'Disconnect wallet'}).click());
      }
      if(["post-reply-deadline","post-reply-deadline-hidden"].includes(name)&&p==="/pools/"+chain.poolHash+"/metadata"&&await page.evaluate(()=>window.synthetic.replyAt!==null))await new Promise(r=>setTimeout(r,8000));
+     // Retry reads after a click are labelled in order (blocks#n, epochs#n, lookup#n); a case may hold one label or pin the tip it serves.
+     if(name.startsWith("retry-")&&st.rw&&st.rw.active){
+      const w=st.rw,label=p==="/blocks/latest"?"blocks#"+(++w.blocks):p==="/epochs/latest"?"epochs#"+(++w.epochs):p==="/txs/"+golden.txId?"lookup#"+(++w.lookups):null;entry.retryLabel=label;
+      if(label&&w.holds[label]){
+       const hold={label,at:Date.now()};w.held.push(hold);await new Promise(r=>setTimeout(r,w.holds[label]));hold.until=Date.now();
+       // A held read can outlive its request (abort, dispose, navigation): its late fulfilment is recorded, never thrown from the route handler.
+       const raw=route,late=error=>{st.lateFulfil=(st.lateFulfil||[]).concat([String(error?.message??error).split("\n")[0]]);};route={fulfill:o=>raw.fulfill(o).catch(late),abort:e=>raw.abort(e).catch(late)};
+      }
+      if(label&&label===w.pinLabel){await routeStep(()=>page.evaluate(t=>{window.synthetic.clockDeltaMs+=t-Date.now();},w.pinClock));st.pinned=w.pinTip;w.pinnedAt=Date.now();}
+     }
      if(statusPath(p)){
       if(p==="/txs/"+golden.txId&&!st.inclusion&&st.lookups+1===(plan.notFound??-1)+1){
        if(plan.disconnectOnFound)await routeStep(()=>page.getByRole("button",{name:"Disconnect wallet"}).click());
@@ -363,6 +389,11 @@ async function main(){
      }
     }else if(name.startsWith("submit-")||name==="cancel-transmission"||name==="storage-after-transmission"){
      await page.getByText("Submission outcome is unknown.",{exact:false}).waitFor({timeout:65000});assert.equal(record.posts.length,1,"ONE_POSSIBLE_TRANSMISSION");const text=await page.locator('#delegate').innerText();assert(text.includes(record.signatures[0].txId),"UNKNOWN_RETAINS_DERIVED_ID");assert(!text.includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR");await page.waitForTimeout(name==="submit-timeout"?1000:200);assert.equal(record.posts.length,1,"NO_AUTOMATIC_RETRY");assert.equal(await page.evaluate(()=>window.synthetic.submitDispatches),1,"ONE_POSSIBLE_DISPATCH");record.unknownRetained=true;
+     if(name==="submit-bad-status"){
+      // The automatic poll after an unknown outcome is running: no retry is offered while it runs.
+      let v=await currentView();for(let i=0;i<30&&!v.statusRunning;i++){await page.waitForTimeout(100);v=await currentView();}record.pollView={statusRunning:v.statusRunning,canRetry:v.canRetry??null};
+      assert(v.statusRunning&&await page.getByRole("button",{name:fixture.retryCopy.offer,exact:true}).count()===0,"NO_RETRY_OFFER_DURING_POLL");
+     }
     }else if(fixture.statusPlans[name]){
      // Status cases: identical registered submission, then read-only status work. Each waits on a terminal state or a fixed real-time observation.
      const apology="Sorry, we couldn't confirm your delegation yet. Confirmation usually takes about 20 seconds but can take longer. Please check again here in a few minutes, or check later in your wallet.";
@@ -440,6 +471,7 @@ async function main(){
       assert.equal(record.http.filter(x=>x.method==="GET"&&x.at>postAt&&(x.path.startsWith("/txs/")||x.path.startsWith("/blocks/")||x.path.startsWith("/accounts/"))).length,0,"ZERO_STATUS_READS_AFTER_RESUME");
       assert.deepEqual(await walletAt(),record.walletAtPost,"ZERO_WALLET_EFFECTS_AFTER_POST");
       assert.equal(await page.getByRole("button",{name:fixture.dismissalCopy.offer}).count(),0,"NO_DISMISS_OFFER");
+      assert.equal(await page.getByRole("button",{name:fixture.retryCopy.offer,exact:true}).count(),0,"NO_RETRY_AFTER_SUBMITTED");
      }else if(name==="confirm-then-disconnect"){
       await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");record.statusCutoff=Date.now();assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
       await page.getByRole("button",{name:"Disconnect wallet"}).click();await page.waitForTimeout(300);
@@ -718,6 +750,169 @@ async function main(){
        assert.equal(await statusText(),R.seenUnverified,"DISMISS_STATUS_TEXT");assert.equal(await offerCount(),0,"NO_DISMISS_OFFER");await retained("RECORD_RETAINED_AFTER_SEEN");
       }else throw Error("UNHANDLED_DISMISS_CASE "+name);
       if(record.statusCutoff===undefined)noBuild(record.layout.samples.length);
+     }else if(name.startsWith("retry-")){
+      // W7 deliberate retry of identical signed bytes. Common path: the first POST answered 500 after the page clock moved +181 s, so the
+      // unknown text and then the apology show with zero status reads. RETRY_OFFERED is the first slice-dependent assertion. After a click
+      // the exact retryReason is asserted first, then failureReason and statusReason where named, then the exact status line.
+      const rc=fixture.retryCopy,TTL=baseSlot+600n,slotTime=n=>baseTime+Number(n-baseSlot)*1000;
+      const unknownText="Submission outcome is unknown. Keep this transaction ID; do not build or send another delegation.",haltUnknown="Submission outcome is unknown. Keep this transaction ID and check from this browser.";
+      const submittedText="Submitted to Blockfrost. Chain confirmation is still pending. Keep the ID for independent checking.",busyText="Another delegation operation is active in this browser.";
+      const tipAt=n=>({slot:Number(n),epoch:664,hash:n===baseSlot?chain.tipHash:id(Number(n)),height:Number(n-100000000n),time:slotTime(n)/1000});
+      const clockTo=target=>page.evaluate(t=>{window.synthetic.clockDeltaMs+=t-Date.now();},target);
+      const offerCount=()=>page.getByRole("button",{name:rc.offer,exact:true}).count(),storageKeys=()=>page.evaluate(()=>({local:Object.keys(localStorage).sort(),session:Object.keys(sessionStorage).sort()}));
+      const reads=after=>record.http.filter(x=>x.at>after),slotOf=clock=>Number(baseSlot)+Math.floor((clock-baseTime)/1000);
+      const testController=()=>page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve){window.testController=c;return;}state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');});
+      record.retry={clicks:[]};
+      await page.getByText(apology,{exact:true}).waitFor({timeout:20000});await page.waitForTimeout(300);
+      const emitted=()=>page.evaluate(()=>window.syntheticViews||[]).catch(()=>[]);
+      const common={sampled:[...new Set(record.layout.samples.slice(st.samplesAtFirstPost).map(x=>x.status))],emitted:await emitted(),text:await statusText(),statusReads:statusReads(postAt),view:await viewOf()};
+      const firstUnknown=common.emitted.findIndex(x=>x.message===unknownText),lastApology=common.emitted.map(x=>x.message).lastIndexOf(apology);
+      record.retry.before={sampled:common.sampled,emitted:common.emitted.map(x=>x.phase+": "+x.message.slice(0,40)),text:common.text,statusReads:common.statusReads,phase:common.view.phase,statusRunning:common.view.statusRunning,canCheckStatus:common.view.canCheckStatus,recovery:common.view.recovery.status,canRetry:common.view.canRetry??null};
+      assert(firstUnknown>=0&&lastApology>firstUnknown&&common.text===apology&&common.statusReads===0,"COMMON_UNKNOWN_THEN_APOLOGY");
+      assert(await offerCount()===1&&await page.getByText(rc.note,{exact:true}).count()===1,"RETRY_OFFERED");
+      const R0=await stored(),keys0=await storageKeys();record.retry.R0=R0;record.retry.keys0=keys0;
+      // Reads after a click are labelled for holds and pins; the cutoff of the read-only status check is the first click.
+      const watch=(cfg={})=>{if(record.statusCutoff===undefined)record.statusCutoff=Date.now();st.rw={active:true,at:Date.now(),blocks:0,epochs:0,lookups:0,holds:cfg.holds||{},held:[],pinLabel:cfg.pinLabel??null,pinTip:cfg.pinTip??null,pinClock:cfg.pinClock??null};return st.rw.at;};
+      async function settle(at,ms=60000){let v=await viewOf(),seenAt=null;while(v.retryReason===null&&Date.now()-at<ms){await page.waitForTimeout(100);v=await viewOf();}if(v.retryReason!==null)seenAt=Date.now();await page.waitForTimeout(500);v=await viewOf();
+       const c={at,seenAt,retryReason:v.retryReason,failureReason:v.failureReason,statusReason:v.statusReason,phase:v.phase,text:await statusText(),reads:reads(at).map(x=>({path:x.path,at:x.at,label:x.retryLabel??null,slot:x.slot??null})),held:st.rw?.held??[],posts:record.posts.length};
+       if(st.rw)st.rw.active=false;record.retry.clicks.push(c);record.retryReason=v.retryReason;record.failureReason=v.failureReason;record.statusReason=v.statusReason;return{v,c};}
+      async function click(cfg,ms){const at=watch(cfg);await page.getByRole("button",{name:rc.offer,exact:true}).click();return settle(at,ms);}
+      async function finish(o={}){
+       if(record.statusCutoff===undefined)record.statusCutoff=Date.now();
+       const phases=record.layout.samples.slice(st.samplesAtFirstPost).map(x=>x.phase);record.retry.phases=[...new Set(phases)];
+       assert.equal(record.signatures.length,1,"RETRY_NO_RESIGN");if(!o.reloaded)assert.equal(await page.evaluate(()=>window.synthetic.signCalls),1,"RETRY_NO_RESIGN");
+       assert(!phases.some(p=>["building","review","signing"].includes(p)),"RETRY_NO_REBUILD");
+       if(!o.recordRemoved)assert.equal(await stored(),R0,"RECORD_UNCHANGED_BY_RETRY");
+       const keys=await storageKeys();record.retry.keys=keys;assert(keys.local.every(k=>keys0.local.includes(k))&&keys.session.every(k=>k.startsWith("synthetic:")),"NOTHING_NEW_STORED");
+       assert(record.posts.every(x=>x.hex===record.posts[0].hex),"RETRY_IDENTICAL_BYTES");
+      }
+      async function afterDrop(){await testController();const at=Date.now();await page.evaluate(()=>window.testController.retry());await page.waitForTimeout(3000);const v=await viewOf();
+       record.retry.afterDrop={reads:reads(at).length,posts:record.posts.length,retryReason:v.retryReason};assert(record.retry.afterDrop.reads===0&&record.posts.length===1&&v.retryReason===null,"RETRY_CALL_AFTER_DROP_NO_EFFECT");}
+      const reasons=(v,reason,failure,status)=>{assert.equal(v.retryReason,reason,"RETRY_REASON");if(failure!==undefined)assert.equal(v.failureReason,failure,"RETRY_FAILURE_REASON");if(status!==undefined)assert.equal(v.statusReason,status,"RETRY_STATUS_REASON");};
+      if(name==="retry-same-bytes"){
+       await page.waitForTimeout(3000);assert.equal(record.posts.length,1,"NO_AUTOMATIC_RETRY_BEFORE_CLICK");const i0=(await emitted()).length;
+       const {v,c}=await click();reasons(v,"SENT",null,"not-found:NOT_FOUND");
+       assert(record.lockAtPost&&record.lockAtPost.held.length===1,"RETRY_LOCK_HELD_AT_POST");
+       const after=await emitted();record.retry.emittedAfterClick=after.slice(i0).map(x=>x.phase+": "+x.message.slice(0,40));assert(after.slice(i0).some(x=>x.phase==="submitted"&&x.message===submittedText),"RETRY_SUBMITTED_SAMPLED");
+       const lookup=c.reads.findIndex(x=>x.path==="/txs/"+golden.txId),acct=c.reads.findIndex(x=>x.path==="/accounts/"+account);assert(lookup>=0&&acct>lookup,"RETRY_STATUS_BEFORE_ASSESSMENT");
+       await page.getByText(apology,{exact:true}).waitFor({timeout:15000});assert.equal(await offerCount(),0,"NO_RETRY_AFTER_SENT");await finish();
+      }else if(name==="retry-double-click"){
+       await testController();const at=watch();await page.evaluate(async()=>{const c=window.testController;await Promise.all([c.retry(),c.retry()]);});
+       const {v,c}=await settle(at);reasons(v,"SENT");assert.equal(c.reads.filter(x=>x.path==="/txs/"+golden.txId).length,1,"RETRY_SINGLE_FLIGHT");assert.deepEqual(record.errors,[],"NO_PAGE_ERROR");await finish();
+      }else if(name==="retry-busy"){
+       const second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
+       await second.evaluate(()=>{window.held=navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},()=>new Promise(r=>{window.releaseHeld=r;}));});
+       await second.waitForFunction(()=>typeof window.releaseHeld==="function",{},{timeout:15000});await page.bringToFront();
+       const {v,c}=await click();reasons(v,"BUSY","coordination:BUSY");assert.equal(c.text,busyText,"RETRY_TEXT");assert.equal(c.reads.length,0,"RETRY_BUSY_NO_READS");
+       await second.evaluate(()=>window.releaseHeld());await second.close();await page.bringToFront();await page.waitForTimeout(500);assert.equal(await offerCount(),1,"RETRY_OFFERED_AGAIN");await finish();
+      }else if(name==="retry-record-changed"){
+       // The other tab is open before the click; it removes the record while one prior-bound read (its first /epochs/latest) is held 3 s.
+       const second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();await page.bringToFront();
+       const pending=click({holds:{"epochs#3":3000}});await until(()=>st.rw&&st.rw.held.length>0,30000,"PRIOR_BOUND_READ_HELD");
+       await second.evaluate(()=>{localStorage.removeItem("easy1staking:delegation-recovery");});record.retry.removedAt=Date.now();await second.close();
+       const {v,c}=await pending;reasons(v,"CHANGED");assert.equal(c.text,changedText,"RETRY_TEXT");assert(record.retry.removedAt<c.held[0].until,"REMOVED_DURING_HOLD");
+       assert.equal(await stored(),null,"RECORD_NOT_HEALED");assert.equal(await offerCount(),0,"NO_RETRY_BUTTON");await finish({recordRemoved:true});
+      }else if(name==="retry-already-easy1"){
+       s.txs[chain.registrationId].delegation_count=1;
+       s.routes.set(`/txs/${chain.registrationId}/delegations`,[{cert_index:0,index:0,address:account,pool_id:chain.poolId,active_epoch:666}]);
+       s.routes.set("/accounts/"+account+"/delegations",[{...s.history(chain.registrationId),pool_id:chain.poolId,amount:"0",active_epoch:666}]);s.routes.get("/accounts/"+account).pool_id=chain.poolId;
+       const {v,c}=await click();reasons(v,"EASY1",undefined,"not-found:NOT_FOUND");assert.equal(c.text,rc.easy1,"RETRY_TEXT");
+       assert(!(await page.locator('#delegate').innerText()).includes("No transaction is needed."),"NO_ALREADY_EASY1_ACK");assert.equal(await offerCount(),0,"NO_RETRY_BUTTON");await finish();
+      }else if(name==="retry-confirmed-first"){
+       const {v}=await click();reasons(v,"STATUS");await confirmedState("This stake account currently delegates to EASY1.");
+       assert.equal((await viewOf()).statusReason,"confirmed:CONFIRMED","RETRY_STATUS_REASON");assert.equal(await offerCount(),0,"NO_RETRY_BUTTON");await finish({recordRemoved:true});
+      }else if(name==="retry-seen-pending"){
+       const {v,c}=await click();reasons(v,"STATUS",undefined,"pending:INDEX_LAG");assert.equal(c.text,rc.unresolved,"RETRY_TEXT");
+       assert.equal(await stored(),R0,"RECORD_UNCHANGED_BY_RETRY");assert.equal(await offerCount(),0,"NO_RETRY_AFTER_LATCH");await finish();
+      }else if(name==="retry-parameters-change"||name==="retry-pool-retiring"){
+       if(name==="retry-parameters-change")s.routes.get('/epochs/664/parameters').min_fee_a=45;else s.routes.set('/pools/retiring',[{pool_id:chain.poolId,epoch:666}]);
+       const {v,c}=await click();reasons(v,"STOPPED",name==="retry-parameters-change"?"source:COHERENCE":"source:INELIGIBLE");assert.equal(c.text,rc.stopped,"RETRY_TEXT");
+       if(name==="retry-parameters-change")assert.equal(await offerCount(),1,"RETRY_OFFERED_AGAIN");await finish();
+      }else if(["retry-presubmit-120","retry-presubmit-119","retry-wallclock-119"].includes(name)){
+       // Boundary clock method: between sessions the page clock moves to 2 s before the boundary tip's slot time (tips follow the clock); the
+       // prior-bound assessment's closing tip (its fifth /blocks/latest after the click) is served pinned at the boundary tip, and inside that
+       // read the page clock moves forward (at most 5 s) to the stated page time.
+       const [tip,offset]={"retry-presubmit-120":[TTL-120n,0],"retry-presubmit-119":[TTL-119n,0],"retry-wallclock-119":[TTL-121n,2500]}[name];
+       st.pinned=null;await clockTo(slotTime(tip)-2000);const before=await page.evaluate(()=>Date.now());
+       const {v,c}=await click({pinLabel:"blocks#5",pinTip:tipAt(tip),pinClock:slotTime(tip)+offset});st.pinned=null;
+       record.retry.boundary={tip:Number(tip),ttl:Number(TTL),offset,pageBefore:before,pinnedAt:st.rw.pinnedAt??null,tips:c.reads.filter(x=>x.path==="/blocks/latest").map(x=>[x.label,x.slot])};
+       if(name==="retry-presubmit-120"){
+        reasons(v,"SENT");const post=record.retryPosts?.[0],tips=record.http.filter(x=>x.path==="/blocks/latest"&&x.slot!==undefined&&post&&x.at<=post.at);
+        record.retry.boundary.attemptSlot=post?.attemptClock==null?null:slotOf(post.attemptClock);record.retry.boundary.lastTipBeforePost=tips.length?tips[tips.length-1].slot:null;
+        assert(record.retry.boundary.attemptSlot===Number(TTL-120n)&&record.retry.boundary.lastTipBeforePost===Number(TTL-120n),"RETRY_BOUNDARY_SLOT");
+       }else if(name==="retry-presubmit-119"){reasons(v,"EXPIRED",null);assert.equal(c.text,rc.expired,"RETRY_TEXT");assert.equal(await offerCount(),0,"NO_RETRY_BUTTON");}
+       else{reasons(v,"STOPPED","stop:expired");assert.equal(c.text,rc.stopped,"RETRY_TEXT");assert.equal(await offerCount(),1,"RETRY_OFFERED_AGAIN");}
+       await finish();
+      }else if(name==="retry-barrier-timeout"){
+       // Five provider reads held 8 s each in real time (reconciliation tip and lookup, the unbound opening tip, the prior-bound opening tip and
+       // first epoch): about 40 s in all, no read over 9 s, no session over 25 s. The fresh 30 s budget from the click expires first.
+       const holds={"blocks#1":8000,"lookup#1":8000,"blocks#2":8000,"blocks#4":8000,"epochs#3":8000};
+       const {v,c}=await click({holds},75000);record.retry.barrier={elapsedMs:c.seenAt===null?null:c.seenAt-c.at,held:c.held,posts:record.posts.length,retryPosts:record.retryPosts??[]};
+       reasons(v,"STOPPED","stop:expired");assert.equal(record.posts.length,1,"RETRY_BARRIER_NO_POST");
+       assert(c.seenAt!==null&&c.seenAt-c.at>=30000&&c.seenAt-c.at<40000,"RETRY_BARRIER_FROM_CLICK");
+       await until(()=>c.held.every(x=>x.until!==undefined),12000,"HOLDS_ENDED");await page.waitForTimeout(500);assert.equal(await offerCount(),1,"RETRY_OFFERED_AGAIN");
+       const second=await click();assert.equal(second.v.retryReason,"SENT","RETRY_FRESH_BARRIER_PER_CLICK");await finish();
+      }else if(name==="retry-post-timeout"){
+       const {v,c}=await click({},80000);reasons(v,"UNKNOWN");assert.equal(c.text,unknownText,"RETRY_TEXT");
+       await page.waitForTimeout(1000);assert.equal(record.posts.length,2,"NO_AUTOMATIC_RETRY");
+       let w=await viewOf();for(let i=0;i<30&&!w.statusRunning;i++){await page.waitForTimeout(100);w=await viewOf();}
+       assert(w.statusRunning&&await offerCount()===0,"NO_RETRY_OFFER_DURING_POLL");await finish();
+      }else if(name==="retry-reload"){
+       await page.evaluate(()=>sessionStorage.setItem("synthetic:throwingWallet","1"));const reloadAt=Date.now();await page.reload();await page.locator('#delegate [role="status"]').waitFor();
+       await page.getByRole("button",{name:"Check status"}).waitFor({timeout:15000});await page.waitForTimeout(3000);
+       assert.equal(await offerCount(),0,"NO_RETRY_AFTER_RELOAD");assert.equal(await page.getByRole("button",{name:"Check status"}).count(),1,"CHECK_STATUS_AFTER_RELOAD");
+       assert.equal(await page.getByText(fixture.dismissalCopy.priorNotice,{exact:true}).count(),1,"PRIOR_NOTICE_COPY");assert.equal(await stored(),R0,"RECORD_UNCHANGED_BY_RETRY");
+       assert.equal(reads(reloadAt).length,0,"NO_AUTOMATIC_READS_AFTER_RELOAD");assert.deepEqual(await walletAt(),{enableCalls:0,signCalls:0,walletReads:0,throwing:0},"ZERO_WALLET_CALLS_AFTER_RELOAD");
+       await finish({reloaded:true});
+      }else if(name==="retry-disconnect"){
+       await page.getByRole("button",{name:"Disconnect wallet"}).click();await page.waitForTimeout(300);
+       assert.equal(await statusText(),apology,"APOLOGY_KEPT");assert(await page.getByText(fixture.cancelCopies.disconnected,{exact:true}).isVisible(),"WALLET_DISCONNECTED_LINE");
+       assert.equal(await offerCount(),0,"NO_RETRY_AFTER_DISCONNECT");await afterDrop();await finish();
+      }else if(name==="retry-account-change"){
+       await page.evaluate(b=>{window.synthetic.address=window.synthetic.address.slice(0,58)+b;},B);
+       await page.evaluate(()=>{Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"visible"});document.dispatchEvent(new Event("visibilitychange"));window.dispatchEvent(new Event("focus"));});
+       await page.waitForFunction(b=>document.querySelector('#delegate')?.textContent.includes(b),B,{timeout:15000});await page.waitForTimeout(300);record.switchedCredential=B;
+       assert.equal(await offerCount(),0,"NO_RETRY_AFTER_ACCOUNT_CHANGE");await afterDrop();await finish();
+      }else if(name==="retry-dispose"){
+       const at=watch({holds:{"epochs#1":3000}});await page.getByRole("button",{name:rc.offer,exact:true}).click();await until(()=>st.rw.held.length>0,20000,"UNBOUND_READ_HELD");
+       await page.locator('a[aria-label="easy1staking home"]').first().click();const navAt=Date.now();await page.waitForURL(origin+"/",{timeout:20000});
+       await until(()=>st.rw.held[0].until!==undefined,10000,"HOLD_ENDED");await page.waitForTimeout(3000);
+       record.retry.dispose={clickAt:at,navAt,posts:record.posts.length,reads:reads(navAt+1000).map(x=>x.path),held:st.rw.held};
+       assert(record.posts.length===1&&record.retry.dispose.reads.length===0,"RETRY_DISPOSE_NO_POST");assert.equal(await stored(),R0,"RECORD_UNCHANGED_BY_RETRY");await finish();
+      }else if(name.startsWith("retry-inflight-")){
+       // Owner steer c51bf783: an admitted retry is invalidated while its signature re-verification (R8) is suspended; the late settlement changes nothing.
+       await page.evaluate(()=>{window.synthetic.holdVerify=true;});const at=watch();await page.getByRole("button",{name:rc.offer,exact:true}).click();
+       await page.waitForFunction(()=>window.synthetic.verifyHeldAt!==undefined,{},{timeout:30000,polling:50});
+       if(name==="retry-inflight-disconnect")await page.getByRole("button",{name:"Disconnect wallet"}).click();
+       else if(name==="retry-inflight-cancel")await page.getByRole("button",{name:"Cancel here"}).click();
+       else{await page.evaluate(b=>{window.synthetic.address=window.synthetic.address.slice(0,58)+b;},B);
+        await page.evaluate(()=>{Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"visible"});document.dispatchEvent(new Event("visibilitychange"));window.dispatchEvent(new Event("focus"));});
+        await page.waitForFunction(b=>document.querySelector('#delegate')?.textContent.includes(b),B,{timeout:15000});}
+       await page.waitForTimeout(500);record.retry.invalidatedAt=Date.now();await page.evaluate(()=>window.synthetic.releaseVerify());await page.waitForTimeout(2000);
+       const {v,c}=await settle(at,5000);const expect={"retry-inflight-disconnect":["stop:cancel-idle",fixture.cancelCopies.idle],"retry-inflight-cancel":["stop:cancel-idle",fixture.cancelCopies.idle],
+        "retry-inflight-account-change":["stop:changed","Delegation stopped before sending. Your wallet's account, network or funds changed. Reconnect to build a new review."]}[name];
+       record.retry.verify=await page.evaluate(()=>({heldAt:window.synthetic.verifyHeldAt,releasedAt:window.synthetic.verifyReleasedAt??null}));
+       reasons(v,"STOPPED",expect[0]);assert.equal(c.text,expect[1],"RETRY_TEXT");assert.equal(record.posts.length,1,"RETRY_INFLIGHT_NO_POST");
+       assert.equal(await stored(),R0,"RECORD_UNCHANGED_BY_RETRY");assert.equal(await offerCount(),0,"NO_RETRY_AFTER_LATE_SETTLEMENT");
+       if(name==="retry-inflight-disconnect")assert(await page.getByText(fixture.cancelCopies.disconnected,{exact:true}).isVisible(),"WALLET_DISCONNECTED_LINE");
+       await finish();
+      }else if(name==="retry-post-unknown-disconnect"){
+       // Owner steer c51bf783: Disconnect while the retry POST is held; the outcome settles UNKNOWN and the capability never comes back.
+       const at=watch();await page.getByRole("button",{name:rc.offer,exact:true}).click();await until(()=>st.postHeldAt!==undefined,30000,"RETRY_POST_HELD");
+       await page.getByRole("button",{name:"Disconnect wallet"}).click();const {v,c}=await settle(at,15000);
+       reasons(v,"UNKNOWN");assert.equal(c.text,haltUnknown,"RETRY_TEXT");assert.equal(await offerCount(),0,"NO_RETRY_AFTER_UNKNOWN_DISCONNECT");
+       // The page clock moves past the poll budget; once the apology shows, the retry stays unavailable and a direct call does nothing.
+       await until(()=>st.postHeldUntil!==undefined,10000,"POST_HOLD_ENDED");await clockTo(await page.evaluate(()=>Date.now())+181000);
+       await page.getByText(apology,{exact:true}).waitFor({timeout:20000});await page.waitForTimeout(500);assert.equal(await offerCount(),0,"NO_RETRY_RESURRECTION");
+       await testController();const callAt=Date.now();await page.evaluate(()=>window.testController.retry());await page.waitForTimeout(2000);
+       assert(record.posts.length===2&&reads(callAt).filter(x=>x.path!=="/blocks/latest"&&!x.path.startsWith("/txs/")).length===0&&(await viewOf()).retryReason==="UNKNOWN","RETRY_CALL_AFTER_DROP_NO_EFFECT");
+       assert.equal(await stored(),R0,"RECORD_UNCHANGED_BY_RETRY");await finish();
+      }else if(name==="retry-again-after-unknown"){
+       // Owner steer c51bf783: a retry ends UNKNOWN; after its status work ends the retry is offered again, and a second retry POSTs the same bytes.
+       const first=await click();reasons(first.v,"UNKNOWN");await page.getByText(apology,{exact:true}).waitFor({timeout:20000});await page.waitForTimeout(500);
+       assert(first.c.posts===2&&await offerCount()===1,"RETRY_OFFERED_AGAIN");const second=await click();reasons(second.v,"SENT");
+       assert(record.posts.length===3&&record.posts.every(x=>x.hex===record.posts[0].hex&&x.hex===record.signatures[0].signedHex),"RETRY_IDENTICAL_BYTES");await finish();
+      }else throw Error("UNHANDLED_RETRY_CASE "+name);
      }else if(name==="check-status-after-reload"){
       await until(()=>st.lookups>=1,15000,"FIRST_TICK");await page.waitForTimeout(1000);
       await page.evaluate(()=>sessionStorage.setItem("synthetic:throwingWallet","1"));const reloadAt=Date.now();await page.reload();await page.locator('#delegate [role="status"]').waitFor();
@@ -727,7 +922,7 @@ async function main(){
       const w=await walletAt();record.afterReload.wallet=w;assert.deepEqual(w,{enableCalls:0,signCalls:0,walletReads:0,throwing:0},"ZERO_WALLET_CALLS_AFTER_RELOAD");
      }
      // Cases that act after confirmation (disconnect, reconnect, refresh, a second operation) check status-work wallet effects at their cutoff.
-     if(!["check-status-after-reload","confirm-then-disconnect","confirm-then-refresh-failure","status-visible-refresh","confirm-then-second-operation","dismiss-expired","dismiss-spent-elsewhere","dismiss-then-already-easy1","dismiss-reload"].includes(name))assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+     if(!["check-status-after-reload","confirm-then-disconnect","confirm-then-refresh-failure","status-visible-refresh","confirm-then-second-operation","dismiss-expired","dismiss-spent-elsewhere","dismiss-then-already-easy1","dismiss-reload"].includes(name)&&!name.startsWith("retry-"))assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
      assert.equal(record.posts.length,fixture.expectedCounts[name].posts,"STATUS_ZERO_POST");
      const foreign=record.http.filter(x=>x.at>postAt&&x.at<=(record.statusCutoff??Infinity)&&!(x.method==="GET"&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/")||x.path.startsWith("/blocks/")||x.path.startsWith("/accounts/"+account))));
      assert.deepEqual(foreign.map(x=>x.method+" "+x.path),[],"STATUS_READ_ONLY_NO_BUILD_READS");
