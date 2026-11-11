@@ -411,6 +411,18 @@ historical moderate tooling disposition in `tooling-advisories.json`.
 The Node suites have no npm script. Their gate command is the direct invocation
 from `easy1staking/` with the pinned runtime, `node scripts/check-<suite>.cjs`,
 plus `node scripts/check-wallet-signature.cjs --browser` for native signature.
+Run `node scripts/check-node-test-gate.cjs` first among the Node gate commands.
+It uses plain `node:assert` and an explicit exit code, never node:test. It lists
+`scripts/check-*.cjs` and `scripts/lib/*.cjs` (except the helper and itself),
+strips comments, and fails any file that requires node:test and takes `after`
+from it: destructured (also renamed), as a member of the require, through a
+namespace binding, or by an ESM import. It also fails a bare `after(` call that
+is not bound from `scripts/lib/node-test-gate.cjs`. A built-in self-test first
+requires every planted shape to be flagged and the helper's correct use and a
+comment-only line to pass. On success it prints one `NODE_TEST_GATE` line with
+the scanned files, the node:test suites and the helper users; each violation
+prints a line naming the file and shape, and the exit code is 1. It checks
+declarations, not behaviour: an obfuscated or dynamic require is not detected.
 Run this way, the Node 24.22.1 test runner prints a failing top-level `after()`
 hook as a failing test, yet keeps `fail 0` and exits 0, so the zero-outward and
 zero-wallet guards in those hooks could not fail a gate. The five suites with an
@@ -537,3 +549,10 @@ source with this check: `confirm-then-disconnect` still failed first at
 `confirm-then-second-operation` still passed. On the new source the flow
 passes 86 of 86 cases with every declared dispatch and POST count, and the
 failure-message suite passes 110 of 110 tests.
+
+Node-test gate receipt: before the meta-check, taking `after` directly from
+node:test in `check-stake-builder.cjs` still exited 0 with 89 tests, so no
+existing gate noticed the bypass (F0-G). The meta-check passes on this tree with
+eight node:test suites (the seven above plus the failure-message suite) and five
+helper users (chain-context, recovery-verifier, stake-builder, wallet-session
+and wallet-signature).
