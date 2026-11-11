@@ -10,8 +10,10 @@ available. The legacy combined staking/voting helper has been removed.
 This is a local candidate. Public activation still requires the remaining
 recovery, mobile, operator and release gates. The page retains and shows
 Submitted or Unknown with a known ID, then checks chain status read-only and
-confirms the delegation when every check agrees. It cannot yet clear an
-unconfirmed record or retry. Submitted means that the provider returned the
+confirms the delegation when every check agrees. It never clears an
+unconfirmed record on its own: after the transaction has expired, a visitor who
+has checked its ID can dismiss the record by hand (see "Expired records and
+manual dismissal"). It cannot retry. Submitted means that the provider returned the
 matching ID, not chain confirmation. Use the originating browser and an
 independent wallet or explorer to check an unresolved operation. Do not delete
 recovery storage to make a new attempt.
@@ -104,12 +106,14 @@ Outcomes are confirmed, not-found, pending (newer than T1 or an index still
 catching up), inconsistent (a positive contradiction) and unavailable (provider
 error, timeout or limit), each with a machine reason code; the page's private
 view keeps the last one (for example `inconsistent:BODY_ID`) and never renders
-provider payloads. Only a confirmed check obtains a single-use resolution
-from the coordinator's one issuer; it binds the exact record, recovery lease,
+provider payloads. Only a confirmed check obtains a single-use confirmed
+resolution from the coordinator's one issuer (a deliberate check of an expired,
+unseen record may obtain a dismissible one instead; see "Expired records and
+manual dismissal"); it binds the exact record, recovery lease,
 status generation, observed T2 and a deadline, and it is checked synchronously
 immediately before the record is removed. A 404, timeout, provider error,
 contradiction or lagged index never removes the record, and there is no
-time-based removal. A confirmation is shown as a historical fact for the
+time-based or automatic removal. A confirmation is shown as a historical fact for the
 transaction's own stake credential, with its current state, never attributed to
 a different connected wallet. The confirmed result (block, confirmations,
 credential, account state, its ID and the "confirmed on chain" caption) is held
@@ -197,9 +201,90 @@ When the page shows another tab's pending record, that record's ID becomes the
 page's own ID. If the record is then removed or replaced, the page shows "This
 operation's saved status changed in another tab of this browser. Keep the
 transaction ID and check it in your wallet or a chain explorer.", keeps that ID,
-offers no Check status, and never shows an earlier confirmation again. Handling
-of an expired recorded transaction and a deliberate retry of identical signed
-bytes remain separate later work.
+offers no Check status, and never shows an earlier confirmation again. An
+expired recorded transaction can be dismissed by hand as described in the next
+section; a deliberate retry of identical signed bytes remains separate later
+work.
+
+## Expired records and manual dismissal
+
+The page never removes an unconfirmed record on its own. After the transaction
+has expired and was not found, a visitor who has checked its ID in a wallet or a
+chain explorer can dismiss the record in this browser.
+
+Only a deliberate Check status asks for dismissal; the automatic poll never does,
+even when it runs past the expiry. A check can offer dismissal only when the
+transaction lookup answers not found and the check's first latest block (T1) is
+at or past the transaction's TTL, its exclusive `invalidHereafter` slot. Local
+time never establishes expiry. In the same bounded session the check then reads
+the funding transaction's outputs for every recorded input, in record order, and
+the latest block again (T2), which must not have moved back. Each recorded input
+must be exactly one non-collateral output at its exact index with an explicit
+`consumed_by_tx` field; an absent field or a missing or malformed row gives
+`unavailable:INPUT_ROWS` and no offer. Only the recorded index is matched, so an
+unrecorded sibling output consumed by this ID is ignored. An eligible check
+gives `not-found:EXPIRED_UNSEEN`, shows "This transaction has expired and was
+not found on chain when checked. That does not prove it was never included.
+After you check its ID in your wallet or a chain explorer, you can dismiss this
+record." and offers a "Dismiss this record" button.
+
+A recorded input reported as spent by this same transaction ID means the
+transaction may be on chain: the check gives `inconsistent:SPENT_BY_ID`, shows
+"This transaction was not found, but one of its inputs is recorded as spent by
+this same transaction ID, so it may be on chain. Nothing was cleared. Check it in
+your wallet or a chain explorer." and offers nothing. The page remembers that ID
+for its lifetime, so a later answer with no spend still shows that text and no
+offer. Any check that positively witnessed the transaction (its content read
+under the exact ID, or an input consumed by it), including an automatic poll,
+latches the ID the same way: a later expired, unseen answer shows "An earlier
+chain-data response reported this transaction, but verification is still
+unresolved. Nothing was cleared. Check again later, or check it in your wallet
+or a chain explorer." and offers nothing. An input spent by a different
+transaction keeps the offer and adds "One of its inputs was spent by a different
+transaction, so it can no longer be included on the chain as observed.", because
+two transactions that spend the same input cannot both be included on the same
+chain.
+
+"Dismiss this record" opens the region "Dismiss pending record" with this
+disclosure, verbatim:
+
+> Dismiss clears the pending record in this browser. Save the transaction ID for later checks. The transaction may already have confirmed, or it may confirm later after a rollback. A new delegation requires your approval and may incur another fee and a registration deposit.
+
+The region asks: Type "I checked this ID" to confirm that you checked this exact transaction ID in your wallet or a chain explorer. Typing calls nothing in the
+page's controller, reads no chain data and takes no browser lock. "Confirm
+dismissal" is enabled only for the exact phrase "I checked this ID", with no
+trimming or case folding, and an offer allows one attempt. Confirm takes the
+recovery lock (if another tab holds it, nothing is read and the record is kept)
+and rechecks under that lease. The record is removed only when the recheck is
+again expired and unseen and the record read synchronously at removal equals
+the record the offer was issued for; both single-use tokens are then consumed and
+the removal is read back. A same-ID change of the record, for example its stage,
+is therefore refused at Confirm. If the recheck instead confirms the
+transaction, the page shows the ordinary confirmation and no dismissed state.
+"Keep the record", also while the recheck runs, keeps the record and shows "The
+record was kept in this browser. To dismiss it, check status again, or check the
+ID in your wallet or a chain explorer."
+
+Every interruption before removal leaves the record: Keep, a reload, leaving the
+page, a busy lock, a failed, lagging or rolled-back recheck, or a record that
+changed. If another tab removes or replaces the record while an offer is shown,
+the offer is withdrawn, the changed guidance is shown and nothing is healed. A
+new Check status issues a new offer. No dismissal path enables or calls the
+wallet, builds, signs or posts.
+
+After a dismissal the page shows "You dismissed this record after checking the
+transaction ID yourself. This page did not confirm it. Keep the ID; a new
+delegation needs a new review and your approval." and the region "Dismissed
+record" with the caption "Transaction ID — dismissed by you" and the ID. The
+caption is kept through Connect and a new review, and the record is never shown
+as confirmed. While a record is pending the page says: A prior operation is unresolved in this browser. Keep its ID. This page can check its status and, after it expires, let you dismiss it once you have checked the ID yourself. It cannot retry it.
+
+Nothing new is stored. The two latches and the dismissed state live in page
+memory only, so a reload forgets them; the record schema is unchanged. A
+dismissed record's transaction can still land (an index lag before expiry, or a
+rollback below the TTL), as the disclosure says. A consistent-looking lagged
+index with no positive witness can still produce an offer: dismissal is a
+manual override, and the visitor's own check of the ID is its safeguard.
 
 ## Mobile entry
 
@@ -276,9 +361,10 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 86 cases (81 before the failure-message cases were
-added) and `--cases first` executes six. Selectors
-are strict: `--case` must name one registered case (the 86 plus
+`--cases all` now executes 105 cases (86 before the manual-dismissal cases and
+81 before the failure-message cases were added) and `--cases first` executes
+six. Selectors
+are strict: `--case` must name one registered case (the 105 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
 
@@ -361,6 +447,38 @@ assert exact text and machine reason. `confirm-then-disconnect` also asserts
 that Disconnect keeps the confirmed status line, shows the disconnected line and
 no cancellation copy, and that the next Connect clears the line.
 
+Eighteen `dismiss-*` cases cover manual dismissal. Each makes the identical
+registered submission, moves the page clock 181 seconds on at the POST (so
+status work shows the apology with no reads; `dismiss-poll-after-expiry`
+instead moves to TTL minus 130 slots inside signTx and to TTL plus 2 seconds at
+the POST), hides the document, serves the funding outputs with an own
+`consumed_by_tx` key after the POST (`dismiss-missing-rows` keeps the earlier
+shape), sets the page clock and tips, clicks Check status and asserts the exact
+`statusReason` first. Each also asserts no wallet call since its baseline, no
+building, review, signing, checking or submitting phase, one POST and one
+dispatch, and no read outside the status paths. The cases are
+`dismiss-expired` (the full dismissal at TTL+5: disclosure, phrase, Confirm,
+removal, two eligibility row reads, a copyable dismissed ID, nothing new stored,
+then a reconnect whose new review is never approved), `dismiss-at-ttl` (a tip
+pinned at the TTL offers), `dismiss-before-expiry` (a fresh tip at TTL−1 with
+the local clock past the TTL's wall time does not, with no row read),
+`dismiss-spent-by-id`, `dismiss-spent-elsewhere` (then a reconnect gives
+`source:INPUT`), `dismiss-missing-rows`, `dismiss-then-already-easy1`,
+`dismiss-cancel` (typing reads nothing and holds no lock; Keep before and during
+a held recheck), `dismiss-without-attestation` (an empty and a case-folded
+phrase through the controller remove nothing), `dismiss-double-confirm` (one
+recheck), `dismiss-reload`, `dismiss-busy`, `dismiss-dispose`,
+`dismiss-stale-record` (a same-ID stage rewrite in another tab is refused at
+Confirm; a later removal withdraws the new offer), `dismiss-rollback-on-confirm`
+(T2 three slots below T1 gives `unavailable:TIP`), `dismiss-confirmed-on-confirm`
+(the recheck finds an inclusion at TTL−10 and shows the ordinary confirmation),
+`dismiss-seen-then-404` (an index-lag witness latches the ID) and
+`dismiss-poll-after-expiry` (the automatic poll past the TTL makes no offer and
+no row read; the deliberate check then does). `confirm-resumed-after-deadline`
+also asserts that no dismissal is offered. A single `dismiss-dispose` failure at
+`DISMISS_DISPOSE_RETAINS_RECORD` in a full run may be re-run once on the same
+tree and build, as for `status-dispose`; every attempt is recorded.
+
 Every case samples the page at its 360 px viewport on each DOM mutation batch,
 in every tab of its browser context and across its navigations and reloads. Each
 batch records the status-line text and the rendered phase. The three probes run
@@ -399,10 +517,11 @@ Run the existing chain-context, wallet-signature, wallet-session, stake-builder,
 stake-guard and pool-facts suites, the recovery-verifier suite
 (`scripts/check-recovery-verifier.cjs`, every outcome, reason code and
 resolution refusal), the failure-message suite
-(`node scripts/check-delegation-messages.cjs`, 110 tests: every code of every
-owned union, parsed from its declaration, maps to its exact text; forged keys
-give the fallback; every text is plain and in the flow's `statusTexts`; the
-compiled module has no `require`), native signature/coordination suites, installed
+(`node scripts/check-delegation-messages.cjs`, 119 tests: every code of every
+owned union, parsed from its declaration, maps to its exact text, including the
+manual-dismissal `recovery` texts; forged keys give the fallback; every text is
+plain and in the flow's `statusTexts`; the dismissal copy has exactly its keys
+and texts and is plain; the compiled module has no `require`), native signature/coordination suites, installed
 security/compatibility checks, build/lint, raw production/full audits and source
 export checks. Record actual executed/skipped counts and raw audit responses.
 Current registry output is a point-in-time witness; it does not erase the
@@ -548,7 +667,8 @@ source with this check: `confirm-then-disconnect` still failed first at
 `DISCONNECT_KEEPS_STATUS`, and `confirm-then-refresh-failure` and
 `confirm-then-second-operation` still passed. On the new source the flow
 passes 86 of 86 cases with every declared dispatch and POST count, and the
-failure-message suite passes 110 of 110 tests.
+failure-message suite passes 110 of 110 tests. (These counts are superseded by
+the manual-dismissal receipt below.)
 
 Node-test gate receipt: before the meta-check, taking `after` directly from
 node:test in `check-stake-builder.cjs` still exited 0 with 89 tests, so no
@@ -556,3 +676,35 @@ existing gate noticed the bypass (F0-G). The meta-check passes on this tree with
 eight node:test suites (the seven above plus the failure-message suite) and five
 helper users (chain-context, recovery-verifier, stake-builder, wallet-session
 and wallet-signature).
+
+Expiry-copy receipt: with the expiry latch removed from the post-reply timer,
+the earlier harness still passed `post-reply-deadline` and
+`post-reply-deadline-hidden`, because it did not pin the stop text (F0-E). The
+exact expiry copy and machine reason now fail both at `STOP_COPY` (F1-E), and
+removing either expiry latch (the post-reply timer or the final-barrier
+`expire()`) is killed by the browser flow.
+
+Manual-dismissal receipt (supersedes the 86-case flow count, the 130-test
+recovery-verifier count and the 110-test failure-message count above): the
+recovery-verifier suite has 182 tests covering the eligibility reads, the
+`SPENT_BY_ID` and `INPUT_ROWS` outcomes, the positive-witness signal and every
+dismissal-authority clause, each pinned by a mutant that its own test kills.
+With the new browser and message tests on the earlier source, every new
+`dismiss-*` case except `dismiss-before-expiry` failed first at
+`DISMISS_STATUS_REASON` (`not-found:NOT_FOUND`, because the earlier page never
+asks for dismissal); `dismiss-poll-after-expiry` passed its poll assertions and
+`dismiss-seen-then-404` its first check before failing there.
+`dismiss-before-expiry` and `confirm-resumed-after-deadline` passed. The message
+suite failed 11 of 119 tests: the seven `recovery` tests, the two dismissal-copy
+tests and the two whole-set tests. Its kind-list test compares two lists inside
+the test file and so passes on either source. On the new source the flow passes
+105 of 105 cases with every declared dispatch and POST count and no layout or
+unknown-status failure, the failure-message suite passes 119 of 119 tests, the
+recovery-verifier suite 182 of 182, and the meta-check finds eight node:test
+suites and five helper users. Each of these mutants was killed, its source was
+restored exactly, and the full flow then passed 105 of 105 again: DB1 (the eligibility guard made strict) killed: `dismiss-at-ttl` failed first at `DISMISS_STATUS_REASON` while `dismiss-expired` passed; DB1W (the guard admitting TTL−1) killed: `dismiss-before-expiry` failed first at `DISMISS_STATUS_REASON` while `dismiss-at-ttl` passed; DB2 (a spend by the recovery ID treated as spent elsewhere) killed: `dismiss-spent-by-id` failed first at `DISMISS_STATUS_REASON` while `dismiss-spent-elsewhere` passed; DB3 (the attestation equality removed) killed: `dismiss-without-attestation` failed first at `RECORD_RETAINED_WITHOUT_ATTESTATION` while `dismiss-expired` passed; DB4 (the authority's record equality removed) killed: `dismiss-stale-record` failed first at `RECORD_RETAINED_AFTER_CHANGE` while `dismiss-expired` passed; DB5 (the confirm recheck's confirmed branch removed) killed: `dismiss-confirmed-on-confirm` failed first at `CONFIRMED_RECORD_REMOVED` while `dismiss-expired` passed; DB6 (the witness latch removed) killed: `dismiss-seen-then-404` failed first at `DISMISS_STATUS_TEXT` while `dismiss-expired` passed.
+
+Dependency residue: `npm audit` (production and full) still reports nine
+moderate entries, all GHSA-chp3-j5qr-2vfr (`@effect/platform` below 0.97.1 via
+`@evolution-sdk/evolution`), with the lockfile unchanged. It is a release-gate
+dependency item, not a manual-dismissal result.
