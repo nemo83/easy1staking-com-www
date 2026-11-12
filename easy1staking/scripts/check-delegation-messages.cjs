@@ -102,7 +102,11 @@ const unions = { wallet: ["wallet-session.ts", "SessionError"], source: ["provid
   stop: ["messages.ts", "StopReason"], recovery: ["messages.ts", "RecoveryText"] };
 const kinds = Object.keys(expected);
 
-test("the failure kinds are exactly the expected kinds", () => assert.deepEqual(kinds.slice().sort(), Object.keys(unions).sort()));
+test("the failure kinds are exactly the FailureKind union in messages.ts", () => {
+  const declared = union("messages.ts", "FailureKind");
+  assert.deepEqual(kinds.slice().sort(), declared);
+  assert.deepEqual(Object.keys(unions).sort(), declared);
+});
 for (const kind of kinds) {
   const [file, name] = unions[kind];
   test(`${kind} table keys equal the ${name} union in ${file}`, () => {

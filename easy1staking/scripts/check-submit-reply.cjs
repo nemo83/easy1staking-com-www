@@ -88,3 +88,7 @@ test("a mixed failure list carrying an ambiguous failure is not classified", () 
 test("narrative text around the ledger token is not classified", () => {
   for (const message of ["The node reported " + LEDGER, LEDGER + " was seen yesterday"]) assert.equal(cls(json(ok(message))), false, message);
 });
+// The capital-letter constructor rule: killed only by MA2.
+test("a list whose first member does not start with a capital letter is not classified", () => {
+  for (const message of ["ConwayApplyTxError [conwayUtxowFailure (UtxoFailure (" + FEE + "))]", "ConwayApplyTxError [ (UtxoFailure (" + FEE + "))]"]) assert.equal(cls(json(ok(message))), false, message);
+});

@@ -290,6 +290,30 @@ refusal("explicit spent output", s => inputRows(s)[1].consumed_by_tx = id(123), 
 refusal("provider changed lovelace", s => inputRows(s).forEach(r => r.amount[0].quantity = "100000001"), "INPUT");
 refusal("provider changed output index", s => s.row.output_index = 1, "INPUT");
 refusal("provider changed address", s => s.row.address = raw.addressBech32("01" + fixture.otherHash + fixture.stakeKeyHash), "INPUT");
+// R-SEC-1 E2: since Evolution 0.5.10 a valid-bech32 57-byte provider address whose header or prefix does not match is refused by the SDK
+// decoder (RESPONSE) before this site's round trip (INPUT) runs. It is refused either way and never accepted; the codes are those observed on 0.5.14.
+const BECH32 = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+function bech32Of(hrp, hex) {
+  const words = []; let acc = 0, bits = 0;
+  for (const byte of Buffer.from(hex, "hex")) { acc = (acc << 8 | byte) & 0xffff; bits += 8; while (bits >= 5) { bits -= 5; words.push(acc >> bits & 31); } }
+  if (bits > 0) words.push(acc << 5 - bits & 31);
+  let check = 1;
+  const step = value => { const top = check >>> 25; check = (check & 0x1ffffff) << 5 ^ value; [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3].forEach((g, i) => { if (top >>> i & 1) check ^= g; }); };
+  for (const c of hrp) step(c.charCodeAt(0) >> 5); step(0); for (const c of hrp) step(c.charCodeAt(0) & 31);
+  for (const w of words) step(w); for (let i = 0; i < 6; i++) step(0);
+  const mod = check ^ 1;
+  return hrp + "1" + words.map(w => BECH32[w]).join("") + [0, 1, 2, 3, 4, 5].map(i => BECH32[mod >>> 5 * (5 - i) & 31]).join("");
+}
+test("a provider address with a mismatched header or prefix is refused, never accepted", async () => {
+  assert.equal(bech32Of("addr", fixture.addressHex), address, "INDEPENDENT_BECH32");
+  const body = fixture.addressHex.slice(2);
+  for (const [hrp, header, code] of [["addr", "41", "RESPONSE"], ["addr", "81", "RESPONSE"], ["addr", "c1", "RESPONSE"], ["addr", "51", "RESPONSE"], ["addr", "00", "RESPONSE"],
+    ["addr", "11", "RESPONSE"], ["addr1x", "01", "RESPONSE"], ["addr1", "01", "RESPONSE"], ["addr_test", "01", "INPUT"]]) {
+    const s = scenario(), mismatched = bech32Of(hrp, header + body); inputRows(s).forEach(r => r.address = mismatched);
+    const r = await assess(s);
+    assert.equal(r.status, "refused", hrp + " " + header + " " + json.canonical(r)); assert.equal(r.code, code, hrp + " " + header);
+  }
+});
 for (const key of ["data_hash", "inline_datum", "reference_script_hash"]) refusal("missing explicit provider optional " + key, s => delete s.row[key]);
 refusal("unobserved provider datum", s => s.row.data_hash = id(123), "INPUT");
 refusal("unknown reference script hash", s => s.row.reference_script_hash = fixture.otherHash, "INPUT");

@@ -5,6 +5,9 @@
 // Plain node:assert and an explicit exit code; never node:test. Run from easy1staking/: node scripts/check-node-test-gate.cjs
 // It reads comment-stripped source text, so it checks declarations, not behaviour; obfuscated or dynamic requires are not detected.
 // Also not detected: chained members such as require(...).test.after or nt.test.after.
+// Binding lists are read as text, not parsed: a default initializer is cut at its first "=", one level of nested braces inside a destructuring
+// list is tolerated and dropped, and a "default" key counts as node:test's test export. Not detected: deeper nesting, a pattern nested under
+// the test or it key (such as { test: { after } }), computed keys and rest elements.
 const fs = require("node:fs"), path = require("node:path"), assert = require("node:assert/strict");
 const scripts = __dirname, self = path.join(scripts, "check-node-test-gate.cjs"), helper = path.join(scripts, "lib", "node-test-gate.cjs");
 // The module names are assembled, so this file's own source never matches its detectors.
@@ -12,6 +15,8 @@ const MODULE = ["node", "test"].join(":"), HELPER = "./lib/node-test-gate" + ".c
 const esc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&"), Q = "[\"'`]", ident = "[A-Za-z_$][\\w$]*";
 const quoted = name => Q + esc(name) + Q, required = name => LOAD + "\\s*\\(\\s*" + quoted(name) + "\\s*\\)";
 const member = "\\s*(?:\\?\\.\\s*(?:" + HOOK + "(?![\\w$])|\\[\\s*" + quoted(HOOK) + "\\s*\\])|\\.\\s*" + HOOK + "(?![\\w$])|\\[\\s*" + quoted(HOOK) + "\\s*\\])";
+// A destructuring list, captured, that may hold one level of nested braces, such as { mock: { fn }, test }.
+const list = "\\{((?:[^{}]|\\{[^{}]*\\})*)\\}";
 const keywords = new Set(["return", "typeof", "case", "do", "else", "in", "of", "void", "yield", "await", "delete", "instanceof", "new", "throw"]);
 
 /** Removes // and block comments outside string, template and regular-expression literals. */
@@ -36,16 +41,17 @@ function strip(text) {
   }
   return out;
 }
-const hasKey = (inside, key) => inside.split(",").some(part => part.trim().split(/\s*[:=]\s*|\s+as\s+/)[0].replace(/["'`]/g, "").trim() === key);
-/** Local names bound to node:test's test or it export in a destructuring or import list: `test`, `test: t`, `test as t`, `it`. */
-const aliasNames = inside => inside.split(",").map(part => part.trim().split(/\s*:\s*|\s+as\s+/).map(s => s.replace(/["'`]/g, "").trim()))
-  .filter(([key]) => key === "test" || key === "it").map(([key, local]) => local || key);
+/** A destructuring or import list as [key, local] pairs, read as text: one level of nested braces is dropped, then a default is cut at "=". */
+const entries = inside => inside.replace(/\{[^{}]*\}/g, "{}").split(",").map(part => part.split("=")[0].trim().split(/\s*:\s*|\s+as\s+/).map(s => s.replace(/["'`]/g, "").trim()));
+const hasKey = (inside, key) => entries(inside).some(([k]) => k === key);
+/** Local names bound to node:test's test, it or default export: `test`, `test: t`, `test as t`, `test = x`, `test: t = x`, `it`, `default as t`. */
+const aliasNames = inside => entries(inside).filter(([key]) => key === "test" || key === "it" || key === "default").map(([key, local]) => local || key);
 /** Shapes that take after() from node:test, or call it bare without binding it from the helper, on comment-stripped code. */
 function violations(code) {
   const found = [], add = shape => { if (!found.includes(shape)) found.push(shape); };
   const requiresModule = new RegExp(required(MODULE)).test(code) || new RegExp("\\b(?:from|import)\\s*" + quoted(MODULE)).test(code);
   if (!requiresModule) return { requiresModule, helperUser: false, found };
-  for (const m of code.matchAll(new RegExp("\\{([^{}]*)\\}\\s*=\\s*" + required(MODULE), "g"))) if (hasKey(m[1], HOOK)) add("destructured " + HOOK + " from " + MODULE);
+  for (const m of code.matchAll(new RegExp(list + "\\s*=\\s*" + required(MODULE), "g"))) if (hasKey(m[1], HOOK)) add("destructured " + HOOK + " from " + MODULE);
   if (new RegExp(required(MODULE) + member).test(code)) add("member " + HOOK + " of " + LOAD + "(" + MODULE + ")");
   const names = new Set();
   for (const m of code.matchAll(new RegExp("(?<![\\w$.])(" + ident + ")\\s*=\\s*" + required(MODULE), "g"))) names.add(m[1]);
@@ -54,13 +60,13 @@ function violations(code) {
   for (const m of code.matchAll(new RegExp("\\bimport\\s*(?:" + ident + "\\s*,\\s*)?\\{([^{}]*)\\}\\s*from\\s*" + quoted(MODULE), "g"))) if (hasKey(m[1], HOOK)) add("imported " + HOOK + " from " + MODULE);
   for (const name of names) {
     if (new RegExp("(?<![\\w$.])" + esc(name) + member).test(code)) add("namespace " + name + "." + HOOK);
-    for (const m of code.matchAll(new RegExp("\\{([^{}]*)\\}\\s*=\\s*" + esc(name) + "(?![\\w$])", "g"))) if (hasKey(m[1], HOOK)) add("destructured " + HOOK + " from namespace " + name);
+    for (const m of code.matchAll(new RegExp(list + "\\s*=\\s*" + esc(name) + "(?![\\w$])", "g"))) if (hasKey(m[1], HOOK)) add("destructured " + HOOK + " from namespace " + name);
   }
   // test.after and it.after are node:test's after(): a local binding of the test or it export is checked like a namespace.
   const aliases = new Set();
-  for (const m of code.matchAll(new RegExp("\\{([^{}]*)\\}\\s*=\\s*" + required(MODULE), "g"))) aliasNames(m[1]).forEach(a => aliases.add(a));
+  for (const m of code.matchAll(new RegExp(list + "\\s*=\\s*" + required(MODULE), "g"))) aliasNames(m[1]).forEach(a => aliases.add(a));
   for (const m of code.matchAll(new RegExp("\\bimport\\s*(?:" + ident + "\\s*,\\s*)?\\{([^{}]*)\\}\\s*from\\s*" + quoted(MODULE), "g"))) aliasNames(m[1]).forEach(a => aliases.add(a));
-  for (const name of names) for (const m of code.matchAll(new RegExp("\\{([^{}]*)\\}\\s*=\\s*" + esc(name) + "(?![\\w$])", "g"))) aliasNames(m[1]).forEach(a => aliases.add(a));
+  for (const name of names) for (const m of code.matchAll(new RegExp(list + "\\s*=\\s*" + esc(name) + "(?![\\w$])", "g"))) aliasNames(m[1]).forEach(a => aliases.add(a));
   for (const alias of aliases) if (new RegExp("(?<![\\w$.])" + esc(alias) + member).test(code)) add("alias " + alias + "." + HOOK);
   const helperUser = [...code.matchAll(new RegExp("\\{([^{}]*)\\}\\s*=\\s*" + required(HELPER), "g"))].some(m => hasKey(m[1], HOOK));
   if (new RegExp("(?<![\\w$.])" + HOOK + "\\s*\\(").test(code) && !helperUser) add("bare " + HOOK + "( without the helper");
@@ -87,11 +93,20 @@ const planted = [
   ["import { test as t } from \"" + MODULE + "\"; t." + HOOK + "(() => {});", "alias t." + HOOK],
   ["const nt = " + call(MODULE) + "; const { it: i } = nt; i." + HOOK + "(() => {});", "alias i." + HOOK],
   ["const nt = " + call(MODULE) + "; nt?." + HOOK + "(() => {});", "namespace nt." + HOOK],
+  ["const { test = null } = " + call(MODULE) + "; test." + HOOK + "(() => {});", "alias test." + HOOK],
+  ["const { test: t = undefined } = " + call(MODULE) + "; t." + HOOK + "(() => {});", "alias t." + HOOK],
+  ["const { mock: { fn }, test } = " + call(MODULE) + "; test." + HOOK + "(() => {});", "alias test." + HOOK],
+  ["import { default as t } from \"" + MODULE + "\"; t." + HOOK + "(() => {});", "alias t." + HOOK],
+  ["const { mock: { fn }, " + HOOK + " } = " + call(MODULE) + ";", "destructured " + HOOK + " from " + MODULE],
+  ["const nt = " + call(MODULE) + "; const { mock: { fn }, it: i = null } = nt; i." + HOOK + "(() => {});", "alias i." + HOOK],
+  ["const nt = " + call(MODULE) + "; const { mock: { fn }, " + HOOK + " } = nt;", "destructured " + HOOK + " from namespace nt"],
 ];
 const clean = [
   "const { test } = " + call(MODULE) + ", { " + HOOK + " } = " + call(HELPER) + "; " + HOOK + "(() => {});",
   "const { test } = " + call(MODULE) + ", { " + HOOK + " } = " + call(HELPER) + ";\n// const { " + HOOK + " } = " + call(MODULE) + "\n" + HOOK + "(() => {});",
   "const { test } = " + call(MODULE) + ", { " + HOOK + " } = " + call(HELPER) + "; const contest = { " + HOOK + "() {} }; contest." + HOOK + "(); test.skip(\"x\", () => {}); " + HOOK + "(() => {});",
+  "const { mock: { fn, " + HOOK + ": spy } } = " + call(MODULE) + ", { " + HOOK + " } = " + call(HELPER) + "; " + HOOK + "(() => {});",
+  "const { test: t = null } = " + call(MODULE) + ", { " + HOOK + " } = " + call(HELPER) + "; const contest = { " + HOOK + "() {} }; contest." + HOOK + "(); t.skip(\"x\", () => {}); " + HOOK + "(() => {});",
 ];
 for (const [snippet, shape] of planted) {
   const result = violations(strip(snippet));

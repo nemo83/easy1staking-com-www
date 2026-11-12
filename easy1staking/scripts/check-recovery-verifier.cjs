@@ -662,6 +662,13 @@ test("R10: resolveDismissed refuses a resolution for an earlier record while the
   } });
   assert.deepEqual(seen.result, ["EXPIRED_UNSEEN", "EXPIRED_UNSEEN", "ACCEPTED", "RESOLUTION"]); assert.equal(store.get(KEY), changed); seen.coordinator.dispose();
 });
+test("R11: three inputs, two unusable then one spent by the recovery ID, still read every input and give SPENT_BY_ID", async () => {
+  const THIRD = "56".repeat(32) + "#0", s = expired(TTL + 1n, [FIRST, SECOND, THIRD]); s.missing.add(utxosPath(FIRST)); s.missing.add(utxosPath(SECOND)); rowOf(s, THIRD).consumed_by_tx = s.txId;
+  const { result, coordinator } = await review(s); note(result); coordinator.dispose();
+  assert.equal(result.status + ":" + result.reason, "inconsistent:SPENT_BY_ID", JSON.stringify(result));
+  assert.deepEqual(s.requested, ["/blocks/latest", "/txs/" + s.txId, utxosPath(FIRST), utxosPath(SECOND), utxosPath(THIRD), "/blocks/latest"]);
+  assert.equal(store.get(KEY), s.recordJson, "RECORD_RETAINED");
+});
 test("every outcome and reason code was produced", () => {
   assert.deepEqual([...seenOutcomes].sort(), [...fixture.outcomes].sort()); assert.deepEqual([...seenReasons].sort(), [...fixture.reasonCodes].sort());
 });
