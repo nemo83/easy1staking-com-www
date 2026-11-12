@@ -210,9 +210,10 @@ bind the intended credential regardless.
 `check-wallet-signature.cjs` executes actual ES2017 production modules, the
 unchanged guard and real signatures. It checks original builder wrappers and
 independent literal body IDs, otherwise-valid refusals, finite native timers,
-late replies and callback redaction. With the pinned private Playwright and
-Chromium tools available, `node scripts/check-wallet-signature.cjs --browser`
-runs an isolated loopback harness using actual Noble 2.2.0 ESM bytes and native
+late replies and callback redaction. With Playwright and Chromium available,
+`node scripts/check-wallet-signature.cjs --browser --playwright <dir> --chromium <file>`,
+given the absolute Playwright package directory and executable Chromium (there
+is no default path), runs an isolated loopback harness using actual Noble 2.2.0 ESM bytes and native
 WebCrypto. A fresh owned Chrome profile and Playwright CDP `noDefaults` on the
 existing default context preserve real document visibility; it observes trusted
 focus/visibility events and a real visible 30-second

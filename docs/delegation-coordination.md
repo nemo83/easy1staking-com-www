@@ -130,6 +130,9 @@ npm audit
 ```
 
 Playwright and Chromium are external test tools, not new application dependencies.
+Pass both as absolute paths: `--playwright` names the Playwright package directory
+and `--chromium` an executable Chromium. There is no default path; every mode
+except `--node-only` refuses without both, before any case runs.
 `--node-only` runs parser cases; `--browser-only` runs browser cases. Full acceptance
 requires the real browser run. The runner transpiles the current production source
 to ES2017, serves exactly those bytes from an owned ephemeral loopback server, and

@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 "use strict";
 // Actual production ES2017 graph and genuine public, valueless Ed25519 fixture witnesses.
+// Node suite: node scripts/check-wallet-signature.cjs (needs no browser tools).
+// Native browser harness: node scripts/check-wallet-signature.cjs --browser --playwright /absolute/playwright --chromium /absolute/chrome
+// Browser mode requires both tool options; there is no default tool path.
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm"), assert = require("node:assert/strict");
 const { createHash, createPrivateKey, createPublicKey, sign } = require("node:crypto");
 const { registerHooks } = require("node:module"), { fileURLToPath } = require("node:url");
@@ -372,10 +375,22 @@ function nodeTests() {
 }
 if (process.argv.includes("--browser")) browserMain().catch(error => { console.error(error); process.exitCode = 1; }); else nodeTests();
 
+// Browser mode takes its external test tools explicitly, never from a default path: an absolute Playwright package
+// directory and an absolute executable Chromium. A missing, relative or unusable path refuses before Chromium starts.
+function browserTools() {
+  const value = name => { const at = process.argv.indexOf(name); return at >= 0 ? process.argv[at + 1] : undefined; };
+  const tools = { playwright: value("--playwright"), chromium: value("--chromium") };
+  for (const name of ["playwright", "chromium"]) assert(typeof tools[name] === "string" && path.isAbsolute(tools[name]), "Browser mode requires explicit absolute --" + name + "; there is no default path");
+  const metadata = path.join(tools.playwright, "package.json");
+  assert(fs.existsSync(tools.playwright) && fs.statSync(tools.playwright).isDirectory(), "Playwright must be an existing package directory");
+  assert(fs.existsSync(metadata) && JSON.parse(fs.readFileSync(metadata, "utf8")).name === "playwright", "Expected the Playwright package");
+  assert(fs.existsSync(tools.chromium) && fs.statSync(tools.chromium).isFile() && executable(tools.chromium), "Chromium must be an existing executable file");
+  return tools;
+}
+function executable(file) { try { fs.accessSync(file, fs.constants.X_OK); return true; } catch { return false; } }
 async function browserMain() {
   const http = require("node:http"), net = require("node:net");
-  const { chromium } = require("/tmp/easy1-homepage-browser-tools/node_modules/playwright");
-  const executablePath = "/home/giovanni/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
+  const tools = browserTools(), { chromium } = require(tools.playwright), executablePath = tools.chromium;
   const served = new Map(), received = [], responseWork = [], consoleErrors = [];
   function asset(route, content, type = "text/javascript") { served.set(route, { content: Buffer.from(content), type }); }
   const browserModules = [...graph].filter(([file]) => path.basename(file) !== "builder.ts");

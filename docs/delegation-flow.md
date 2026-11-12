@@ -819,7 +819,8 @@ historical moderate tooling disposition in `tooling-advisories.json`.
 
 The Node suites have no npm script. Their gate command is the direct invocation
 from `easy1staking/` with the pinned runtime, `node scripts/check-<suite>.cjs`,
-plus `node scripts/check-wallet-signature.cjs --browser` for native signature.
+plus `node scripts/check-wallet-signature.cjs --browser --playwright <dir> --chromium <file>`
+for native signature, where both tool paths are absolute and have no default.
 Run `node scripts/check-node-test-gate.cjs` first among the Node gate commands.
 It uses plain `node:assert` and an explicit exit code, never node:test. It lists
 `scripts/check-*.cjs` and `scripts/lib/*.cjs` (except the helper and itself),

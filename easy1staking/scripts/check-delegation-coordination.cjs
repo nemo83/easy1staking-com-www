@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 "use strict";
 // Loads the actual production module once per process, including in real Chromium.
+// Usage: node scripts/check-delegation-coordination.cjs [--node-only | --browser-only] [--evidence-dir /absolute/owned/temp]
+//   [--playwright /absolute/playwright --chromium /absolute/chrome]
+// Every mode except --node-only runs Chromium and requires both tool options; there is no default tool path.
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os"), vm = require("node:vm");
 const assert = require("node:assert/strict"), http = require("node:http"), net = require("node:net");
 const { createHash } = require("node:crypto");
@@ -123,11 +126,22 @@ async function nodeResolutionCases() {
   } finally { if (saved) Object.defineProperty(globalThis, "window", saved); else delete globalThis.window; }
 }
 function details() { const { txId, invalidHereafterSlot, inputRefs, createdAt } = fixture; return { txId, invalidHereafterSlot, inputRefs, createdAt }; }
-async function browserCases() {
-  const option = (name, fallback) => process.argv.includes(name) ? path.resolve(process.argv[process.argv.indexOf(name) + 1]) : fallback;
-  const playwrightPath = option("--playwright", "/tmp/easy1-homepage-browser-tools/node_modules/playwright");
+// Browser modes take their external test tools explicitly, never from a default path: an absolute Playwright package
+// directory and an absolute executable Chromium. A missing, relative or unusable path refuses before any check runs.
+function browserTools() {
+  const value = name => { const at = process.argv.indexOf(name); return at >= 0 ? process.argv[at + 1] : undefined; };
+  const tools = { playwright: value("--playwright"), chromium: value("--chromium") };
+  for (const name of ["playwright", "chromium"]) assert(typeof tools[name] === "string" && path.isAbsolute(tools[name]), "Browser mode requires explicit absolute --" + name + "; there is no default path");
+  const metadata = path.join(tools.playwright, "package.json");
+  assert(fs.existsSync(tools.playwright) && fs.statSync(tools.playwright).isDirectory(), "Playwright must be an existing package directory");
+  assert(fs.existsSync(metadata) && JSON.parse(fs.readFileSync(metadata, "utf8")).name === "playwright", "Expected the Playwright package");
+  assert(fs.existsSync(tools.chromium) && fs.statSync(tools.chromium).isFile() && executable(tools.chromium), "Chromium must be an existing executable file");
+  return tools;
+}
+function executable(file) { try { fs.accessSync(file, fs.constants.X_OK); return true; } catch { return false; } }
+async function browserCases(tools) {
+  const playwrightPath = tools.playwright, executablePath = tools.chromium;
   const { chromium } = require(playwrightPath);
-  const executablePath = option("--chromium", "/home/giovanni/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome");
   const sockets = new Set(), forbidden = [], lifecycle = { pid: process.pid, executablePath, executableSha256: hash(fs.readFileSync(executablePath)), playwrightPath,
     serverAddress: null, browserPid: null, browserExitCode: null, browserSignal: null, browserClosed: false, serverClosed: false, portRebound: false, observedModuleResponses: 0 };
   const server = http.createServer((req, res) => {
@@ -585,8 +599,9 @@ function identities() {
 }
 (async () => {
   try {
+    const tools = process.argv.includes("--node-only") ? null : browserTools();
     if (!process.argv.includes("--browser-only")) { nodeCases(); await nodeResolutionCases(); }
-    if (!process.argv.includes("--node-only")) await browserCases();
+    if (!process.argv.includes("--node-only")) await browserCases(tools);
     console.log(`PASS coordination ${checks} Node checks, ${browserChecks} native Chromium scenarios`);
   } finally { identities(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
