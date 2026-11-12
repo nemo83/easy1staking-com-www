@@ -150,7 +150,18 @@
     "retry-inflight-account-change",
     "retry-inflight-cancel",
     "retry-post-unknown-disconnect",
-    "retry-again-after-unknown"
+    "retry-again-after-unknown",
+    "submit-400-bad-inputs",
+    "submit-400-not-ledger",
+    "submit-400-oversized",
+    "reported-ledger",
+    "reported-then-confirmed",
+    "reported-poll-budget",
+    "dismiss-after-report",
+    "dismiss-reported-seen-then-404",
+    "dismiss-reported-spent-by-id",
+    "retry-after-report",
+    "retry-reported-held-body"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -671,6 +682,50 @@
     "retry-again-after-unknown": {
       "submitDispatches": 3,
       "posts": 3
+    },
+    "submit-400-bad-inputs": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "submit-400-not-ledger": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "submit-400-oversized": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "reported-ledger": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "reported-then-confirmed": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "reported-poll-budget": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-after-report": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-reported-seen-then-404": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-reported-spent-by-id": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "retry-after-report": {
+      "submitDispatches": 2,
+      "posts": 2
+    },
+    "retry-reported-held-body": {
+      "submitDispatches": 2,
+      "posts": 2
     }
   },
   "statusPlans": {
@@ -894,6 +949,30 @@
     },
     "retry-again-after-unknown": {
       "notFound": null
+    },
+    "reported-ledger": {
+      "notFound": null
+    },
+    "reported-then-confirmed": {
+      "notFound": 0
+    },
+    "reported-poll-budget": {
+      "notFound": null
+    },
+    "dismiss-after-report": {
+      "notFound": null
+    },
+    "dismiss-reported-seen-then-404": {
+      "notFound": null
+    },
+    "dismiss-reported-spent-by-id": {
+      "notFound": null
+    },
+    "retry-after-report": {
+      "notFound": null
+    },
+    "retry-reported-held-body": {
+      "notFound": null
     }
   },
   "otherTabRecord": {
@@ -1019,12 +1098,22 @@
     "stopped": "The signed transaction was not sent again: a check failed or information changed. Keep the ID and check its status, or check it in your wallet or a chain explorer.",
     "unresolved": "This transaction's status is not settled, so it was not sent again. Check its status again later, or check it in your wallet or a chain explorer."
   },
+  "submitCopy": {
+    "reported": "Blockfrost reported a validation error for this transaction. That does not prove it was not sent or included. Keep the ID and check its status here; once it expires and the check allows it, you can choose to dismiss it.",
+    "reportedCaption": "validation error reported"
+  },
+  "reportReplies": {
+    "ledger": "{\"status_code\":400,\"error\":\"Bad Request\",\"message\":\"ConwayApplyTxError [ConwayUtxowFailure (UtxoFailure (FeeTooSmallUTxO (Mismatch (RelGTEQ) {supplied: Coin 150000, expected: Coin 170000}) SYNTHETIC_PRIVATE_CANARY))]\"}",
+    "badInputs": "{\"status_code\":400,\"error\":\"Bad Request\",\"message\":\"ConwayApplyTxError [ConwayUtxowFailure (UtxoFailure (BadInputsUTxO (fromList []) SYNTHETIC_PRIVATE_CANARY))]\"}",
+    "notLedger": "{\"status_code\":400,\"error\":\"Bad Request\",\"message\":\"Backend did not understand your request. SYNTHETIC_PRIVATE_CANARY\"}"
+  },
   "insufficientFundsLovelace": "500000",
   "statusTexts": [
     "An earlier chain-data response reported this transaction, but verification is still unresolved. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.",
     "Another delegation from this browser is pending. Keep its transaction ID and check its status.",
     "Another delegation operation is active in this browser.",
     "Approve this stake-only transaction in your wallet. Your voting delegation stays unchanged.",
+    "Blockfrost reported a validation error for this transaction. That does not prove it was not sent or included. Keep the ID and check its status here; once it expires and the check allows it, you can choose to dismiss it.",
     "Browser coordination or the operation is unavailable. Check any prior operation from its originating browser.",
     "Cancelled here. Any open wallet request may still finish; its late reply cannot submit.",
     "Cancelled here. Nothing was sent.",

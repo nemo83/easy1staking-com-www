@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { DelegationView, createDelegationController } from "@/lib/site/delegation/controller";
-import { DISMISSAL_COPY, RETRY_COPY } from "@/lib/site/delegation/messages";
+import { DISMISSAL_COPY, RETRY_COPY, SUBMIT_COPY } from "@/lib/site/delegation/messages";
 import styles from "./EditorialPages.module.css";
 
 type Controller = ReturnType<typeof createDelegationController>;
@@ -63,7 +63,7 @@ export function DelegatePanel() {
         {view.walletDisconnected && <p className="mt-4">Wallet disconnected.</p>}
         {view.account && <div className={styles.poolIdentity}>Connected stake credential<code>{view.account}</code></div>}
         {prior && <p className="mt-4">{DISMISSAL_COPY.priorNotice}</p>}
-        {view.txId && view.txId !== confirmed?.txId && view.txId !== dismissed?.txId && <div className={styles.poolIdentity}>Transaction ID — {view.phase === "submitted" ? "submitted, confirmation pending" : "outcome pending or unknown"}<code>{view.txId}</code></div>}
+        {view.txId && view.txId !== confirmed?.txId && view.txId !== dismissed?.txId && <div className={styles.poolIdentity}>Transaction ID — {view.reported ? SUBMIT_COPY.reportedCaption : view.phase === "submitted" ? "submitted, confirmation pending" : "outcome pending or unknown"}<code>{view.txId}</code></div>}
         {confirmed && <div className="mt-4" aria-label="Delegation confirmation">
           <div className={styles.poolIdentity}>Transaction ID — confirmed on chain<code>{confirmed.txId}</code></div>
           {view.message !== confirmed.message && <p>{confirmed.message}</p>}

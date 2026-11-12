@@ -104,6 +104,11 @@ export const RETRY_COPY = Object.freeze({
   stopped: "The signed transaction was not sent again: a check failed or information changed. Keep the ID and check its status, or check it in your wallet or a chain explorer.",
   unresolved: "This transaction's status is not settled, so it was not sent again. Check its status again later, or check it in your wallet or a chain explorer.",
 });
+/** W8 reported-validation-error copy: the status line and the transaction ID caption. A provider report, never proof that the transaction was not sent or included. */
+export const SUBMIT_COPY = Object.freeze({
+  reported: "Blockfrost reported a validation error for this transaction. That does not prove it was not sent or included. Keep the ID and check its status here; once it expires and the check allows it, you can choose to dismiss it.",
+  reportedCaption: "validation error reported",
+});
 /** The code itself when it is an own key of the kind's table; "__proto__", "constructor", "toString" and non-strings give null. */
 export function failureCode(kind: FailureKind, code: unknown): string | null {
   return typeof code === "string" && Object.prototype.hasOwnProperty.call(tables[kind], code) ? code : null;

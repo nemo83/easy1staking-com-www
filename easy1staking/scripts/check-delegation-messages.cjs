@@ -65,6 +65,11 @@ const RETRY = {
   stopped: "The signed transaction was not sent again: a check failed or information changed. Keep the ID and check its status, or check it in your wallet or a chain explorer.",
   unresolved: "This transaction's status is not settled, so it was not sent again. Check its status again later, or check it in your wallet or a chain explorer.",
 };
+// W8 reported-validation-error copy (SUBMIT_COPY), test-local literals.
+const SUBMIT = {
+  reported: "Blockfrost reported a validation error for this transaction. That does not prove it was not sent or included. Keep the ID and check its status here; once it expires and the check allows it, you can choose to dismiss it.",
+  reportedCaption: "validation error reported",
+};
 const expected = {
   wallet: { UNAVAILABLE: T.WALLET_MISSING, REFUSED: T.CONNECT_DENIED, TIMEOUT: T.WALLET_TIMEOUT, UNSUPPORTED: T.WALLET_UNSUPPORTED, CHANGED: T.WALLET_CHANGED },
   source: { CONFIGURATION: T.PROVIDER_CONFIG, AUTHORIZATION: T.PROVIDER_CONFIG, TRANSPORT: T.PROVIDER_DOWN, QUOTA: T.PROVIDER_DOWN, TIMEOUT: T.PROVIDER_DOWN,
@@ -159,6 +164,24 @@ test("RETRY_COPY is plain: no markup, error words or code identifiers, and every
 test("every RETRY_COPY status-line text is in the browser flow's enumerated status texts", () => {
   const copy = messages.RETRY_COPY;
   for (const key of ["checking", "sending", "easy1", "expired", "stopped", "unresolved"]) assert(flow.statusTexts.includes(copy[key]), key);
+});
+test("SUBMIT_COPY has exactly the expected keys and literals", () => {
+  const copy = messages.SUBMIT_COPY;
+  assert(Object.isFrozen(copy), "SUBMIT_COPY_FROZEN");
+  assert.deepEqual(Object.keys(copy).sort(), Object.keys(SUBMIT).sort());
+  for (const [key, text] of Object.entries(SUBMIT)) assert.equal(copy[key], text, key);
+});
+test("SUBMIT_COPY is plain: no markup, error words or code identifiers, and its status line ends with a period", () => {
+  const copy = messages.SUBMIT_COPY;
+  for (const [key, text] of Object.entries(copy)) {
+    for (const banned of ["{", "<", "Error", "undefined"]) assert(!text.includes(banned), key);
+    for (const token of text.match(/\b[A-Z][A-Z0-9_]{2,}\b/g) ?? []) assert(["EASY1", "ADA"].includes(token), key);
+  }
+  assert(copy.reported.endsWith("."), "reported");
+});
+test("every SUBMIT_COPY status-line text is in the browser flow's enumerated status texts", () => {
+  const copy = messages.SUBMIT_COPY;
+  assert(flow.statusTexts.includes(copy.reported), "reported");
 });
 test("the compiled module has no require calls", () => {
   const file = path.join(dir, "messages.ts"), original = fs.readFileSync(file, "utf8");

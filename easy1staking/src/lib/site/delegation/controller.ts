@@ -9,7 +9,8 @@ import { createRecoveryVerifier } from "./recovery-verifier";
 import type { AccountState, StatusOutcome } from "./recovery-verifier";
 import { GuardError } from "./types";
 import type { AcceptedTransaction, Review } from "./types";
-import { DISMISSAL_COPY, RETRY_COPY, failureCode, failureMessage } from "./messages";
+import { DISMISSAL_COPY, RETRY_COPY, SUBMIT_COPY, failureCode, failureMessage } from "./messages";
+import { REPORT_BODY_LIMIT, reportedValidationError } from "./submit-reply";
 import type { FailureKind, StopReason } from "./messages";
 
 const clock = Date.now, invoke = Reflect.apply;
@@ -73,9 +74,13 @@ export interface DelegationView {
   readonly canRetry: boolean;
   /** The last retry's ending, cleared when the next retry starts. Never rendered. */
   readonly retryReason: RetryReason | null;
+  /** True only while the status line is Blockfrost's reported validation error for the active ID: a provider report, never chain evidence. */
+  readonly reported: boolean;
 }
 /** A flow veto; a source refusal carries only its owned code out of ready(). */
 class FlowFailure extends Error { constructor(readonly sourceCode: unknown = null) { super(); } }
+/** Blockfrost reported a validation error for a first attempt's bytes (submit-reply.ts); thrown only by transmit's first-attempt 400 path. */
+class ValidationReported extends Error {}
 interface Operation {
   readonly abort: AbortController;
   readonly revision: number;
@@ -142,6 +147,8 @@ export function createDelegationController(projectId: string) {
   let offer: Offer | null = null, dismissal: DelegationDismissal | null = null, dismissed: DelegationDismissed | null = null;
   // Page-lifetime latches, never stored: an ID once spent by its own ID, or once positively witnessed, is never offered for dismissal here.
   const spentIds = new Set<string>(), witnessedIds = new Set<string>();
+  // Page-lifetime latch, never stored: IDs whose first attempt drew a Blockfrost validation-error report; any later attempt clears it.
+  const reportedIds = new Set<string>();
   // W7 deliberate retry: the retained bytes (dropped on every invalidating event) and the last retry's ending.
   let retained: Retained | null = null, retryReason: RetryReason | null = null;
   const fail = (): never => { throw new FlowFailure(); };
@@ -185,7 +192,7 @@ export function createDelegationController(projectId: string) {
       statusRunning: status !== null, statusUntil: status?.deadline ?? null, confirmation: resolved !== null && resolved.txId === active ? resolved : null, statusReason,
       dismissal, dismissed: dismissed !== null && dismissed.txId === active ? dismissed : null,
       canCheckStatus: !disposed && !status && !operation && prior.status === "pending" && prior.record !== null, failureReason, walletDisconnected,
-      canRetry: retryable(), retryReason });
+      canRetry: retryable(), retryReason, reported: message === SUBMIT_COPY.reported });
   }
   function emit(): void { if (!disposed) for (const listener of listeners) { try { listener(); } catch { /* Display only. */ } } }
   function show(next: DelegationView["phase"], text: string): void { phase = next; message = text; emit(); }
@@ -291,7 +298,7 @@ export function createDelegationController(projectId: string) {
   }
   /** The single outward submission, shared by the first attempt and the deliberate retry: the captured fetch, a 60 s deadline over the reply
    * headers and every body read, and an authentic-reply check. The barrier runs immediately before the POST; this resolves only on an authentic reply. */
-  async function transmit(op: Operation, id: string, bytes: Uint8Array, barrier: () => number): Promise<void> {
+  async function transmit(op: Operation, id: string, bytes: Uint8Array, barrier: () => number, classifyFirstAttempt400 = false): Promise<void> {
     const transport = new AbortController();
     const options: RequestInit = { method: "POST", headers: { project_id: projectId, "content-type": "application/cbor", accept: "application/json" },
       body: bytes, credentials: "omit", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer", signal: transport.signal };
@@ -307,8 +314,25 @@ export function createDelegationController(projectId: string) {
       op.dispatchedAt = barrier();
       op.txId = id; op.attempted = true;
       const responsePromise = invoke(post, window, [MAINNET_SOURCE + "/tx/submit", options]) as Promise<Response>;
+      reportedIds.delete(id); // A newer attempt supersedes an earlier report.
       const response = await Promise.race([responsePromise, expired]);
       current(op);
+      // W8, first attempt only: a 400 is read, bounded, only to classify it (submit-reply.ts); its body is never rendered, stored or logged.
+      if (classifyFirstAttempt400 && response.status === 400) {
+        const reader = response.body?.getReader(); if (!reader) fail();
+        const parts: Uint8Array[] = []; let size = 0;
+        while (true) {
+          const part = await Promise.race([reader!.read(), expired]); current(op);
+          if (part.done) break;
+          size += part.value.length;
+          if (size > REPORT_BODY_LIMIT) { void reader!.cancel().catch(() => {}); fail(); }
+          parts.push(part.value);
+        }
+        const body = new Uint8Array(size); let at = 0;
+        for (const chunk of parts) { body.set(chunk, at); at += chunk.length; }
+        if (reportedValidationError(response.status, response.redirected, response.headers.get("content-type"), body)) throw new ValidationReported();
+        fail();
+      }
       if (response.status !== 200 || response.redirected || !/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(response.headers.get("content-type") ?? "")) fail();
       // Bound even an adversarial/malformed response body; no response payload reaches the page.
       const reader = response.body?.getReader(); if (!reader) fail();
@@ -331,18 +355,21 @@ export function createDelegationController(projectId: string) {
     try {
       show("submitting", "Sending the reviewed transaction once. Submission does not mean confirmation.");
       coordinator.beginAttempt(lease, intent);
-      await transmit(op, issued.txId, bytes, () => finalBarrier(op, () => coordinator.assertAttempt(lease, intent), result, original, issued, signed, bytes, deadlineAt));
+      await transmit(op, issued.txId, bytes, () => finalBarrier(op, () => coordinator.assertAttempt(lease, intent), result, original, issued, signed, bytes, deadlineAt), true);
       replied = true;
       coordinator.markOutcome(lease, intent, "submitted");
       txId = issued.txId; show("submitted", "Submitted to Blockfrost. Chain confirmation is still pending. Keep the ID for independent checking.");
-    } catch {
+    } catch (error) {
       if (op.attempted) {
         let written: RecoveryRecord | null = null;
         try { written = coordinator.markOutcome(lease, intent, "unknown"); } catch { /* The private ID survives lost storage or lease. */ }
+        // W8: a first-attempt validation error that Blockfrost reported is shown as that report; record, bytes and resend stay exactly as for an unknown outcome.
+        const reported = error instanceof ValidationReported && written !== null && !disposed && !op.abort.signal.aborted && owner.getState().revision === op.revision;
+        if (reported) reportedIds.add(issued.txId);
         // W7: only an unknown outcome this tab recorded keeps a private copy of the exact bytes for a deliberate retry.
         if (!replied && written !== null && !disposed && owner.getState().revision === op.revision)
           retained = { txId: issued.txId, issued, original, last: result, signed, bytes: new Uint8Array(bytes), record: written, revision: op.revision };
-        txId = issued.txId; show("unknown", "Submission outcome is unknown. Keep this transaction ID; do not build or send another delegation.");
+        txId = issued.txId; show("unknown", reported ? SUBMIT_COPY.reported : "Submission outcome is unknown. Keep this transaction ID; do not build or send another delegation.");
       } else {
         // Only this process can prove that no outward call happened. Preserve any uncertain record.
         try { coordinator.cancelUnattempted(lease, intent); } catch { /* A conservative retained intent blocks another operation. */ }
@@ -399,11 +426,15 @@ export function createDelegationController(projectId: string) {
     if (op.attempted && op.txId !== null && op.dispatchedAt !== null) startStatus(op.txId, op.dispatchedAt + 180000);
   }
   function live(work: StatusWork): boolean { return !disposed && status === work; }
+  /** The not-found, busy or budget ending of status work: a page-latched report keeps its text unless the ID was since seen or spent. */
+  function pendingEnding(id: string): void {
+    show("check-later", reportedIds.has(id) && !witnessedIds.has(id) && !spentIds.has(id) ? SUBMIT_COPY.reported : APOLOGY);
+  }
   function startStatus(id: string, deadline: number | null): void {
     if (disposed || status || operation) return;
     const prior = recovery(); if (prior.status !== "pending" || prior.txId !== id) return;
     // The automatic budget already ended (for example a tab suspended past dispatch + 180 s): apologise now, without a check.
-    if (deadline !== null && clock() >= deadline) { txId = id; show("check-later", APOLOGY); return; }
+    if (deadline !== null && clock() >= deadline) { txId = id; pendingEnding(id); return; }
     let generation: number; try { generation = coordinator.beginStatus(); } catch { return; }
     const work: StatusWork = { abort: new AbortController(), generation, txId: id, deadline, expired: false, resolved: null, offered: null, confirming: false };
     status = work; emit();
@@ -471,7 +502,7 @@ export function createDelegationController(projectId: string) {
     else if (step.kind === "seen") show("check-later", failureMessage("recovery", "seen-unverified"));
     else if (step.kind === "inconsistent") show("inconsistent", "We found this transaction but couldn't verify it consistently. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.");
     else if (step.kind === "changed") show("changed", "This operation's saved status changed in another tab of this browser. Keep the transaction ID and check it in your wallet or a chain explorer.");
-    else show("check-later", APOLOGY);
+    else pendingEnding(work.txId);
   }
   function confirmedResult(id: string, o: Extract<StatusOutcome, { status: "confirmed" }>): void {
     if (retained?.txId === id) retained = null;

@@ -6,6 +6,8 @@ const fs=require("node:fs"),path=require("node:path"),assert=require("node:asser
 const {spawn,spawnSync}=require("node:child_process"),{once}=require("node:events"),crypto=require("node:crypto");
 const {loadDelegationSource}=require("./lib/load-delegation-source.cjs");
 const fixture=require("./fixtures/delegation-flow.json"),chain=require("./fixtures/chain-context.json"),vectors=require("./fixtures/stake-builder.json").vectors,keys=require("./fixtures/wallet-signature.json");
+// The ledger report with x characters inserted directly before its canary: exactly one byte over the 16384-byte report limit.
+const OVERSIZED=(()=>{const l=fixture.reportReplies.ledger,i=l.indexOf("SYNTHETIC_PRIVATE_CANARY");return l.slice(0,i)+"x".repeat(16385-Buffer.byteLength(l))+l.slice(i);})();assert.equal(Buffer.byteLength(OVERSIZED),16385,"OVERSIZED_BODY_BYTES");
 const args=process.argv.slice(2),options={};while(args.length){const key=args.shift();assert(key.startsWith("--")&&args.length,"Expected --option value");assert(["evidence-dir","playwright","chromium","preload","cases","case","prepare-only"].includes(key.slice(2)),"Unknown option "+key);assert(!Object.prototype.hasOwnProperty.call(options,key.slice(2)),"Repeated option "+key);options[key.slice(2)]=args.shift();}
 // Every registered case declares its exact page dispatches and intercepted POSTs; selectors are strict and checked before any build or browser.
 const registered=Object.keys(fixture.expectedCounts);assert.deepEqual([...registered].sort(),[...new Set([...fixture.allCases,...fixture.additionalCases])].sort(),"Every registered case declares counts");assert(fixture.firstCases.every(name=>fixture.allCases.includes(name)),"First cases are registered");
@@ -163,7 +165,7 @@ async function main(){
       return value;
      };
      const deny=name=>(...args)=>{state.tripwires.push(name);throw Error("FORBIDDEN_"+name);};
-     const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const u=new URL(typeof input==="string"?input:input.url,location.href);if(u.origin==="https://cardano-mainnet.blockfrost.io"&&init?.method==="POST"){state.submitDispatches++;try{nativeSet.call(sessionStorage,"synthetic:submitDispatches",String(state.submitDispatches));}catch{}}if(u.origin===location.origin)return nativeFetch(input,init);if(u.origin!=="https://cardano-mainnet.blockfrost.io")return deny("unexpected-fetch")();if(init?.method==="POST"){state.attemptAt=performance.now();state.attemptClock=Date.now();if(["storage-final-loss","storage-final-replaced"].includes(mode))state.retainedAtAttempt=nativeGet.call(localStorage,"easy1staking:delegation-recovery");}if(init?.credentials!=="omit"||init?.redirect!=="error"||init?.cache!=="no-store")return deny("transport-options")();return nativeFetch(input,init);};
+     const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const u=new URL(typeof input==="string"?input:input.url,location.href);if(u.origin==="https://cardano-mainnet.blockfrost.io"&&init?.method==="POST"){state.submitDispatches++;try{nativeSet.call(sessionStorage,"synthetic:submitDispatches",String(state.submitDispatches));}catch{}}if(u.origin===location.origin)return nativeFetch(input,init);if(u.origin!=="https://cardano-mainnet.blockfrost.io")return deny("unexpected-fetch")();if(init?.method==="POST"){state.attemptAt=performance.now();state.attemptClock=Date.now();if(["storage-final-loss","storage-final-replaced"].includes(mode))state.retainedAtAttempt=nativeGet.call(localStorage,"easy1staking:delegation-recovery");}if(init?.credentials!=="omit"||init?.redirect!=="error"||init?.cache!=="no-store")return deny("transport-options")();const sent=nativeFetch(input,init);return mode==="retry-reported-held-body"&&state.submitDispatches>=2?sent.then(r=>new Response(new ReadableStream({pull(){state.heldBodyPulls=(state.heldBodyPulls||0)+1;return new Promise(()=>{});}},{highWaterMark:0}),{status:r.status,statusText:r.statusText,headers:r.headers})):sent;};
      window.XMLHttpRequest=function(){return deny("xhr")();};window.WebSocket=function(){return deny("socket")();};window.EventSource=function(){return deny("events")();};navigator.sendBeacon=deny("beacon");window.gtag=deny("analytics");
      navigator.storage.persist=deny("persist-prompt");
      // Responding tripwire controls are exercised without outward I/O.
@@ -230,15 +232,23 @@ async function main(){
        const n=record.posts.length,bad=()=>route.fulfill({status:500,contentType:"application/json",body:'{"error":"SYNTHETIC_PRIVATE_CANARY"}'}),jump=()=>routeStep(async()=>{record.clockJumps=(record.clockJumps||[]).concat([await page.evaluate(()=>{const before=Date.now();window.synthetic.clockDeltaMs+=181000;return{ms:181000,before,after:Date.now()};})]);});
        // React commits the emits of one task together, so a transient status line may never reach the DOM sampler: a test listener on the
        // controller (a pure getView read) records every emitted phase and message from the first POST on.
-       if(n===1){st.samplesAtFirstPost=record.layout.samples.length;await routeStep(()=>page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve){window.syntheticViews=[];c.subscribe(()=>{try{const v=c.getView();window.syntheticViews.push({phase:v.phase,message:v.message});}catch{}});return;}state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');}));await jump();return bad();}
+       if(n===1){st.samplesAtFirstPost=record.layout.samples.length;await routeStep(()=>page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve){window.syntheticViews=[];c.subscribe(()=>{try{const v=c.getView();window.syntheticViews.push({phase:v.phase,message:v.message});}catch{}});return;}state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');}));await jump();return name==="retry-after-report"?route.fulfill({status:400,contentType:"application/json",body:fixture.reportReplies.ledger,headers:{"access-control-allow-origin":"*"}}):bad();}
        const at=Date.now(),attemptClock=await page.evaluate(()=>window.synthetic.attemptClock).catch(()=>null);record.retryPosts=(record.retryPosts||[]).concat([{n,at,attemptClock}]);
        if(name==="retry-same-bytes")await routeStep(async()=>{record.lockAtPost=await page.evaluate(()=>navigator.locks.query());});
        // A held POST whose page gave up records its late fulfilment instead of throwing.
        if(name==="retry-post-timeout"||name==="retry-post-unknown-disconnect"){st.postHeldAt=Date.now();await new Promise(r=>setTimeout(r,name==="retry-post-timeout"?61000:3000));st.postHeldUntil=Date.now();try{await bad();}catch(error){st.lateFulfil=(st.lateFulfil||[]).concat([String(error?.message??error).split("\n")[0]]);}return;}
        await jump();
        if(name==="retry-again-after-unknown"&&n===2)return bad();
+       if(name==="retry-reported-held-body"&&n===2)return route.fulfill({status:400,contentType:"application/json",body:fixture.reportReplies.ledger,headers:{"access-control-allow-origin":"*"}});
        return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(expected.txId),headers:{"access-control-allow-origin":"*"}});
       }
+      // W8 reported validation error: a first-attempt 400 in the narrow local form (reported-*, the new dismiss-* cases) or a near miss that stays unknown (submit-400-*).
+      if(name==="reported-ledger")await routeStep(async()=>{record.clockJump=await page.evaluate(()=>{const before=Date.now();window.synthetic.clockDeltaMs+=181000;return{ms:181000,before,after:Date.now()};});});
+      if(name==="reported-then-confirmed")await routeStep(()=>page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve){window.syntheticViews=[];c.subscribe(()=>{try{const v=c.getView();window.syntheticViews.push({phase:v.phase,message:v.message});}catch{}});return;}state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');}));
+      if(["reported-ledger","reported-then-confirmed","reported-poll-budget","dismiss-after-report","dismiss-reported-seen-then-404","dismiss-reported-spent-by-id"].includes(name))return route.fulfill({status:400,contentType:"application/json",body:fixture.reportReplies.ledger,headers:{"access-control-allow-origin":"*"}});
+      if(name==="submit-400-bad-inputs")return route.fulfill({status:400,contentType:"application/json",body:fixture.reportReplies.badInputs,headers:{"access-control-allow-origin":"*"}});
+      if(name==="submit-400-not-ledger")return route.fulfill({status:400,contentType:"application/json",body:fixture.reportReplies.notLedger,headers:{"access-control-allow-origin":"*"}});
+      if(name==="submit-400-oversized")return route.fulfill({status:400,contentType:"application/json",body:OVERSIZED,headers:{"access-control-allow-origin":"*"}});
       if(name==="submit-bad-status")return route.fulfill({status:500,contentType:"application/json",body:'{"error":"SYNTHETIC_PRIVATE_CANARY"}'});
       if(name==="submit-missing-body")return route.fulfill({status:200,contentType:"application/json",body:""});
       if(name==="submit-malformed")return route.fulfill({status:200,contentType:"application/json",body:'{"raw":"SYNTHETIC_PRIVATE_CANARY"}'});
@@ -389,6 +399,7 @@ async function main(){
      }
     }else if(name.startsWith("submit-")||name==="cancel-transmission"||name==="storage-after-transmission"){
      await page.getByText("Submission outcome is unknown.",{exact:false}).waitFor({timeout:65000});assert.equal(record.posts.length,1,"ONE_POSSIBLE_TRANSMISSION");const text=await page.locator('#delegate').innerText();assert(text.includes(record.signatures[0].txId),"UNKNOWN_RETAINS_DERIVED_ID");assert(!text.includes('SYNTHETIC_PRIVATE_CANARY'),"REDACT_RAW_ERROR");await page.waitForTimeout(name==="submit-timeout"?1000:200);assert.equal(record.posts.length,1,"NO_AUTOMATIC_RETRY");assert.equal(await page.evaluate(()=>window.synthetic.submitDispatches),1,"ONE_POSSIBLE_DISPATCH");record.unknownRetained=true;
+     {const v=await currentView();assert(v.reported!==true&&!record.layout.samples.some(x=>x.status===fixture.submitCopy.reported),"NOT_REPORTED");}
      if(name==="submit-bad-status"){
       // The automatic poll after an unknown outcome is running: no retry is offered while it runs.
       let v=await currentView();for(let i=0;i<30&&!v.statusRunning;i++){await page.waitForTimeout(100);v=await currentView();}record.pollView={statusRunning:v.statusRunning,canRetry:v.canRetry??null};
@@ -443,6 +454,43 @@ async function main(){
       if(name==="confirm-index-lag"){assert.deepEqual(found.map(x=>x.found),[true,true,true],"LAG_PENDING_TWICE_THEN_CONFIRMED");assert.equal(st.cborReads,3,"CBOR_404_THEN_READ_TWICE");assert.equal(st.historyReads,2,"HISTORY_LAG_THEN_COMPLETE");}
       if(name==="confirm-different-wallet"){assert(!region.includes(B),"CONFIRMATION_NEVER_NAMES_CONNECTED_WALLET");assert((await viewOf()).account===B,"DIFFERENT_WALLET_CONNECTED");}
       if(name==="status-disconnect"){assert.equal((await viewOf()).walletId,null,"DISCONNECTED_DURING_CHECK");assert.equal(await page.getByRole("button",{name:"Disconnect wallet"}).count(),0);}
+     }else if(name==="reported-ledger"){
+      // W8: the first attempt's 400 in the narrow local form shows Blockfrost's report; the record, the bytes and the resend stay as for an unknown outcome.
+      const rep=fixture.submitCopy.reported;for(const t0=Date.now();Date.now()-t0<20000&&![rep,apology].includes(await statusText());)await page.waitForTimeout(100);await page.waitForTimeout(1000);assert.equal(await statusText(),rep,"REPORTED_TEXT");
+      let v=await viewOf();record.reported={view:{phase:v.phase,reported:v.reported,failureReason:v.failureReason,retryReason:v.retryReason}};
+      assert(v.phase==="check-later"&&v.reported===true&&v.failureReason===null&&v.retryReason===null,"REPORTED_VIEW");
+      const body=await page.locator('#delegate').innerText();assert(body.includes("Transaction ID — "+fixture.submitCopy.reportedCaption)&&body.includes(golden.txId)&&!body.includes("outcome pending or unknown"),"REPORTED_CAPTION");
+      assert(!body.includes("SYNTHETIC_PRIVATE_CANARY"),"REDACT_RAW_ERROR");
+      assert(v.canRetry===true&&await page.getByRole("button",{name:fixture.retryCopy.offer,exact:true}).count()===1&&await page.getByText(fixture.retryCopy.note,{exact:true}).count()===1,"RETRY_OFFERED_AFTER_REPORT");
+      const R0=await stored();record.reported.R0=R0;assert(R0!==null&&JSON.parse(R0).txId===golden.txId&&JSON.parse(R0).stage==="unknown","REPORTED_RECORD_RETAINED_UNKNOWN");
+      await page.waitForTimeout(3000);assert(statusReads(postAt)===0&&await statusText()===rep,"REPORTED_NO_STATUS_READS");
+      assert(record.posts.length===1&&await page.evaluate(()=>window.synthetic.submitDispatches)===1,"NO_AUTOMATIC_RETRY");
+      assert(await page.getByText(fixture.dismissalCopy.priorNotice,{exact:true}).count()===1&&await page.getByLabel("Wallet",{exact:true}).count()===0&&await page.getByRole("button",{name:"Build delegation review"}).count()===0,"NEW_DELEGATION_BLOCKED");
+      const at=Date.now();await page.getByRole("button",{name:"Check status"}).click({timeout:15000}).catch(()=>{});
+      for(const t1=Date.now();Date.now()-t1<15000&&!record.http.some(x=>x.at>=at&&x.path==="/blocks/latest");)await page.waitForTimeout(100);
+      for(const t2=Date.now();Date.now()-t2<30000&&(await viewOf()).statusRunning;)await page.waitForTimeout(100);await page.waitForTimeout(500);
+      v=await viewOf();record.statusReason=v.statusReason;assert.equal(v.statusReason,"not-found:NOT_FOUND","REPORTED_STATUS_REASON");
+      assert(await statusText()===rep&&v.reported===true&&v.phase==="check-later","REPORTED_AFTER_CHECK");
+      assert.equal(await stored(),R0,"RECORD_UNCHANGED");
+      await page.getByRole("button",{name:"Disconnect wallet"}).click({timeout:5000}).catch(()=>{});
+      for(const t3=Date.now();Date.now()-t3<5000&&await page.getByText("Wallet disconnected.",{exact:true}).count()===0;)await page.waitForTimeout(100);
+      assert(await page.getByText("Wallet disconnected.",{exact:true}).count()===1&&await statusText()===rep&&await page.getByRole("button",{name:fixture.retryCopy.offer,exact:true}).count()===0,"REPORT_KEPT_ON_DISCONNECT");
+     }else if(name==="reported-then-confirmed"){
+      // Chain confirmation overrides the reported text.
+      await waitTerminal(80000).catch(()=>{});await confirmedState("This stake account currently delegates to EASY1.");
+      const views=await page.evaluate(()=>window.syntheticViews||[]).catch(()=>[]),rep=fixture.submitCopy.reported;record.reportedViews=views.map(x=>x.phase+": "+x.message.slice(0,40));
+      const first=views.findIndex(x=>x.message===rep),confirmedAt=views.findIndex(x=>x.phase==="confirmed");assert(first>=0&&confirmedAt>first,"REPORTED_THEN_CONFIRMED");
+     }else if(name==="reported-poll-budget"){
+      // A running automatic poll whose budget ends keeps the reported text; the resend is then offered as after an unknown outcome.
+      const rep=fixture.submitCopy.reported;for(const t0=Date.now();Date.now()-t0<20000&&!(st.lookups>=1&&(await viewOf()).statusRunning);)await page.waitForTimeout(100);
+      let v=await viewOf();record.reported={during:{lookups:st.lookups,statusRunning:v.statusRunning,text:await statusText(),reported:v.reported}};
+      assert(st.lookups>=1&&v.statusRunning&&await statusText()===rep&&v.reported===true,"REPORTED_DURING_POLL");
+      assert.equal(await page.getByRole("button",{name:fixture.retryCopy.offer,exact:true}).count(),0,"NO_RETRY_OFFER_DURING_POLL");
+      await page.evaluate(()=>{window.synthetic.clockDeltaMs+=181000;});
+      for(const t1=Date.now();Date.now()-t1<15000&&(await viewOf()).statusRunning;)await page.waitForTimeout(100);await page.waitForTimeout(500);
+      v=await viewOf();record.reported.after={statusRunning:v.statusRunning,phase:v.phase,text:await statusText(),reported:v.reported,canRetry:v.canRetry};
+      assert(!v.statusRunning&&v.phase==="check-later"&&await statusText()===rep&&v.reported===true,"REPORTED_AFTER_POLL_BUDGET");
+      assert(v.canRetry===true&&await page.getByRole("button",{name:fixture.retryCopy.offer,exact:true}).count()===1,"RETRY_OFFERED_AFTER_REPORT");
      }else if(name==="confirm-unknown-outcome"){
       await page.getByText("Submission outcome is unknown.",{exact:false}).waitFor({timeout:65000});let v=await viewOf();for(let i=0;i<20&&!v.statusRunning;i++){await page.waitForTimeout(100);v=await viewOf();}record.statusUntil=v.statusUntil;
       assert(v.statusRunning&&Number.isSafeInteger(v.statusUntil),"POLL_RUNNING_AFTER_UNKNOWN");const origin0=v.statusUntil-180000;
@@ -632,6 +680,32 @@ async function main(){
        assert(record.dismiss.poll.text===apology&&offered===0&&await offerCount()===0&&!phases.includes("expired-unseen")&&rowsReads(postAt)===0,"NO_DISMISSAL_DURING_POLL");
        assert(st.lookups>0&&tips.some(s=>s>=Number(TTL)),"POLL_RAN_PAST_TTL");
        await check("not-found:EXPIRED_UNSEEN");assert.equal(await offerCount(),1,"DISMISS_OFFERED");await retained("RECORD_RETAINED_ON_OFFER");
+      }else if(name==="dismiss-after-report"){
+       // The reported text, then the existing check and manual dismissal after expiry.
+       const rep=fixture.submitCopy.reported;for(const t0=Date.now();Date.now()-t0<20000&&![rep,apology].includes(await statusText());)await page.waitForTimeout(100);await page.waitForTimeout(1000);assert.equal(await statusText(),rep,"REPORTED_TEXT");
+       await dismissAll(null);await cutoff();
+      }else if(name==="dismiss-reported-seen-then-404"){
+       // Before the TTL (tips follow the clock): a witnessed ID drops the report, and a later 404 does not resurrect it.
+       const rep=fixture.submitCopy.reported;for(const t0=Date.now();Date.now()-t0<20000&&![rep,apology].includes(await statusText());)await page.waitForTimeout(100);await page.waitForTimeout(1000);assert.equal(await statusText(),rep,"REPORTED_TEXT");
+       st.found=true;st.lagCbor=true;await check("pending:INDEX_LAG");
+       {const v=await viewOf();assert(await statusText()===apology&&v.reported===false&&!(await page.locator('#delegate').innerText()).includes(fixture.submitCopy.reportedCaption),"REPORT_GONE_ON_SEEN");}
+       assert.equal(await page.getByRole("button",{name:fixture.retryCopy.offer,exact:true}).count(),0,"NO_RETRY_AFTER_SEEN");
+       st.found=false;st.inclusion=null;await check("not-found:NOT_FOUND");
+       {const v=await viewOf();assert(await statusText()===apology&&v.reported===false,"NO_REPORT_RESURRECTION");}
+       await retained("RECORD_RETAINED_AFTER_LATER_404");assert.equal(await offerCount(),0,"NO_DISMISS_OFFER");await cutoff();
+      }else if(name==="dismiss-reported-spent-by-id"){
+       // A spend by its own ID drops the report; a later busy check does not resurrect it.
+       const rep=fixture.submitCopy.reported;for(const t0=Date.now();Date.now()-t0<20000&&![rep,apology].includes(await statusText());)await page.waitForTimeout(100);await page.waitForTimeout(1000);assert.equal(await statusText(),rep,"REPORTED_TEXT");
+       st.consumed=golden.txId;await follow(TTL+5n);await check("inconsistent:SPENT_BY_ID");
+       assert.equal(await statusText(),R.spentById,"DISMISS_STATUS_TEXT");assert.equal(await offerCount(),0,"NO_DISMISS_OFFER");await retained("RECORD_RETAINED_ON_SPENT_BY_ID");
+       {const v=await viewOf();assert(v.reported===false&&!(await page.locator('#delegate').innerText()).includes(fixture.submitCopy.reportedCaption),"REPORT_GONE_ON_SPENT");}
+       const second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor({timeout:15000}).catch(()=>{});
+       await second.evaluate(()=>{window.held=navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},()=>new Promise(r=>{window.releaseHeld=r;}));});
+       await second.waitForFunction(()=>typeof window.releaseHeld==="function",{},{timeout:15000}).catch(()=>{});
+       const clickAt=Date.now();await page.getByRole("button",{name:"Check status"}).click({timeout:15000}).catch(()=>{});await page.waitForTimeout(1000);
+       for(const t1=Date.now();Date.now()-t1<10000&&(await viewOf()).statusRunning;)await page.waitForTimeout(100);await page.waitForTimeout(500);
+       {const v=await viewOf();record.reportedBusy={text:await statusText(),statusReason:v.statusReason,reported:v.reported,reads:reads(clickAt).length};assert(await statusText()===apology&&v.reported===false&&reads(clickAt).length===0,"NO_REPORT_AFTER_SPENT");}
+       await second.evaluate(()=>window.releaseHeld()).catch(()=>{});await second.close();await cutoff();
       }else if(name==="dismiss-expired"){
        await dismissAll(null);await cutoff();
        // Reconnect after the cutoff: a fresh review builds and is never approved.
@@ -763,12 +837,16 @@ async function main(){
       const reads=after=>record.http.filter(x=>x.at>after),slotOf=clock=>Number(baseSlot)+Math.floor((clock-baseTime)/1000);
       const testController=()=>page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve){window.testController=c;return;}state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');});
       record.retry={clicks:[]};
-      await page.getByText(apology,{exact:true}).waitFor({timeout:20000});await page.waitForTimeout(300);
+      if(name==="retry-after-report")await page.getByText(fixture.submitCopy.reported,{exact:true}).waitFor({timeout:20000}).catch(()=>{});
+      else await page.getByText(apology,{exact:true}).waitFor({timeout:20000});await page.waitForTimeout(300);
       const emitted=()=>page.evaluate(()=>window.syntheticViews||[]).catch(()=>[]);
       const common={sampled:[...new Set(record.layout.samples.slice(st.samplesAtFirstPost).map(x=>x.status))],emitted:await emitted(),text:await statusText(),statusReads:statusReads(postAt),view:await viewOf()};
       const firstUnknown=common.emitted.findIndex(x=>x.message===unknownText),lastApology=common.emitted.map(x=>x.message).lastIndexOf(apology);
       record.retry.before={sampled:common.sampled,emitted:common.emitted.map(x=>x.phase+": "+x.message.slice(0,40)),text:common.text,statusReads:common.statusReads,phase:common.view.phase,statusRunning:common.view.statusRunning,canCheckStatus:common.view.canCheckStatus,recovery:common.view.recovery.status,canRetry:common.view.canRetry??null};
-      assert(firstUnknown>=0&&lastApology>firstUnknown&&common.text===apology&&common.statusReads===0,"COMMON_UNKNOWN_THEN_APOLOGY");
+      // retry-after-report: the first POST drew the reported validation error, so its text shows with phase unknown, then check-later.
+      if(name==="retry-after-report"){const rep=fixture.submitCopy.reported,unknownAt=common.emitted.findIndex(x=>x.message===rep&&x.phase==="unknown"),laterAt=common.emitted.findIndex((x,i)=>i>unknownAt&&x.message===rep&&x.phase==="check-later");
+       assert(unknownAt>=0&&laterAt>unknownAt&&common.text===rep&&common.statusReads===0,"COMMON_REPORTED");}
+      else assert(firstUnknown>=0&&lastApology>firstUnknown&&common.text===apology&&common.statusReads===0,"COMMON_UNKNOWN_THEN_APOLOGY");
       assert(await offerCount()===1&&await page.getByText(rc.note,{exact:true}).count()===1,"RETRY_OFFERED");
       const R0=await stored(),keys0=await storageKeys();record.retry.R0=R0;record.retry.keys0=keys0;
       // Reads after a click are labelled for holds and pins; the cutoff of the read-only status check is the first click.
@@ -912,6 +990,22 @@ async function main(){
        const first=await click();reasons(first.v,"UNKNOWN");await page.getByText(apology,{exact:true}).waitFor({timeout:20000});await page.waitForTimeout(500);
        assert(first.c.posts===2&&await offerCount()===1,"RETRY_OFFERED_AGAIN");const second=await click();reasons(second.v,"SENT");
        assert(record.posts.length===3&&record.posts.every(x=>x.hex===record.posts[0].hex&&x.hex===record.signatures[0].signedHex),"RETRY_IDENTICAL_BYTES");await finish();
+      }else if(name==="retry-after-report"){
+       // A deliberate resend supersedes the earlier report: its newer attempt clears the page latch.
+       const {v}=await click();reasons(v,"SENT");
+       await page.getByText(apology,{exact:true}).waitFor({timeout:15000}).catch(()=>{});await page.waitForTimeout(500);
+       assert(await statusText()===apology&&(await viewOf()).reported===false,"REPORT_SUPERSEDED_BY_RESEND");
+       await finish();
+      }else if(name==="retry-reported-held-body"){
+       // A resend's 400 is never read or classified: prompt headers and a stalled body still end UNKNOWN at once, with the lock released.
+       const at=watch(),i0=(await emitted()).length;await page.getByRole("button",{name:rc.offer,exact:true}).click({timeout:15000}).catch(()=>{});
+       for(const t1=Date.now();Date.now()-t1<30000&&record.posts.length<2;)await page.waitForTimeout(100);assert.equal(record.posts.length,2,"RETRY_POST_SENT");
+       const {v,c}=await settle(at,10000);
+       assert.equal(await page.evaluate(()=>window.synthetic.heldBodyPulls||0),0,"RETRY_400_NO_BODY_READ");
+       const locks=await page.evaluate(()=>navigator.locks.query());record.retry.locksAfter=locks;assert(v.retryReason==="UNKNOWN"&&c.seenAt!==null&&locks.held.length===0,"RETRY_400_PROMPT_UNKNOWN");
+       const after=(await emitted()).slice(i0);assert(await statusText()!==fixture.submitCopy.reported&&!after.some(x=>x.message===fixture.submitCopy.reported),"NOT_REPORTED_ON_RESEND");
+       await page.getByText(apology,{exact:true}).waitFor({timeout:20000}).catch(()=>{});await page.waitForTimeout(500);assert.equal(await offerCount(),1,"RETRY_OFFERED_AGAIN");
+       await finish();
       }else throw Error("UNHANDLED_RETRY_CASE "+name);
      }else if(name==="check-status-after-reload"){
       await until(()=>st.lookups>=1,15000,"FIRST_TICK");await page.waitForTimeout(1000);
