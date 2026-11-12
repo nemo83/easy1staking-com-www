@@ -4,13 +4,14 @@
 // node:test, because a failing top-level after() hook from node:test does not redden the exit code (see lib/node-test-gate.cjs).
 // Plain node:assert and an explicit exit code; never node:test. Run from easy1staking/: node scripts/check-node-test-gate.cjs
 // It reads comment-stripped source text, so it checks declarations, not behaviour; obfuscated or dynamic requires are not detected.
+// Also not detected: chained members such as require(...).test.after or nt.test.after.
 const fs = require("node:fs"), path = require("node:path"), assert = require("node:assert/strict");
 const scripts = __dirname, self = path.join(scripts, "check-node-test-gate.cjs"), helper = path.join(scripts, "lib", "node-test-gate.cjs");
 // The module names are assembled, so this file's own source never matches its detectors.
 const MODULE = ["node", "test"].join(":"), HELPER = "./lib/node-test-gate" + ".cjs", HOOK = "af" + "ter", LOAD = "requ" + "ire";
 const esc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&"), Q = "[\"'`]", ident = "[A-Za-z_$][\\w$]*";
 const quoted = name => Q + esc(name) + Q, required = name => LOAD + "\\s*\\(\\s*" + quoted(name) + "\\s*\\)";
-const member = "\\s*(?:\\?\\.)?\\s*(?:\\.\\s*" + HOOK + "(?![\\w$])|\\[\\s*" + quoted(HOOK) + "\\s*\\])";
+const member = "\\s*(?:\\?\\.\\s*(?:" + HOOK + "(?![\\w$])|\\[\\s*" + quoted(HOOK) + "\\s*\\])|\\.\\s*" + HOOK + "(?![\\w$])|\\[\\s*" + quoted(HOOK) + "\\s*\\])";
 const keywords = new Set(["return", "typeof", "case", "do", "else", "in", "of", "void", "yield", "await", "delete", "instanceof", "new", "throw"]);
 
 /** Removes // and block comments outside string, template and regular-expression literals. */
@@ -36,6 +37,9 @@ function strip(text) {
   return out;
 }
 const hasKey = (inside, key) => inside.split(",").some(part => part.trim().split(/\s*[:=]\s*|\s+as\s+/)[0].replace(/["'`]/g, "").trim() === key);
+/** Local names bound to node:test's test or it export in a destructuring or import list: `test`, `test: t`, `test as t`, `it`. */
+const aliasNames = inside => inside.split(",").map(part => part.trim().split(/\s*:\s*|\s+as\s+/).map(s => s.replace(/["'`]/g, "").trim()))
+  .filter(([key]) => key === "test" || key === "it").map(([key, local]) => local || key);
 /** Shapes that take after() from node:test, or call it bare without binding it from the helper, on comment-stripped code. */
 function violations(code) {
   const found = [], add = shape => { if (!found.includes(shape)) found.push(shape); };
@@ -52,6 +56,12 @@ function violations(code) {
     if (new RegExp("(?<![\\w$.])" + esc(name) + member).test(code)) add("namespace " + name + "." + HOOK);
     for (const m of code.matchAll(new RegExp("\\{([^{}]*)\\}\\s*=\\s*" + esc(name) + "(?![\\w$])", "g"))) if (hasKey(m[1], HOOK)) add("destructured " + HOOK + " from namespace " + name);
   }
+  // test.after and it.after are node:test's after(): a local binding of the test or it export is checked like a namespace.
+  const aliases = new Set();
+  for (const m of code.matchAll(new RegExp("\\{([^{}]*)\\}\\s*=\\s*" + required(MODULE), "g"))) aliasNames(m[1]).forEach(a => aliases.add(a));
+  for (const m of code.matchAll(new RegExp("\\bimport\\s*(?:" + ident + "\\s*,\\s*)?\\{([^{}]*)\\}\\s*from\\s*" + quoted(MODULE), "g"))) aliasNames(m[1]).forEach(a => aliases.add(a));
+  for (const name of names) for (const m of code.matchAll(new RegExp("\\{([^{}]*)\\}\\s*=\\s*" + esc(name) + "(?![\\w$])", "g"))) aliasNames(m[1]).forEach(a => aliases.add(a));
+  for (const alias of aliases) if (new RegExp("(?<![\\w$.])" + esc(alias) + member).test(code)) add("alias " + alias + "." + HOOK);
   const helperUser = [...code.matchAll(new RegExp("\\{([^{}]*)\\}\\s*=\\s*" + required(HELPER), "g"))].some(m => hasKey(m[1], HOOK));
   if (new RegExp("(?<![\\w$.])" + HOOK + "\\s*\\(").test(code) && !helperUser) add("bare " + HOOK + "( without the helper");
   return { requiresModule, helperUser, found };
@@ -71,10 +81,17 @@ const planted = [
   ["import * as nt from \"" + MODULE + "\"; nt." + HOOK + "(() => {});", "namespace nt." + HOOK],
   ["import nt from \"" + MODULE + "\"; nt." + HOOK + "(() => {});", "namespace nt." + HOOK],
   ["const { test } = " + call(MODULE) + "; " + HOOK + "(() => {});", "bare " + HOOK + "( without the helper"],
+  ["const { test } = " + call(MODULE) + "; test." + HOOK + "(() => {});", "alias test." + HOOK],
+  ["const { test: t } = " + call(MODULE) + "; t." + HOOK + "(() => {});", "alias t." + HOOK],
+  ["const { it } = " + call(MODULE) + "; it[\"" + HOOK + "\"](() => {});", "alias it." + HOOK],
+  ["import { test as t } from \"" + MODULE + "\"; t." + HOOK + "(() => {});", "alias t." + HOOK],
+  ["const nt = " + call(MODULE) + "; const { it: i } = nt; i." + HOOK + "(() => {});", "alias i." + HOOK],
+  ["const nt = " + call(MODULE) + "; nt?." + HOOK + "(() => {});", "namespace nt." + HOOK],
 ];
 const clean = [
   "const { test } = " + call(MODULE) + ", { " + HOOK + " } = " + call(HELPER) + "; " + HOOK + "(() => {});",
   "const { test } = " + call(MODULE) + ", { " + HOOK + " } = " + call(HELPER) + ";\n// const { " + HOOK + " } = " + call(MODULE) + "\n" + HOOK + "(() => {});",
+  "const { test } = " + call(MODULE) + ", { " + HOOK + " } = " + call(HELPER) + "; const contest = { " + HOOK + "() {} }; contest." + HOOK + "(); test.skip(\"x\", () => {}); " + HOOK + "(() => {});",
 ];
 for (const [snippet, shape] of planted) {
   const result = violations(strip(snippet));
@@ -84,6 +101,37 @@ for (const snippet of clean) assert.deepEqual(violations(strip(snippet)).found, 
 console.log("DETECTOR_RESPONDS " + planted.length + " planted shapes flagged, " + clean.length + " clean controls passed");
 const own = violations(strip(fs.readFileSync(self, "utf8")));
 assert(!own.requiresModule && own.found.length === 0, "SELF_DOES_NOT_REQUIRE_NODE_TEST");
+
+// HELPER_RESPONDS: real temporary suites under this Node. Through the helper a failing hook reddens the run, hook options are refused, and
+// neither an exit listener registered later nor a hook body that never settles can let a failing run exit 0. ALIAS_WITNESS records, without
+// asserting, how a failing hook reached through node:test's test.after ends without the helper.
+const os = require("node:os"), { spawnSync } = require("node:child_process");
+const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "node-test-gate-")), failure = "() => { throw new Error(\"SYNTHETIC_HOOK_FAILURE\"); }";
+const header = "\"use strict\";\nconst { test } = " + call(MODULE) + ", { " + HOOK + " } = " + LOAD + "(" + JSON.stringify(helper) + ");\ntest(\"t\", () => {});\n";
+const witnesses = [
+  ["throwing", HOOK + "(" + failure + ");", "nonzero"],
+  ["healthy", HOOK + "(() => {});", "zero"],
+  ["healthy-async", HOOK + "(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });", "zero"],
+  ["options", HOOK + "(() => {}, { timeout: 1000 });", "refused"],
+  ["late-exit-listener", HOOK + "(() => { setImmediate(() => process.on(\"exit\", () => { process.exitCode = 0; })); throw new Error(\"SYNTHETIC_HOOK_FAILURE\"); });", "nonzero"],
+  ["never-settles", HOOK + "(() => new Promise(() => {}));", "nonzero"],
+];
+const runSuite = text => {
+  const file = path.join(scratch, "w" + fs.readdirSync(scratch).length + ".cjs"); fs.writeFileSync(file, text);
+  const r = spawnSync(process.execPath, [file], { cwd: scratch, encoding: "utf8", timeout: 60000 });
+  return { exit: r.status, signal: r.signal, error: r.error ? String(r.error.code || r.error.message) : null, refused: /hook options are not supported/.test(r.stderr || "") };
+};
+let helperResults, aliasWitness;
+try {
+  helperResults = witnesses.map(([name, body, expect]) => {
+    const o = runSuite(header + body + "\n"), exited = o.error === null && o.signal === null && typeof o.exit === "number";
+    return { name, expect, ...o, ok: exited && (expect === "zero" ? o.exit === 0 : o.exit !== 0 && (expect !== "refused" || o.refused)) };
+  });
+  aliasWitness = runSuite("\"use strict\";\nconst { test } = " + call(MODULE) + ";\ntest(\"t\", () => {});\ntest." + HOOK + "(" + failure + ");\n");
+} finally { fs.rmSync(scratch, { recursive: true, force: true }); }
+console.log("HELPER_RESPONDS " + JSON.stringify(helperResults.map(({ name, expect, exit, signal, error, ok }) => ({ name, expect, exit, signal, error, ok }))));
+console.log("ALIAS_WITNESS " + JSON.stringify({ exit: aliasWitness.exit, signal: aliasWitness.signal }));
+assert.deepEqual(helperResults.filter(r => !r.ok).map(r => r.name), [], "HELPER_RESPONDS");
 
 const files = [...fs.readdirSync(scripts).filter(f => /^check-.*\.cjs$/.test(f)).map(f => path.join(scripts, f)),
   ...fs.readdirSync(path.join(scripts, "lib")).filter(f => f.endsWith(".cjs")).map(f => path.join(scripts, "lib", f))]
