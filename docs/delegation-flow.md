@@ -17,7 +17,11 @@ manual dismissal"). It never resends on its own; after an unknown outcome the ta
 that signed can deliberately send the same signed transaction again (see
 "Deliberate resend of the same signed transaction"). Submitted means that the
 provider returned the
-matching ID, not chain confirmation. Use the originating browser and an
+matching ID, not chain confirmation. When the provider's reply to the first
+submission matches a narrow form of a ledger validation error, the page says
+that Blockfrost reported a validation error; that is a provider report, never
+proof, and the ID, the record and the resend are kept exactly as after an
+unknown outcome (see "Reported validation errors"). Use the originating browser and an
 independent wallet or explorer to check an unresolved operation. Do not delete
 recovery storage to make a new attempt.
 
@@ -52,6 +56,12 @@ Any possible transmission retains the independently derived ID through timeout,
 cancellation, malformed or mismatched response and storage loss. Revoking a lease
 may prevent updating its stored stage; that cannot turn an attempted transaction
 into a safely cancelled one. No late reply can revive an invalidated operation.
+A first-attempt 400 reply is the only non-200 reply whose body this page reads,
+and only to choose its words: when Blockfrost words it as a ledger validation
+error, that is a provider report, not proof that the transaction was not sent or
+included. Through it the derived ID, the recovery record (stage
+`unknown`), the retained signed bytes and the deliberate resend are kept exactly
+as after an unknown outcome (see "Reported validation errors").
 
 Web Locks/localStorage coordinate cooperating agents in one retained browser
 origin. They do not provide crash-durable exactly-once behavior, atomic wallet or
@@ -184,8 +194,10 @@ transaction that could not be built or checked safely, a signature that does not
 match the reviewed transaction, and the chain-source refusals. No message
 promises an automatic clear, retry or rebuild. Once a transaction may have been
 sent, the existing unknown-outcome texts are unchanged: a rejected or uncertain
-submission is never proof that it was not included. Pending confirmation keeps
-its existing texts.
+submission is never proof that it was not included. A validation error that
+Blockfrost reported for the first submission has its own words (see "Reported
+validation errors"), but it is never proof either, and it changes no record and
+no resend. Pending confirmation keeps its existing texts.
 
 The first stop reason latched on an operation wins: the visitor's cancel, a
 wallet change observed by the wallet owner, or an expiry. A later automatic
@@ -209,6 +221,65 @@ expired recorded transaction can be dismissed by hand as described in the next
 section. Only the tab that signed a transaction can send its identical signed
 bytes again, as described in "Deliberate resend of the same signed transaction";
 a tab showing another tab's record cannot.
+
+## Reported validation errors
+
+When Blockfrost's reply to this tab's first submission of a transaction matches
+a narrow form of a ledger validation error, the page shows that Blockfrost
+reported a validation error for the transaction. It is the provider's report
+about one handling of one request, never proof that the transaction was not
+sent, relayed or included, and nothing else changes.
+
+The form is this page's own local policy, deliberately narrower than the
+provider's documented 400 schema, which requires `status_code`, `error` and
+`message` and gives 400, "Bad Request" and a sample text only as example values.
+The page requires HTTP 400, not redirected, with a JSON content type (optionally
+`charset=utf-8`); a body of at most 16384 bytes that decodes as strict UTF-8 and
+parses as bounded JSON with exactly the keys `status_code` (the number 400),
+`error` ("Bad Request") and `message`; and a message that is, as a whole, one
+`ApplyTxError [...]` or `ConwayApplyTxError [...]` list containing none of the
+words "already", "duplicate", "mempool" or "BadInputsUTxO" in any letter case.
+Those words can mean that the transaction is already known, queued, duplicated
+or has spent its own inputs. Everything else stays unknown with the existing
+texts: timeouts, network and cross-origin failures, every other status (403,
+418, 425, 429 and 5xx included), malformed, oversized, duplicate-key or
+extra-key bodies, narrative text around the list, an ambiguous member anywhere
+in the list, and every reply to a deliberate resend, whose body is not even
+read. The body is read in memory only to classify it; no part of it is shown,
+stored or logged.
+
+Only the first attempt is classified, within the existing 60-second reply
+deadline, so a slow 400 body ends as a timeout and stays unknown. On the
+reported outcome the recovery record is written exactly as for an unknown
+outcome (stage `unknown`), the signed bytes are kept, and after the status work
+the deliberate resend is offered exactly as after an unknown outcome. The
+automatic read-only poll runs as before. A confirmation, a positive sighting and
+a spend by the transaction's own ID override the reported text, and so does any
+later attempt: once a resend's POST is invoked, the page no longer shows the
+report for that ID. The not-found, busy and poll-budget endings of status work
+keep the reported text for an ID this page latched, unless that ID was since
+seen or spent; every other ending (confirmed, seen but unverified, spent by its
+own ID, inconsistent, changed, or a dismissal offer) shows as before.
+
+The record keeps blocking a new delegation until it is confirmed or, after
+expiry, dismissed. The next step is to check the status here; after the
+transaction expires, the existing check and manual dismissal apply, and a
+dismissal is the visitor's override, not proof that the transaction was not
+included. The report is held in page memory only: after a reload the generic
+pending texts show, and the record is unchanged.
+
+Absent evidence: the bundled provider documentation does not say what text
+Blockfrost places in a `/tx/submit` 400 `message`, whether a 400 reply is
+readable across origins, or what a 400 implies about acceptance or relay by any
+provider backend. If the real wording differs, or the reply is not readable, the
+category never appears and the outcome stays unknown. A comparison with real
+replies remains a release-gate item.
+
+The status line reads:
+
+"Blockfrost reported a validation error for this transaction. That does not prove it was not sent or included. Keep the ID and check its status here; once it expires and the check allows it, you can choose to dismiss it."
+
+and the transaction ID caption reads "Transaction ID — validation error reported".
 
 ## Expired records and manual dismissal
 
@@ -360,7 +431,11 @@ status result that latches the ID as seen or spent. A dropped copy is never
 restored. After a reload the record can still be checked, but it cannot be
 resent. Whether a provider reply to a resend of an already-known transaction is
 a definite rejection is not distinguished: every non-authentic reply stays
-unknown.
+unknown. A resend's reply is never read or classified, whatever its status: a
+400 to a resend ends unknown at once, without reading its body, and keeps the
+resend's approved timing. A resend also supersedes an earlier reported
+validation error: once its POST is invoked, the page no longer shows that report
+for the ID.
 
 ## Mobile entry
 
@@ -437,13 +512,34 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 128 cases (105 before the deliberate-resend cases,
+`--cases all` now executes 139 cases (128 before the reported-validation-error
+cases, 105 before the deliberate-resend cases,
 86 before the manual-dismissal cases and 81 before the failure-message cases
 were added) and `--cases first` executes
 six. Selectors
-are strict: `--case` must name one registered case (the 128 plus
+are strict: `--case` must name one registered case (the 139 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
+
+The eleven reported-validation-error cases answer the first POST with a
+synthetic 400 whose canary must never be shown: `submit-400-bad-inputs` (a
+ledger list carrying `BadInputsUTxO`), `submit-400-not-ledger` (the provider's
+generic wording) and `submit-400-oversized` (the ledger body one byte over 16384)
+stay unknown; `reported-ledger` (resumed past the poll budget) shows the report,
+its caption, the resend offer, the record at stage `unknown`, no status reads and
+no new delegation, keeps the report through a deliberate check
+(`not-found:NOT_FOUND`) with the record unchanged, and through Disconnect;
+`reported-then-confirmed` shows the report before the confirmation;
+`reported-poll-budget` keeps it while the automatic poll runs and after its
+budget ends, then offers the resend; `dismiss-after-report` dismisses the
+expired record by hand; `dismiss-reported-seen-then-404` drops the report once
+the ID is seen and keeps it dropped after a later 404;
+`dismiss-reported-spent-by-id` drops it on a spend by the ID and keeps it
+dropped when a later check is busy; `retry-after-report` drops it when the
+resend is sent; and `retry-reported-held-body` answers the resend with a 400
+whose body never arrives and requires an unknown ending at once, no body read,
+no held lock and no report. Every case of the submit branch also requires that
+no report is shown (`NOT_REPORTED`).
 
 Every registered case declares its exact page dispatches and intercepted POSTs
 in the fixture: 0 for veto and refusal cases, 1 for single-attempt cases, 2
@@ -633,14 +729,20 @@ Run the existing chain-context, wallet-signature, wallet-session, stake-builder,
 stake-guard and pool-facts suites, the recovery-verifier suite
 (`scripts/check-recovery-verifier.cjs`, every outcome, reason code and
 resolution refusal), the failure-message suite
-(`node scripts/check-delegation-messages.cjs`, 122 tests, 119 before the resend
-copy: every code of every
+(`node scripts/check-delegation-messages.cjs`, 125 tests, 122 before the
+reported-validation-error copy and 119 before the resend copy: every code of every
 owned union, parsed from its declaration, maps to its exact text, including the
 manual-dismissal `recovery` texts; forged keys give the fallback; every text is
 plain and in the flow's `statusTexts`; the dismissal copy has exactly its keys
 and texts and is plain; the resend copy has exactly its keys and texts, is
 plain, ends every entry except the offer with a period, and its six status-line
-texts are in `statusTexts`; the compiled module has no `require`), native signature/coordination suites, installed
+texts are in `statusTexts`; the reported-validation-error copy has exactly its
+keys and texts, is plain, ends its status line with a period and has that line
+in `statusTexts`; the compiled module has no `require`), the submit-reply suite
+(`node scripts/check-submit-reply.cjs`, 26 tests: the narrow form is classified,
+including its byte limit exactly, and every near miss of status, redirect,
+content type, encoding, JSON, keys, field values, message form or ambiguous
+wording is not; only the classifier and the JSON parser are loaded), native signature/coordination suites, installed
 security/compatibility checks, build/lint, raw production/full audits and source
 export checks. Record actual executed/skipped counts and raw audit responses.
 Current registry output is a point-in-time witness; it does not erase the
@@ -872,3 +974,54 @@ Dependency repair (supersedes the residue above): with `@evolution-sdk/evolution
 0.5.14 the vulnerable `@effect/platform` package is no longer installed, and
 `npm audit --omit=dev --json` and `npm audit --json` both exit 0 with zero
 findings on this tree.
+
+Reported-validation-error receipt (supersedes the 128-case flow count, the
+122-test failure-message count and the eight-suite meta-check count above): with
+the new browser, message and submit-reply tests on the earlier source, the
+submit-reply suite failed 26 of 26 tests, each on the missing classifier module;
+the message suite failed 3 of 125 tests, the three reported-copy tests; and of
+19 browser cases run one at a time, `reported-ledger`, `dismiss-after-report`,
+`dismiss-reported-seen-then-404` and `dismiss-reported-spent-by-id` failed first
+at `REPORTED_TEXT`, `reported-then-confirmed` at `REPORTED_THEN_CONFIRMED`,
+`reported-poll-budget` at `REPORTED_DURING_POLL` and `retry-after-report` at
+`COMMON_REPORTED`, while the three `submit-400-*` cases,
+`retry-reported-held-body` (the earlier resend already ended unknown without
+reading the body) and the eight submit-branch cases with the new `NOT_REPORTED`
+assertion passed. On the new source the flow passes 139 of 139 cases with every
+declared dispatch and POST count and no layout or unknown-status failure, the
+failure-message suite passes 125 of 125 tests, the submit-reply suite 26 of 26,
+and the meta-check finds nine node:test suites and five helper users. Each
+classifier mutant was killed by exactly its named tests, and its source was then
+restored exactly: N1 (status check removed) by the other-status test; N2
+(redirect check removed) by the redirected test; N3 (content-type check
+removed) by the content-type test; N4a (limit made exclusive) by the
+exact-limit test; N4b (length check removed) by the one-byte-over test; N5
+(UTF-8 made non-fatal) by the malformed UTF-8 test; N6 (the older form
+refused) by the older-form test; N7 (exact keys not required) by the extra-key
+test; N8 (status_code check removed) by the status-code test; N9 (error check
+removed) by the error-text test; N10 (string check removed) by the non-string
+message test; N11 (ledger form not required) by the non-ledger and narrative
+tests; N12 (`BadInputsUTxO` no longer ambiguous) by the spent-input and mixed
+list tests; N13 (`already`) by the already-known test; N14 (`duplicate`) by the
+duplicate test; N15 (`mempool`) by the mempool and mixed list tests; N16 (case
+sensitive) by the spent-input, already-known, mempool and mixed list tests;
+N17 (leading anchor removed) and N18 (trailing anchor removed) by the narrative
+test. Each controller and panel mutant was built and run over its crossing set,
+one case at a time, and its source was then restored exactly; every other case
+of the set passed: BM1 (the resumed budget ending shows the apology) killed:
+`reported-ledger`, `dismiss-after-report`, `dismiss-reported-seen-then-404` and
+`dismiss-reported-spent-by-id` at `REPORTED_TEXT` and `retry-after-report` at
+`COMMON_REPORTED`; BM2 (the status-work ending shows the apology) killed:
+`reported-ledger` at `REPORTED_AFTER_CHECK` and `reported-poll-budget` at
+`REPORTED_AFTER_POLL_BUDGET`; BM3 (the caption choice removed) killed:
+`reported-ledger` at `REPORTED_CAPTION`; BM-W (the seen veto removed) killed:
+`dismiss-reported-seen-then-404` at `REPORT_GONE_ON_SEEN`, while `reported-ledger`
+and `dismiss-reported-spent-by-id` passed; BM-S (the spent veto removed) failed
+no case and is equivalent by construction, because every result that finds an
+input spent by the transaction's own ID also marks the ID as seen, so the seen
+veto always holds as well; BM-WS (both vetoes removed) killed:
+`dismiss-reported-seen-then-404` at `REPORT_GONE_ON_SEEN` and
+`dismiss-reported-spent-by-id` at `NO_REPORT_AFTER_SPENT`; BM-R (classification
+enabled on the resend) killed: `retry-reported-held-body` at
+`RETRY_400_NO_BODY_READ`; BM-L (a later attempt keeps the report) killed:
+`retry-after-report` at `REPORT_SUPERSEDED_BY_RESEND`.
