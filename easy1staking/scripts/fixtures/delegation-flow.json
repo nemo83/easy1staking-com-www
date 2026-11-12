@@ -161,7 +161,12 @@
     "dismiss-reported-seen-then-404",
     "dismiss-reported-spent-by-id",
     "retry-after-report",
-    "retry-reported-held-body"
+    "retry-reported-held-body",
+    "confirm-then-unrelated-storage",
+    "status-same-id-storage",
+    "confirm-then-review-other-tab",
+    "dismiss-recheck-withdraws",
+    "dismiss-cross-id"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -726,6 +731,26 @@
     "retry-reported-held-body": {
       "submitDispatches": 2,
       "posts": 2
+    },
+    "confirm-then-unrelated-storage": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "status-same-id-storage": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "confirm-then-review-other-tab": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-recheck-withdraws": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-cross-id": {
+      "submitDispatches": 1,
+      "posts": 1
     }
   },
   "statusPlans": {
@@ -973,6 +998,24 @@
     },
     "retry-reported-held-body": {
       "notFound": null
+    },
+    "confirm-then-unrelated-storage": {
+      "notFound": 0
+    },
+    "status-same-id-storage": {
+      "notFound": null
+    },
+    "confirm-then-review-other-tab": {
+      "notFound": 0,
+      "laterOther": true,
+      "secondOperation": true
+    },
+    "dismiss-recheck-withdraws": {
+      "notFound": null
+    },
+    "dismiss-cross-id": {
+      "notFound": null,
+      "otherTab": true
     }
   },
   "otherTabRecord": {

@@ -296,6 +296,9 @@ async function main(){
       value=statusValue(p);entry.status=value===NOT_FOUND?404:200;
       if(value===NOT_FOUND)return route.fulfill({status:404,contentType:"application/json",body:'{"status_code":404,"error":"Not Found","message":"The requested component has not been found."}',headers:{"access-control-allow-origin":"*"}});
      }else if(unseen.has(p)){entry.status=404;return route.fulfill({status:404,contentType:"application/json",body:'{"status_code":404,"error":"Not Found","message":"The requested component has not been found."}',headers:{"access-control-allow-origin":"*"}});
+     }else if(name==="dismiss-cross-id"&&p===`/txs/${fixture.otherTabRecord.inputRefs[0].split("#")[0]}/utxos`){
+      // dismiss-cross-id only: B's own eligibility rows (its one input, unspent), answered by the generic 200 fulfilment below.
+      value=clone(s.routes.get(`/txs/${chain.fundingId}/utxos`));value.hash=fixture.otherTabRecord.inputRefs[0].split("#")[0];value.outputs=value.outputs.filter(o=>o.output_index===0).map(o=>({...o,consumed_by_tx:null}));st.rowsServed.push({consumed:null,ownKey:true,held:false,crossId:true});
      }else if(name.startsWith("dismiss-")&&name!=="dismiss-missing-rows"&&p===`/txs/${chain.fundingId}/utxos`&&record.posts.length){
       // W7 eligibility rows after the POST: every funding output carries an own consumed_by_tx key (the case's spender, null by default); a held read waits 3 s first.
       const held=st.holdRows;if(held){st.holdRows=false;st.heldAt=Date.now();
@@ -555,6 +558,42 @@ async function main(){
       await page.waitForFunction(()=>/wallet changed or became unavailable/.test(document.querySelector('#delegate [role="status"]')?.textContent||""),{},{timeout:15000,polling:100});
       record.refreshFailure=await walletAt();assert.equal(record.refreshFailure.enableCalls,baseline.enableCalls+1,"VISIBLE_REFRESH_RAN");assert.equal((await viewOf()).walletId,"synthetic","WALLET_STILL_SELECTED");
       await kept("CONFIRMED_LABEL_KEPT");
+     }else if(name==="confirm-then-unrelated-storage"){
+      // After the confirmation another tab sets and removes an unrelated key: no storage branch applies, so the confirmed result and its status line stay.
+      await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");const before=await statusText();
+      const second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
+      await second.evaluate(()=>{localStorage.setItem("easy1staking:unrelated-test-key","1");localStorage.removeItem("easy1staking:unrelated-test-key");});await second.close();
+      await page.waitForTimeout(1000);const v=await viewOf();record.unrelatedStorage={before,phase:v.phase,text:await statusText(),confirmation:v.confirmation};
+      assert(v.phase==="confirmed"&&v.confirmation!==null&&record.unrelatedStorage.text===before&&before!==changedText,"UNRELATED_STORAGE_KEEPS_RESULT");
+     }else if(name==="status-same-id-storage"){
+      // During the automatic poll another tab moves this page's own record forward (submitted to unknown, same keys in the same order): no other-pending guidance.
+      await until(()=>st.lookups>=1,15000,"FIRST_TICK");const raw=await stored(),forward=JSON.stringify({...JSON.parse(raw),stage:"unknown"});
+      const second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
+      await second.evaluate(r=>navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},async()=>{localStorage.setItem("easy1staking:delegation-recovery",r);}),forward);await second.close();
+      await page.waitForTimeout(1000);const v=await viewOf();record.sameIdStorage={raw,forward,stored:await stored(),phase:v.phase,text:await statusText(),txId:v.txId,recovery:v.recovery.status};
+      assert.equal(record.sameIdStorage.stored,forward,"SAME_ID_RECORD_WRITTEN");
+      assert(v.phase!=="other-pending"&&record.sameIdStorage.text!==otherPendingText&&v.txId===golden.txId&&v.recovery.status==="pending","SAME_ID_NO_OTHER_PENDING");
+     }else if(name==="confirm-then-review-other-tab"){
+      await waitTerminal(60000);await confirmedState("This stake account has since delegated to another pool.");record.statusCutoff=Date.now();assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+      // A fixed construction tip for the separately reviewed second body: the page clock moves to it and the tip is held there until the review shows.
+      const B=fixture.secondOperation,X=BigInt(B.constructionSlot);st.pinned={slot:Number(X),epoch:664,hash:id(Number(X)),height:Number(X-100000000n),time:(baseTime+Number(X-baseSlot)*1000)/1000};
+      await page.evaluate(target=>{window.synthetic.clockDeltaMs+=target-Date.now();},baseTime+Number(X-baseSlot)*1000+1000);
+      await page.getByLabel("Wallet",{exact:true}).selectOption("synthetic");await page.getByRole("button",{name:"Connect selected wallet"}).click();
+      await page.waitForFunction(()=>/eligibility checked/.test(document.querySelector('#delegate [role="status"]')?.textContent||""),{},{timeout:20000,polling:100});
+      await kept("CONFIRMED_LABEL_KEPT_AFTER_CONNECT");
+      await page.getByRole("button",{name:"Build delegation review"}).click();await page.getByRole("button",{name:"Approve and sign in wallet"}).waitFor({timeout:20000});
+      await kept("CONFIRMED_LABEL_KEPT_AFTER_REVIEW");st.pinned=null;
+      // This tab's own review is open and holds the origin lock for its operation, so another tab writes its pending record directly.
+      // The review stays: other-pending guidance applies only while no operation runs.
+      const reviewText=await statusText(),second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
+      await second.evaluate(r=>{localStorage.setItem("easy1staking:delegation-recovery",r);},JSON.stringify(fixture.otherTabRecord));await second.close();
+      await page.waitForTimeout(1000);const v=await viewOf();record.reviewOtherTab={reviewText,phase:v.phase,text:await statusText(),approve:await page.getByRole("button",{name:"Approve and sign in wallet"}).count()};
+      assert(v.phase==="review"&&record.reviewOtherTab.text===reviewText&&record.reviewOtherTab.approve===1,"NO_OTHER_PENDING_DURING_REVIEW");
+      // Cancel here sends nothing. After the confirmation cutoff the only wallet calls are the deliberate reconnect and build: no signature.
+      await page.getByRole("button",{name:"Cancel here"}).click();await page.getByText(fixture.cancelCopies.idle,{exact:true}).waitFor({timeout:15000}).catch(()=>{});
+      const w=await walletAt();record.reviewOtherTab.cancelled={text:await statusText(),posts:record.posts.length,wallet:w};
+      assert(record.reviewOtherTab.cancelled.text===fixture.cancelCopies.idle&&record.posts.length===1,"REVIEW_CANCELLED");
+      assert(w.signCalls===baseline.signCalls&&w.enableCalls>baseline.enableCalls&&w.throwing===baseline.throwing,"REVIEW_WALLET_CALLS_OBSERVED");
      }else if(name==="confirm-then-other-tab-pending"||name==="confirm-then-other-tab-removed"){
       await waitTerminal(60000);await confirmedState("This stake account currently delegates to EASY1.");
       // A second same-origin tab writes a well-formed pending record for B under the origin lock (the step its own prepare would take); the first tab only observes.
@@ -729,6 +768,24 @@ async function main(){
        for(const t1=Date.now();Date.now()-t1<10000&&(await viewOf()).statusRunning;)await page.waitForTimeout(100);await page.waitForTimeout(500);
        {const v=await viewOf();record.reportedBusy={text:await statusText(),statusReason:v.statusReason,reported:v.reported,reads:reads(clickAt).length};assert(await statusText()===apology&&v.reported===false&&reads(clickAt).length===0,"NO_REPORT_AFTER_SPENT");}
        await second.evaluate(()=>window.releaseHeld()).catch(()=>{});await second.close();await cutoff();
+      }else if(name==="dismiss-recheck-withdraws"){
+       // A new deliberate check while the offer is live withdraws it first; this check finds a spend by the ID, so no offer remains.
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");assert.equal(await offerCount(),1,"DISMISS_OFFERED");
+       st.consumed=golden.txId;await check("inconsistent:SPENT_BY_ID");
+       const v=await viewOf();record.dismiss.recheck={offers:await offerCount(),dismissal:v.dismissal,regions:await region().count(),text:await statusText()};
+       assert(record.dismiss.recheck.offers===0&&v.dismissal===null&&record.dismiss.recheck.regions===0,"NO_DISMISS_OFFER_AFTER_RECHECK");
+       assert.equal(record.dismiss.recheck.text,R.spentById,"DISMISS_STATUS_TEXT");
+       await retained("RECORD_RETAINED_ON_SPENT_BY_ID");await cutoff();
+      }else if(name==="dismiss-cross-id"){
+       // A is confirmed, so witnessed; another tab then writes pending B with A's TTL. A's witness does not block B's own eligible offer.
+       await follow(TTL+5n);st.found=true;st.inclusionSlot=TTL-10n;await check("confirmed:CONFIRMED");await confirmedState("This stake account currently delegates to EASY1.");
+       const other=fixture.otherTabRecord,second=await context.newPage();await second.goto(origin+"/pool");await second.locator('#delegate [role="status"]').waitFor();
+       await second.evaluate(r=>navigator.locks.request("easy1staking:delegation",{mode:"exclusive"},async()=>{localStorage.setItem("easy1staking:delegation-recovery",r);}),JSON.stringify(other));await second.close();
+       await page.waitForTimeout(1000);record.dismiss.crossId={text:await statusText(),txId:(await viewOf()).txId};assert(record.dismiss.crossId.text===otherPendingText&&record.dismiss.crossId.txId===other.txId,"OTHER_PENDING_MESSAGE");
+       await check("not-found:EXPIRED_UNSEEN");
+       const v=await viewOf();Object.assign(record.dismiss.crossId,{offers:await offerCount(),dismissal:v.dismissal,crossRows:st.rowsServed.filter(x=>x.crossId).length});
+       assert(record.dismiss.crossId.offers===1&&v.dismissal?.txId===other.txId,"CROSS_ID_OFFERED");
+       await cutoff();
       }else if(name==="dismiss-expired"){
        await dismissAll(null);await cutoff();
        // Reconnect after the cutoff: a fresh review builds and is never approved.
@@ -775,9 +832,11 @@ async function main(){
        assert.equal(await statusText(),R.kept,"KEPT_COPY");assert.equal(v.statusReason,"dismiss:KEPT","KEPT_REASON");await retained("RECORD_RETAINED_ON_KEEP");
        // Keep during the confirm recheck: the held rows read is abandoned and no removal follows its end.
        await check("not-found:EXPIRED_UNSEEN");await open();await fill();st.holdRows=true;await page.getByRole("button",{name:copy.confirm}).click();
-       await until(()=>st.heldAt!==undefined,15000,"RECHECK_HELD");await page.getByRole("button",{name:copy.keep}).click();await page.waitForTimeout(300);
+       await until(()=>st.heldAt!==undefined,15000,"RECHECK_HELD");const keepAt=Date.now();await page.getByRole("button",{name:copy.keep}).click();await page.waitForTimeout(300);
        v=await viewOf();assert.equal(await statusText(),R.kept,"KEPT_COPY_DURING_RECHECK");assert.equal(v.statusReason,"dismiss:KEPT","KEPT_REASON_DURING_RECHECK");await retained("RECORD_RETAINED_ON_CANCEL");
        await until(()=>st.heldUntil!==undefined,10000,"HOLD_ENDED");await page.waitForTimeout(2000);await retained("NO_REMOVAL_AFTER_HOLD");
+       // After Keep the recheck is abandoned: no provider read follows the click, and the kept reason stays.
+       record.dismiss.afterKeep={reads:reads(keepAt).map(x=>x.method+" "+x.path)};assert.deepEqual(record.dismiss.afterKeep.reads,[],"NO_READS_AFTER_KEEP");assert.equal((await viewOf()).statusReason,"dismiss:KEPT","KEPT_REASON_AFTER_HOLD");
        assert.equal(await statusText(),R.kept,"KEPT_AFTER_HOLD");
       }else if(name==="dismiss-without-attestation"){
        await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await testController();
@@ -1041,8 +1100,8 @@ async function main(){
       await page.getByRole("button",{name:"Check status"}).click();await waitTerminal(35000);await confirmedState("This stake account currently delegates to EASY1.");
       const w=await walletAt();record.afterReload.wallet=w;assert.deepEqual(w,{enableCalls:0,signCalls:0,walletReads:0,throwing:0},"ZERO_WALLET_CALLS_AFTER_RELOAD");
      }
-     // Cases that act after confirmation (disconnect, reconnect, refresh, a second operation) check status-work wallet effects at their cutoff.
-     if(!["check-status-after-reload","confirm-then-disconnect","confirm-then-refresh-failure","status-visible-refresh","confirm-then-second-operation","dismiss-expired","dismiss-spent-elsewhere","dismiss-then-already-easy1","dismiss-reload"].includes(name)&&!name.startsWith("retry-"))assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
+     // Cases that act after confirmation (disconnect, reconnect, refresh, a second operation or review) check status-work wallet effects at their cutoff.
+     if(!["check-status-after-reload","confirm-then-disconnect","confirm-then-refresh-failure","status-visible-refresh","confirm-then-second-operation","confirm-then-review-other-tab","dismiss-expired","dismiss-spent-elsewhere","dismiss-then-already-easy1","dismiss-reload"].includes(name)&&!name.startsWith("retry-"))assert.deepEqual(await walletAt(),baseline,"STATUS_ZERO_WALLET_CALLS");
      assert.equal(record.posts.length,fixture.expectedCounts[name].posts,"STATUS_ZERO_POST");
      const foreign=record.http.filter(x=>x.at>postAt&&x.at<=(record.statusCutoff??Infinity)&&!(x.method==="GET"&&(x.path==="/blocks/latest"||x.path.startsWith("/txs/")||x.path.startsWith("/blocks/")||x.path.startsWith("/accounts/"+account))));
      assert.deepEqual(foreign.map(x=>x.method+" "+x.path),[],"STATUS_READ_ONLY_NO_BUILD_READS");
