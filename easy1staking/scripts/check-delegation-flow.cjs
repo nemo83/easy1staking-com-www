@@ -53,7 +53,8 @@ async function freePort(port=0){const s=net.createServer();s.listen(port,"127.0.
 function failureText(error){return(error instanceof assert.AssertionError&&!error.generatedMessage?String(error.message):String(error?.name||"Error")+": "+String(error?.message??error)).split("\n")[0];}
 function descendants(pid){try{return fs.readFileSync(`/proc/${pid}/task/${pid}/children`,"utf8").trim().split(/\s+/).filter(Boolean).map(Number).flatMap(p=>[p,...descendants(p)]);}catch{return[];}}
 const report={runnerSha256:sha(fs.readFileSync(__filename)),fixtureSha256:sha(fs.readFileSync(path.join(__dirname,'fixtures/delegation-flow.json'))),node:process.version,source:{},cases:[],chunks:[],unexpected:[],errors:[],cleanup:{},buildId:fs.readFileSync(path.join(app,".next/BUILD_ID"),"utf8").trim()};
-for(const name of ["controller","wallet-session","coordination","recovery-verifier","builder","guard","crypto","chain-context","wallet-codec","source-cbor","blockfrost-reader","provider-json","cbor","types","messages"]){const file=path.join(app,"src/lib/site/delegation",name+".ts");report.source[name]=fs.existsSync(file)?sha(fs.readFileSync(file)):null;}
+for(const name of ["controller","wallet-session","coordination","recovery-verifier","builder","guard","crypto","chain-context","wallet-codec","source-cbor","blockfrost-reader","provider-json","cbor","types","messages","submit-reply"]){const file=path.join(app,"src/lib/site/delegation",name+".ts");report.source[name]=fs.existsSync(file)?sha(fs.readFileSync(file)):null;}
+report.source.DelegatePanel=(file=>fs.existsSync(file)?sha(fs.readFileSync(file)):null)(path.join(app,"src/components/site/DelegatePanel.tsx"));
 // A crash outside the case loop still terminates owned children and leaves a partial report.
 function crash(kind,error){if(report.crashed)return;report.crashed={kind,failure:failureText(error)};for(const pid of descendants(process.pid))try{process.kill(pid,"SIGKILL");}catch{}try{fs.writeFileSync(path.join(output,"report.json"),JSON.stringify(report,null,2));}catch{}process.exit(1);}
 process.on("unhandledRejection",error=>crash("unhandledRejection",error));process.on("uncaughtException",error=>crash("uncaughtException",error));
@@ -197,14 +198,16 @@ async function main(){
        const walk=document.createTreeWalker(delegate,NodeFilter.SHOW_TEXT);for(let n=walk.nextNode();n;n=walk.nextNode()){if(!n.textContent.trim())continue;const range=document.createRange();range.selectNodeContents(n);if([...range.getClientRects()].some(r=>r.right>limit)&&!scrolled(n))out.texts.push({parent:label(n.parentElement),text:n.textContent.slice(0,80)});}}
       return out;};
      const styled=()=>document.readyState!=="loading"&&[...document.querySelectorAll('link[rel="stylesheet"]')].every(l=>l.sheet!==null);
-     // The rendered phase is read from the panel's React state (a pure read; the controller is never called).
-     const renderedPhase=()=>{try{const d=document.getElementById("delegate"),key=d&&Object.keys(d).find(k=>k.startsWith("__reactFiber$"));for(let f=key?d[key]:null;f;f=f.return)for(let h=f.memoizedState;h&&typeof h==="object"&&"next" in h;h=h.next){const v=h.memoizedState;if(v&&typeof v==="object"&&typeof v.phase==="string"&&"recovery" in v)return v.phase;}}catch{}return null;};
+     // The rendered phase is read from the panel's committed React state (a pure read; the controller is never called). The node's own fiber
+     // pointer may be the stale alternate (one render behind), so the fiber whose props are the node's current props is used; stale=true keeps
+     // the old reading, recorded only as evidence of the lag this fixes.
+     const renderedPhase=(stale=false)=>{try{const d=document.getElementById("delegate"),keys=d?Object.keys(d):[],key=keys.find(k=>k.startsWith("__reactFiber$")),props=keys.find(k=>k.startsWith("__reactProps$"));let f=key?d[key]:null;if(!stale&&f&&f.alternate&&props&&f.memoizedProps!==d[props]&&f.alternate.memoizedProps===d[props])f=f.alternate;for(;f;f=f.return)for(let h=f.memoizedState;h&&typeof h==="object"&&"next" in h;h=h.next){const v=h.memoizedState;if(v&&typeof v==="object"&&typeof v.phase==="string"&&"recovery" in v)return v.phase;}}catch{}return null;};
      state.probe=probe;state.styled=styled;state.renderedPhase=renderedPhase;state.layoutBatches=0;state.preStyleBatches=0;state.probedSamples=0;let lastSample="",framed=false;
      const send=s=>{if(typeof window.syntheticLayout==="function")window.syntheticLayout(s).catch(()=>{});};
-     const sample=frame=>{try{const status=document.querySelector('#delegate [role="status"]')?.textContent??null,phase=renderedPhase();
-      if(!styled()){state.preStyleBatches++;send({path:location.pathname,status,phase,styled:false,fired:false,at:Date.now()});return;}
+     const sample=frame=>{try{const status=document.querySelector('#delegate [role="status"]')?.textContent??null,phase=renderedPhase(),stalePhase=renderedPhase(true),cancelShown=[...document.querySelectorAll('#delegate button')].some(b=>b.textContent==="Cancel here"),reviewShown=!!document.querySelector('#delegate [aria-label="Delegation review"]');
+      if(!styled()){state.preStyleBatches++;send({path:location.pathname,status,phase,stalePhase,cancelShown,reviewShown,styled:false,fired:false,at:Date.now()});return;}
       state.probedSamples++;let p;try{p=probe();}catch(error){p={page:false,elements:[],texts:[],error:String(error)};}
-      const s={path:location.pathname,status,phase,styled:true,frame,page:p.page,elements:p.elements,texts:p.texts,error:p.error??null};
+      const s={path:location.pathname,status,phase,stalePhase,cancelShown,reviewShown,styled:true,frame,page:p.page,elements:p.elements,texts:p.texts,error:p.error??null};
       s.fired=!!(s.error||s.page||s.elements.length||s.texts.length);const key=JSON.stringify([s.path,s.status,s.phase,s.fired]);if(key===lastSample&&!s.fired&&!frame)return;lastSample=key;s.at=Date.now();send(s);
       if(!framed){framed=true;requestAnimationFrame(()=>sample(true));}}catch{}};
      // Styles can apply with no further mutation: a frame watch probes the first styled state once.
@@ -276,7 +279,16 @@ async function main(){
      if(statusPath(p)){
       if(p==="/txs/"+golden.txId&&!st.inclusion&&st.lookups+1===(plan.notFound??-1)+1){
        if(plan.disconnectOnFound)await routeStep(()=>page.getByRole("button",{name:"Disconnect wallet"}).click());
-       if(plan.disposeOnFound){await routeStep(()=>page.locator('a[aria-label="easy1staking home"]').first().click());st.navigatedAt=Date.now();}
+       if(plan.disposeOnFound){
+        // The found lookup is answered only after a successful detach proof: the home click, the URL, the panel's detachment, then 1 s. A failed or
+        // timed-out proof records "detach-failed" with the panel count and aborts the lookup unanswered; a lookup that arrives while no proof has
+        // succeeded is aborted too (withheld). The case asserts the outcome (FOUND_ANSWERED_AFTER_DETACH) before its waits and product labels.
+        // A late answer after a successful proof cannot reach a page and is recorded, never thrown.
+        const first=!st.foundDispose,fd=st.foundDispose??={outcome:null,heldAt:Date.now(),detachedAt:null,answeredAt:null,error:null,panelAtFailure:null,withheld:0,abortErrors:[]};
+        if(first){let proved=false;try{await page.locator('a[aria-label="easy1staking home"]').first().click({timeout:10000});await page.waitForURL(origin+"/",{timeout:20000});await page.locator("#delegate").waitFor({state:"detached",timeout:15000});fd.detachedAt=Date.now();await page.waitForTimeout(1000);proved=true;}catch(error){fd.error=String(error?.message??error).split("\n")[0];}
+         st.navigatedAt=Date.now();if(proved)fd.answeredAt=Date.now();else fd.panelAtFailure=await page.locator("#delegate").count().catch(()=>null);fd.outcome=proved?"detached":"detach-failed";}
+        if(fd.outcome!=="detached"){fd.withheld++;try{await route.abort();}catch(error){fd.abortErrors.push(String(error?.message??error).split("\n")[0]);}return;}
+        const raw=route,late=error=>{st.lateFulfil=(st.lateFulfil||[]).concat([String(error?.message??error).split("\n")[0]]);};route={fulfill:o=>raw.fulfill(o).catch(late),abort:e=>raw.abort(e).catch(late)};}
       }
       // A visible wallet refresh while the first check's transaction lookup is in flight.
       if(plan.visibleRefresh&&p==="/txs/"+golden.txId&&st.lookups===0&&!st.refresh)await routeStep(async()=>{const counts=()=>page.evaluate(()=>({enableCalls:window.synthetic.enableCalls,walletReads:window.synthetic.walletReads||0,visibility:document.visibilityState}));
@@ -286,7 +298,13 @@ async function main(){
      }else if(unseen.has(p)){entry.status=404;return route.fulfill({status:404,contentType:"application/json",body:'{"status_code":404,"error":"Not Found","message":"The requested component has not been found."}',headers:{"access-control-allow-origin":"*"}});
      }else if(name.startsWith("dismiss-")&&name!=="dismiss-missing-rows"&&p===`/txs/${chain.fundingId}/utxos`&&record.posts.length){
       // W7 eligibility rows after the POST: every funding output carries an own consumed_by_tx key (the case's spender, null by default); a held read waits 3 s first.
-      const held=st.holdRows;if(held){st.holdRows=false;st.heldAt=Date.now();await new Promise(r=>setTimeout(r,3000));st.heldUntil=Date.now();}
+      const held=st.holdRows;if(held){st.holdRows=false;st.heldAt=Date.now();
+       // dismiss-dispose: only the case's explicit st.releaseRows(), called after the panel has detached, lets this read be answered. Its 20 s watchdog
+       // never answers: it records "timed-out" (an instrument failure the case asserts red) and aborts the read. Every other holder keeps the fixed 3 s hold.
+       if(name==="dismiss-dispose")st.heldOutcome=await new Promise(r=>{const t=setTimeout(()=>{st.releaseRows=()=>{st.releaseAfterTimeout=Date.now();};r("timed-out");},20000);st.releaseRows=()=>{clearTimeout(t);st.releasedAt=Date.now();st.releaseRows=()=>{};r("released");};});
+       else await new Promise(r=>setTimeout(r,3000));
+       st.heldUntil=Date.now();
+       if(st.heldOutcome==="timed-out"){try{await route.abort();}catch(error){st.heldFulfilment=String(error?.message??error).split("\n")[0];}return;}}
       value=clone(s.routes.get(p));value.outputs=value.outputs.map(o=>({...o,consumed_by_tx:st.consumed}));entry.consumed=st.consumed;
       st.rowsServed.push({consumed:st.consumed,ownKey:value.outputs.every(o=>Object.prototype.hasOwnProperty.call(o,"consumed_by_tx")),held});
       // A held read can outlive its page (Keep, dispose, navigation): its late fulfilment is recorded, never thrown from the route handler.
@@ -309,7 +327,7 @@ async function main(){
     const statusLine=()=>page.evaluate(()=>document.querySelector('#delegate [role="status"]')?.textContent||"");
     const currentView=()=>page.evaluate(()=>{let fiber=Object.entries(document.getElementById('delegate')).find(([k])=>k.startsWith('__reactFiber$'))[1];for(;fiber;fiber=fiber.return){let state=fiber.memoizedState;while(state){const c=state.memoizedState?.current;if(c?.getView&&c?.approve)return JSON.parse(JSON.stringify(c.getView()));state=state.next;}}throw Error('CONTROLLER_REF_NOT_FOUND');});
     // Exact stop copy and machine reason for the listed pre-send stops, after a fixed settle; the text is asserted before the reason.
-    const stopCopy=async()=>{const expect=fixture.stopCopies[name];if(!expect)return;await page.waitForTimeout(500);const text=await statusLine(),v=await currentView();record.stop={text,phase:v.phase,failureReason:v.failureReason};assert.equal(text,expect.text,"STOP_COPY");assert.equal(v.failureReason,expect.reason,"STOP_REASON");};
+    const stopCopy=async()=>{const expect=fixture.stopCopies[name];if(!expect)return;await page.waitForTimeout(500);const text=await statusLine(),v=await currentView(),storedRecord=await page.evaluate(()=>localStorage.getItem("easy1staking:delegation-recovery")).catch(()=>"UNREADABLE");record.stop={text,phase:v.phase,failureReason:v.failureReason,storedRecord};assert.equal(text,expect.text,"STOP_COPY");assert.equal(v.failureReason,expect.reason,"STOP_REASON");};
     // Each served-chunk read is handled when created and settled in this case's finally: a mismatch or failed read while active disqualifies the case; one cut off by teardown is counted.
     onResponse=response=>{const u=new URL(response.url());if(u.pathname.startsWith("/_next/static/")&&u.pathname.endsWith(".js")){const read=response.body().then(bytes=>{try{const file=path.join(app,".next",u.pathname.replace("/_next/","")),actual=sha(bytes),expected=sha(fs.readFileSync(file));report.chunks.push({path:u.pathname,sha256:actual,bytes:bytes.length});if(actual!==expected)record.chunkIdentityFailures.push({kind:"mismatch",path:u.pathname,actual,expected});}catch(error){record.chunkIdentityFailures.push({kind:"identity-error",path:u.pathname,failure:failureText(error)});}},error=>{if(closing)record.chunkReadsAbandonedAtClose++;else{record.chunkReadErrors.push(failureText(error));record.chunkIdentityFailures.push({kind:"read-error",path:u.pathname,failure:failureText(error)});}});read.catch(()=>{});caseReads.push(read);pending.push(read);}};page.on("response",onResponse);
     await page.goto(pageOrigin+"/pool?uri=https%3A%2F%2Finvalid.example");await page.locator('#delegate [role="status"]').waitFor();
@@ -611,8 +629,13 @@ async function main(){
       const v=await viewOf();assert.equal(v.recovery.status,"unknown","LOST_NOT_HEALED");assert.equal(v.canCheckStatus,false);assert.equal(await page.getByRole("button",{name:"Check status"}).count(),0);
       const lookups=st.lookups;await page.waitForTimeout(11000);assert.equal(st.lookups,lookups,"CHANGED_STOPS_POLL");await second.close();
      }else if(name==="status-dispose"){
+      // The found lookup's outcome and the stored record are captured first, so a failed or timed-out detach proof (no answer served) is the
+      // instrument failure FOUND_ANSWERED_AFTER_DETACH, reported before the URL wait and the product labels below can fail.
+      await until(()=>st.foundDispose?.outcome,75000,"FOUND_ANSWERED_AFTER_DETACH");
+      const fd=record.foundDispose=st.foundDispose;fd.atCase={at:Date.now(),raw:await stored(),foundServed:st.trace.filter(x=>x.found).length,withheld:fd.withheld,confirmReads:record.http.filter(x=>x.method==="GET"&&x.at>=fd.heldAt&&(x.path.startsWith("/txs/"+golden.txId+"/")||x.path.startsWith("/blocks/")&&x.path!=="/blocks/latest")).length};
+      assert(fd.outcome==="detached"&&fd.detachedAt!==null&&fd.answeredAt!==null&&fd.detachedAt<=fd.answeredAt,"FOUND_ANSWERED_AFTER_DETACH");
       await page.waitForURL(origin+"/",{timeout:20000});await until(()=>st.navigatedAt,15000,"DISPOSED_DURING_CHECK");await page.waitForTimeout(12000);
-      record.afterDispose={reads:statusReads(st.navigatedAt+1000),raw:await stored()};assert.equal(record.afterDispose.reads,0,"NO_STATUS_AFTER_DISPOSE");
+      record.afterDispose={reads:statusReads(st.navigatedAt+1000),raw:await stored(),lateFulfil:st.lateFulfil??null};assert.equal(record.afterDispose.reads,0,"NO_STATUS_AFTER_DISPOSE");
       assert(record.afterDispose.raw&&JSON.parse(record.afterDispose.raw).stage==="submitted","DISPOSE_RETAINS_RECORD");
      }else if(name.startsWith("dismiss-")){
       // W7 manual dismissal. Each deliberate check waits for its first tip read and for the status work to end, then asserts the exact statusReason first.
@@ -787,8 +810,11 @@ async function main(){
       }else if(name==="dismiss-dispose"){
        await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await fill();st.holdRows=true;await page.getByRole("button",{name:copy.confirm}).click();
        await until(()=>st.heldAt!==undefined,15000,"RECHECK_HELD");await page.locator('a[aria-label="easy1staking home"]').first().click();const navAt=Date.now();await page.waitForURL(origin+"/",{timeout:20000});
+       // The held rows read is released only after the panel has unmounted, so the recheck can never finish first (the former race).
+       await page.locator("#delegate").waitFor({state:"detached",timeout:15000});record.dismiss.detachedAt=Date.now();await page.waitForTimeout(1000);st.releaseRows();
        await until(()=>st.heldUntil!==undefined,10000,"HOLD_ENDED");await page.waitForTimeout(3000);
-       record.dismiss.dispose={raw:await stored(),reads:reads(navAt+1000).map(x=>x.path),heldFulfilment:st.heldFulfilment??null};
+       record.dismiss.dispose={raw:await stored(),reads:reads(navAt+1000).map(x=>x.path),heldFulfilment:st.heldFulfilment??null,heldOutcome:st.heldOutcome??null,heldAt:st.heldAt??null,detachedAt:record.dismiss.detachedAt??null,releasedAt:st.releasedAt??null,heldUntil:st.heldUntil??null,releaseAfterTimeout:st.releaseAfterTimeout??null,heldServed:st.rowsServed.filter(x=>x.held).length};
+       const dd=record.dismiss.dispose;assert(dd.heldOutcome==="released"&&dd.detachedAt!==null&&dd.detachedAt<dd.releasedAt&&dd.releasedAt<=dd.heldUntil&&dd.heldServed===1,"HELD_ROWS_RELEASED_AFTER_DETACH");
        assert(record.dismiss.dispose.raw&&JSON.parse(record.dismiss.dispose.raw).txId===golden.txId,"DISMISS_DISPOSE_RETAINS_RECORD");assert.deepEqual(record.dismiss.dispose.reads,[],"NO_READS_AFTER_DISPOSE");
       }else if(name==="dismiss-stale-record"){
        await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");await open();await fill();
@@ -1062,6 +1088,7 @@ async function main(){
     record.layout.fired=samples.filter(x=>x.styled&&x.fired);record.layout.statusTexts=[...new Set(samples.map(x=>x.status).filter(x=>x!==null))];
     record.layout.unknownStatus=record.layout.statusTexts.filter(x=>!fixture.statusTexts.includes(x)&&!confirmedPattern.test(x));
     check(()=>assert(record.layout.probed>0,"LAYOUT_SAMPLED"));
+    record.layout.phaseLag=samples.filter(x=>x.phase!==null&&x.stalePhase!==x.phase).length;{const busy=["connecting","assessing","building","review","signing","checking","submitting"];record.layout.phaseMismatches=samples.filter(x=>x.phase!==null&&(busy.includes(x.phase)!==x.cancelShown||(x.phase==="review")!==x.reviewShown)).slice(0,5);}check(()=>assert.deepEqual(record.layout.phaseMismatches,[],"PHASE_LABEL_MATCHES_DOM"));
     check(()=>assert.deepEqual(record.layout.fired,[],"LAYOUT_360"));
     check(()=>assert.deepEqual(record.layout.unknownStatus,[],"STATUS_TEXT_KNOWN"));
     // A case's first failure is its verdict; later cleanup failures never replace it.
