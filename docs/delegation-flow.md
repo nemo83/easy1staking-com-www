@@ -236,17 +236,21 @@ provider's documented 400 schema, which requires `status_code`, `error` and
 The page requires HTTP 400, not redirected, with a JSON content type (optionally
 `charset=utf-8`); a body of at most 16384 bytes that decodes as strict UTF-8 and
 parses as bounded JSON with exactly the keys `status_code` (the number 400),
-`error` ("Bad Request") and `message`; and a message that is, as a whole, one
-`ApplyTxError [...]` or `ConwayApplyTxError [...]` list containing none of the
-words "already", "duplicate", "mempool" or "BadInputsUTxO" in any letter case.
-Those words can mean that the transaction is already known, queued, duplicated
-or has spent its own inputs. Everything else stays unknown with the existing
-texts: timeouts, network and cross-origin failures, every other status (403,
-418, 425, 429 and 5xx included), malformed, oversized, duplicate-key or
-extra-key bodies, narrative text around the list, an ambiguous member anywhere
-in the list, and every reply to a deliberate resend, whose body is not even
-read. The body is read in memory only to classify it; no part of it is shown,
-stored or logged.
+`error` ("Bad Request") and `message`; and a message that begins with
+`ApplyTxError [` or `ConwayApplyTxError [` followed by a constructor name
+(letters only, the first a capital letter), a space and an opening parenthesis,
+that ends with the closing `)]`, and that contains none of the words "already",
+"duplicate", "mempool" or "BadInputsUTxO" in any letter case. Those words can
+mean that the transaction is already known, queued, duplicated or has spent its
+own inputs. This is a textual shape check, not a parser: narrative text before
+or after the list is refused, but text between two such lists is not, and a
+comparison with real Blockfrost replies remains a release check. Everything else
+stays unknown with the existing texts: timeouts, network and cross-origin
+failures, every other status (403, 418, 425, 429 and 5xx included), malformed,
+oversized, duplicate-key or extra-key bodies, narrative text before or after the
+list, an ambiguous member anywhere in the list, and every non-200 reply to a
+deliberate resend, whose body is not read. The body is read in memory only to
+classify it; no part of it is shown, stored or logged.
 
 Only the first attempt is classified, within the existing 60-second reply
 deadline, so a slow 400 body ends as a timeout and stays unknown. On the
@@ -380,7 +384,8 @@ This sends the exact transaction you already approved, with the same ID, once mo
 The offer appears only in the signing tab, only after an unknown outcome, only
 while no status check, operation or dismissal offer is live, only while the
 browser record still names that ID and the wallet session is unchanged, and never
-for an ID already seen on chain or spent by its own ID. Nothing is resent
+for an ID already seen on chain, spent by its own ID or found expired and unseen
+by a deliberate check (see below). Nothing is resent
 automatically: no timer, listener or status result starts a resend.
 
 One click runs these steps in order, under the browser's origin lock and against
@@ -426,16 +431,33 @@ Cancel, Disconnect or an account change during a resend keep their own stop
 text. The bytes are dropped on reload, Disconnect, any change of the wallet
 session, leaving the page, a record removed or replaced in another tab, a
 confirmation or dismissal of the ID, a successful resend, an EASY1 or
-too-little-validity ending, a record that changed during the resend, and a
-status result that latches the ID as seen or spent. A dropped copy is never
-restored. After a reload the record can still be checked, but it cannot be
-resent. Whether a provider reply to a resend of an already-known transaction is
-a definite rejection is not distinguished: every non-authentic reply stays
-unknown. A resend's reply is never read or classified, whatever its status: a
-400 to a resend ends unknown at once, without reading its body, and keeps the
-resend's approved timing. A resend also supersedes an earlier reported
-validation error: once its POST is invoked, the page no longer shows that report
-for the ID.
+too-little-validity ending, and a record that changed during the resend. A
+status result that latches the ID as seen or spent disables the resend for that
+ID; when the resend's own status check latches it, that check also drops the
+copy. A dropped copy is never restored. After a reload the record can still be
+checked, but it cannot be resent. Whether a provider reply to a resend of an
+already-known transaction is a definite rejection is not distinguished: every
+non-authentic reply stays unknown. A resend's reply is never classified. A
+non-200 reply to a resend, a 400 included, ends unknown at once without its body
+being read, and keeps the resend's approved timing; an authentic 200 reply (not
+redirected, with a JSON content type) is read, within the same 256-byte bound as
+on the first attempt, only to check that it names this transaction ID. A resend
+also supersedes an earlier reported validation error: once its POST is invoked,
+the page no longer shows that report for the ID.
+
+Once a deliberate Check status, or the recheck at Confirm, finds the ID expired
+and unseen, this page no longer offers the resend for that ID, also after Keep,
+because such a resend could only end without sending. This is a conservative
+page rule, not a proof that the transaction can never be included. The latch is
+kept per transaction ID, in page memory only, for the page's lifetime: a later
+check that no longer finds the expiry (for example after a rollback) does not
+clear it, and a reload forgets it together with the bytes. The automatic poll
+and the resend's own status check never set it. Until a deliberate check
+observes the expiry, the offer can remain after the transaction's validity has
+run out, and a click then ends with the too-little-validity text and nothing
+sent. While a background wallet refresh is in progress the offer is hidden; it
+returns once the same wallet is observed again, and a changed wallet drops the
+copy.
 
 ## Mobile entry
 
@@ -512,12 +534,12 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 139 cases (128 before the reported-validation-error
-cases, 105 before the deliberate-resend cases,
+`--cases all` now executes 146 cases (139 before the gate-hardening cases, 128
+before the reported-validation-error cases, 105 before the deliberate-resend cases,
 86 before the manual-dismissal cases and 81 before the failure-message cases
 were added) and `--cases first` executes
 six. Selectors
-are strict: `--case` must name one registered case (the 139 plus
+are strict: `--case` must name one registered case (the 146 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
 
@@ -604,7 +626,7 @@ wallet owner's visible-only refresh is idle while status work runs, except in
 `status-visible-refresh`, where every wallet enable must come from a visible
 refresh (the runner's focus event or an instrumented 30-second tick) with its
 seven wallet reads and no signature. Every other case answers status reads for
-its ID with 404, as it does for the other tab's record and the second operation. The per-run source hashes include `recovery-verifier.ts`.
+its ID with 404, as it does for the other tab's record and the second operation. The per-run source hashes include `recovery-verifier.ts`, the submit-reply classifier (`submit-reply.ts`) and the panel (`DelegatePanel.tsx`).
 
 Five cases cover failure copy and the other-tab removal: `connect-denied` (the
 wallet's enable rejects with code -3), `sign-declined` (signTx rejects with code
@@ -639,7 +661,8 @@ the local clock past the TTL's wall time does not, with no row read),
 `dismiss-spent-by-id`, `dismiss-spent-elsewhere` (then a reconnect gives
 `source:INPUT`), `dismiss-missing-rows`, `dismiss-then-already-easy1`,
 `dismiss-cancel` (typing reads nothing and holds no lock; Keep before and during
-a held recheck), `dismiss-without-attestation` (an empty and a case-folded
+a held recheck, after which the recheck makes no further provider read),
+`dismiss-without-attestation` (an empty and a case-folded
 phrase through the controller remove nothing), `dismiss-double-confirm` (one
 recheck), `dismiss-reload`, `dismiss-busy`, `dismiss-dispose`,
 `dismiss-stale-record` (a same-ID stage rewrite in another tab is refused at
@@ -649,9 +672,9 @@ Confirm; a later removal withdraws the new offer), `dismiss-rollback-on-confirm`
 `dismiss-seen-then-404` (an index-lag witness latches the ID) and
 `dismiss-poll-after-expiry` (the automatic poll past the TTL makes no offer and
 no row read; the deliberate check then does). `confirm-resumed-after-deadline`
-also asserts that no dismissal is offered. A single `dismiss-dispose` failure at
-`DISMISS_DISPOSE_RETAINS_RECORD` in a full run may be re-run once on the same
-tree and build, as for `status-dispose`; every attempt is recorded.
+also asserts that no dismissal is offered. A full run is one attempt, with no
+re-run: `status-dispose` and `dismiss-dispose` are deterministic, as described
+after the sampler below.
 
 Twenty-three `retry-*` cases cover the deliberate resend. Each makes the
 identical registered submission and moves the page clock 181 seconds on at the
@@ -691,6 +714,29 @@ unknown resend and its status work, a second resend posts bytes identical to
 both earlier POSTs). `submit-bad-status` also asserts no offer while its poll
 runs, and `confirm-resumed-after-deadline` no offer after Submitted.
 
+Seven cases were added with the gate hardening, each with one dispatch and one
+POST. `confirm-then-unrelated-storage`: after confirmation another tab sets and
+removes an unrelated storage key, and the confirmed result and its status line
+stay. `status-same-id-storage`: during the automatic poll another tab moves this
+page's own record from submitted to unknown under the same ID, and the page
+keeps its own ID and pending record and shows no other-tab message.
+`confirm-then-review-other-tab`: after confirmation a new Connect and review
+start, another tab writes a pending record for a different ID while the review
+is open, and the review stays with no other-tab message; Cancel then sends
+nothing. Its zero-wallet-call check applies up to the confirmation, and after it
+the deliberate reconnect and build call the wallet without a signature
+request. `dismiss-recheck-withdraws`: Check status while a dismissal offer is
+shown withdraws the offer before the check, which then finds a spend by the ID
+and offers nothing. `dismiss-cross-id`: a deliberate check confirms one ID,
+another tab then writes a pending record for a second ID with the same TTL, and
+a deliberate check of that ID finds it expired and unseen and offers its
+dismissal, because the witness latch is per ID. `dismiss-keep-hides-retry`: the
+first POST answers 500, the resend is offered after the apology, a deliberate
+check past the TTL finds the ID expired and unseen, and after Keep the resend is
+no longer offered. `retry-refresh-hold`: while a background wallet refresh holds
+the wallet's enable call, the resend offer is hidden, and it returns once the
+same wallet is observed again.
+
 Every case samples the page at its 360 px viewport on each DOM mutation batch,
 in every tab of its browser context and across its navigations and reloads. Each
 batch records the status-line text and the rendered phase. The three probes run
@@ -712,7 +758,28 @@ sample fired, and `STATUS_TEXT_KNOWN` if any sampled status-line text (styled or
 not) is outside the fixture's `statusTexts` (every status text the source can
 show, transient ones included) and the confirmed-block pattern. The first-paint
 `NO_360PX_OVERFLOW` check is kept. The sampler reads the rendered phase from the
-panel's React state and never calls the controller.
+panel's committed React fiber and never calls the controller. At teardown a case
+also fails `PHASE_LABEL_MATCHES_DOM` if a sampled phase disagrees with the DOM: a
+busy phase must show the Cancel control and any other phase must not, and only
+the review phase shows the review region.
+
+The two disposal cases are deterministic. `status-dispose` answers its found
+lookup only after an explicit check that the panel has unmounted; if that check
+fails, the lookup is aborted and the case fails at `FOUND_ANSWERED_AFTER_DETACH`
+before any product label. `dismiss-dispose` releases its held row read only
+after the panel has unmounted; its 20-second watchdog never answers the read, so
+a hold that times out fails the case at `HELD_ROWS_RELEASED_AFTER_DETACH`. Each
+case with a pinned stop text records the stored recovery record before its first
+assertion, so a failing run still shows what was stored.
+
+Limits of the browser evidence. The resend cases also check the sequence of
+views that the controller emitted, recorded through a test-only subscription.
+Those checks show what the controller presented to the panel, not that the
+browser painted every intermediate state; the 360 px sampler sees only states
+that reached the DOM. Cases that move the page clock 181 seconds on at the POST,
+the `dismiss-*` and `retry-*` templates among them, compress the status poll:
+they show how it ends, not its full duration, which `confirm-timeout` observes in
+real time 185 seconds after dispatch.
 
 Only browser test input supplies the visibility simulation. Production lifecycle,
 source, timers and guards are unchanged, and isolated context cleanup removes it.
@@ -730,7 +797,8 @@ stake-guard and pool-facts suites, the recovery-verifier suite
 (`scripts/check-recovery-verifier.cjs`, every outcome, reason code and
 resolution refusal), the failure-message suite
 (`node scripts/check-delegation-messages.cjs`, 125 tests, 122 before the
-reported-validation-error copy and 119 before the resend copy: every code of every
+reported-validation-error copy and 119 before the resend copy: the failure kinds
+are read from the `FailureKind` union in messages.ts, and every code of every
 owned union, parsed from its declaration, maps to its exact text, including the
 manual-dismissal `recovery` texts; forged keys give the fallback; every text is
 plain and in the flow's `statusTexts`; the dismissal copy has exactly its keys
@@ -739,10 +807,11 @@ plain, ends every entry except the offer with a period, and its six status-line
 texts are in `statusTexts`; the reported-validation-error copy has exactly its
 keys and texts, is plain, ends its status line with a period and has that line
 in `statusTexts`; the compiled module has no `require`), the submit-reply suite
-(`node scripts/check-submit-reply.cjs`, 26 tests: the narrow form is classified,
-including its byte limit exactly, and every near miss of status, redirect,
-content type, encoding, JSON, keys, field values, message form or ambiguous
-wording is not; only the classifier and the JSON parser are loaded), native signature/coordination suites, installed
+(`node scripts/check-submit-reply.cjs`, 27 tests, 26 before the constructor test:
+the narrow form is classified, including its byte limit exactly, and every near
+miss of status, redirect, content type, encoding, JSON, keys, field values,
+message form (a constructor starting with a lower-case letter included) or
+ambiguous wording is not; only the classifier and the JSON parser are loaded), native signature/coordination suites, installed
 security/compatibility checks, build/lint, raw production/full audits and source
 export checks. Record actual executed/skipped counts and raw audit responses.
 Current registry output is a point-in-time witness; it does not erase the
@@ -756,20 +825,44 @@ It uses plain `node:assert` and an explicit exit code, never node:test. It lists
 `scripts/check-*.cjs` and `scripts/lib/*.cjs` (except the helper and itself),
 strips comments, and fails any file that requires node:test and takes `after`
 from it: destructured (also renamed), as a member of the require, through a
-namespace binding, or by an ESM import. It also fails a bare `after(` call that
-is not bound from `scripts/lib/node-test-gate.cjs`. A built-in self-test first
-requires every planted shape to be flagged and the helper's correct use and a
-comment-only line to pass. On success it prints one `NODE_TEST_GATE` line with
-the scanned files, the node:test suites and the helper users; each violation
-prints a line naming the file and shape, and the exit code is 1. It checks
-declarations, not behaviour: an obfuscated or dynamic require is not detected.
+namespace binding, or by an ESM import. It also fails `.after`, `?.after` or
+`["after"]` on a binding of node:test's `test` or `it` export (destructured,
+renamed, defaulted, imported, or destructured from a namespace), and a bare
+`after(` call that is not bound from `scripts/lib/node-test-gate.cjs`. It reads
+binding lists as text: a default value is cut at its first `=`, one level of
+nested braces is tolerated, each list is also read flat, and a node:test require
+may be wrapped in parentheses. A built-in self-test first requires every planted
+shape (46) to be flagged and every clean control (7), among them the helper's
+correct use and a comment-only line, to pass. It then runs real temporary suites
+under the running Node (`HELPER_RESPONDS`): through the helper a failing hook
+exits non-zero, hook options are refused, and neither an exit listener
+registered later nor a hook that never settles lets the run exit 0, while
+healthy synchronous and asynchronous hooks exit 0. It also records, without
+asserting, how a failing hook registered through node:test's `test.after`
+without the helper ends (`ALIAS_WITNESS`); on Node 24.22.1 that run exits 0. On
+success it prints one `NODE_TEST_GATE` line with the scanned files, the
+node:test suites and the helper users; each violation prints a line naming the
+file and shape, and the exit code is 1. It checks declarations, not behaviour,
+and it is a textual guard, not a parser. Known undetected forms include
+obfuscated, dynamic or computed requires, `import()`, `module.require`, a
+require bound inside a sequence, conditional or logical expression, chained
+members such as `require("node:test").test.after`, a namespace held in an array
+or object, a namespace named outside ASCII, braces inside string literals in a
+binding list, and a hook destructured under another name from a `test` or `it`
+binding in a separate statement. Some of these still fail the gate by another
+rule (a member taken directly on such a require, or a bare `after(` call), and a
+name bound from `(require("node:test"), other)` is read as a namespace although
+it holds the other value, which fails closed.
 Run this way, the Node 24.22.1 test runner prints a failing top-level `after()`
 hook as a failing test, yet keeps `fail 0` and exits 0, so the zero-outward and
 zero-wallet guards in those hooks could not fail a gate. The five suites with an
 `after()` hook (chain-context, wallet-signature, wallet-session, stake-builder
 and recovery-verifier) now register it through `scripts/lib/node-test-gate.cjs`.
 When the hook throws, an assertion or any other error, the helper sets exit code
-1, and rethrows so the runner still reports the failure. The commands, CLI
+1, and rethrows so the runner still reports the failure. The helper takes exactly
+one hook function and refuses hook options, and at process exit it ends a run
+whose helper hook failed or never settled with code 1, from inside an exit
+listener, so an exit listener registered later cannot reset it. The commands, CLI
 modes, tests, their names, order and expectations, and the healthy counts are
 unchanged; stake-guard and pool-facts have no `after()` hook. Judge a run by its
 exit code and its test count, never by the fail counter alone. The
@@ -918,7 +1011,8 @@ asks for dismissal); `dismiss-poll-after-expiry` passed its poll assertions and
 `dismiss-before-expiry` and `confirm-resumed-after-deadline` passed. The message
 suite failed 11 of 119 tests: the seven `recovery` tests, the two dismissal-copy
 tests and the two whole-set tests. Its kind-list test compares two lists inside
-the test file and so passes on either source. On the new source the flow passes
+the test file and so passes on either source (superseded: the test now reads the
+`FailureKind` union in messages.ts). On the new source the flow passes
 105 of 105 cases with every declared dispatch and POST count and no layout or
 unknown-status failure, the failure-message suite passes 119 of 119 tests, the
 recovery-verifier suite 182 of 182, and the meta-check finds eight node:test
@@ -1025,3 +1119,106 @@ veto always holds as well; BM-WS (both vetoes removed) killed:
 enabled on the resend) killed: `retry-reported-held-body` at
 `RETRY_400_NO_BODY_READ`; BM-L (a later attempt keeps the report) killed:
 `retry-after-report` at `REPORT_SUPERSEDED_BY_RESEND`.
+
+Gate-hardening receipt (supersedes the 139-case flow count, the 26-test
+submit-reply count and the 182-test recovery-verifier count above). Node-test
+gate: on the earlier meta-check, a temporary suite that took `test` from
+node:test and registered a failing hook through `test.after` passed the
+meta-check, and the suite itself exited 0 with its one test passing. The
+hardened meta-check flags it as `alias test.after` and exits 1. With the earlier
+helper, the hook-options, later-exit-listener and never-settling witnesses
+failed; with the hardened helper all six witnesses behave as described above.
+Each of the following mutants was killed, and its source was then restored
+exactly: the option refusal removed, by the hook-options witness; the exit
+listener's `process.exit(1)` replaced by an exit code, by the
+later-exit-listener witness; the never-settled clause removed, by the
+never-settling witness; the pending count never decremented, by the two healthy
+witnesses; the alias check removed, by the `test.after` planted shape; and
+`?.after` removed from the member pattern, by the `nt?.after` planted shape.
+Twenty-four further detector mutants, covering the later reading rules
+(defaulted, nested and `default as` bindings, the brace-aware list pattern, the
+flat second reading of each list and parenthesised requires), each made the
+meta-check fail. The meta-check now flags 46 planted shapes, passes 7 clean
+controls, scans 19 files and finds nine node:test suites and five helper users.
+
+Suite pins: four source mutants each passed the earlier suites and fail a new or
+changed test, and each source was then restored exactly. An extra failure kind
+added to messages.ts fails the kind test, which now reads the `FailureKind`
+union from messages.ts (the failure-message suite stays at 125 tests). A
+recovery verifier that stops reading the remaining inputs after a second
+unusable one fails the new three-input test, in which two unusable inputs
+precede one spent by the recovery ID and every input must still be read (the
+recovery-verifier suite now has 183 tests). A classifier that admits a
+constructor starting with a lower-case letter fails the new constructor test
+(the submit-reply suite now has 27 tests). Removing the site's `addr1` prefix
+check changes the refusal code for an `addr_test` provider address, which the
+new mismatched-address test detects (the chain-context suite now has 183
+tests).
+
+Disposal ordering and the sampler: on the earlier harness, delaying the home
+navigation (2 seconds in `status-dispose`, 4 seconds in `dismiss-dispose`) made
+the two cases fail at `DISPOSE_RETAINS_RECORD` and
+`DISMISS_DISPOSE_RETAINS_RECORD` respectively; with the new ordering the same
+delays pass. Reading the phase the earlier way, with the new DOM check in place,
+fails `registered`, `unregistered`, `cancel-review`, `double-approval` and
+`long-consent` at `PHASE_LABEL_MATCHES_DOM` and at no other label. On the
+healthy run of 139 cases the earlier reading lagged the committed phase on 735
+samples across 138 cases, and no sample disagreed with the DOM. A control that
+keeps the panel mounted fails `status-dispose` at `FOUND_ANSWERED_AFTER_DETACH`
+with no found answer served and no confirmation read; a control that moves
+detachment past the 20-second watchdog fails `dismiss-dispose` at
+`HELD_ROWS_RELEASED_AFTER_DETACH` with no held rows served and the record kept.
+These two aborts have no assertion of their own: their effect is shown only by
+those recorded fields, because a run that reaches either outcome fails anyway. A
+control in which the watchdog itself releases the rows fails at the ordering
+check, but its release comes about 20 seconds after the hold began, after the
+product's 10-second read timeout has already ended that read, so it shows only
+that the ordering check refuses a release before detachment. The consequence is
+shown by a control that releases the rows just before the home click while the
+panel is still present: the page then removes the record and shows the dismissed
+text, and the ordering check fails it. With either expiry latch removed, the
+affected cases fail at `STOP_COPY` and now record the stored record, which
+matches the healthy run's apart from its creation time. With the final barrier's
+wall-clock clause disabled, `final-barrier-expiry` makes a forbidden POST to the
+intercepted route; with its tip clause disabled the case still passes, so the
+wall-clock clause is the one that stops it.
+
+Storage events, offer withdrawal, Keep and per-ID witness latches: the five new
+cases and the `dismiss-cancel` additions pass on the earlier source, and each of
+six controller mutants that the earlier cases did not detect is killed by a new
+case or check: the changed-record guidance made to ignore the other-tab phase,
+by `confirm-then-unrelated-storage` at `UNRELATED_STORAGE_KEEPS_RESULT`; the
+other-tab message made to ignore the ID, by `status-same-id-storage` at
+`SAME_ID_NO_OTHER_PENDING`; the other-tab message made to ignore an open
+operation, by `confirm-then-review-other-tab` at
+`NO_OTHER_PENDING_DURING_REVIEW`; Check status no longer withdrawing a shown
+dismissal offer, by `dismiss-recheck-withdraws` at
+`NO_DISMISS_OFFER_AFTER_RECHECK`; Keep no longer aborting the recheck, by
+`dismiss-cancel` at `NO_READS_AFTER_KEEP` (and `dismiss-dispose` at
+`NO_READS_AFTER_DISPOSE`); and the witness latch made global, by
+`dismiss-cross-id` at `CROSS_ID_OFFERED`. Removing
+`confirm-then-review-other-tab` from the cutoff-aware wallet check makes it fail
+at `STATUS_ZERO_WALLET_CALLS` after its body completed. The flow then passed 144
+of 144 cases.
+
+Expiry latch and refresh hold: on the earlier controller,
+`dismiss-keep-hides-retry` failed first at `NO_RETRY_AFTER_EXPIRY`, because
+after Keep the resend was offered again, while `retry-refresh-hold`,
+`retry-account-change` and `dismiss-cancel` passed. With the latch both new
+cases pass. Mutants that remove the expiry check from the offer, or never set
+the latch, are killed by `dismiss-keep-hides-retry` at `NO_RETRY_AFTER_EXPIRY`.
+A mutant that removes the offer's observed-wallet clause still passes
+`retry-account-change`, `retry-disconnect` and `retry-same-bytes` on the earlier
+harness, because a changed wallet drops the copy first, and is killed by
+`retry-refresh-hold` at `NO_RETRY_DURING_REFRESH`. The refresh hold stayed well
+under the case's 8-second bound (about half a second). In each of these mutant
+runs the other nine resend and dismissal cases of its set passed. No case yet
+shows that the expiry latch for one ID leaves another ID's resend offered: with
+the latch made global, so that one expiry would block every resend, those ten
+cases still pass. The per-ID scope therefore rests on review of the code, and
+that mutant fails toward withholding the resend, never toward sending. On this
+source the flow passes 146 of 146 cases in one attempt; the Node suites pass at
+chain-context 183, wallet-signature 106, wallet-session 143, stake-builder 89,
+stake-guard 206, pool-facts 10, recovery-verifier 183, failure-message 125 and
+submit-reply 27 tests; the native signature campaign runs 938 assertions; and
+the native coordination suite runs 101 Node checks and 48 Chromium scenarios.

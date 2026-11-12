@@ -414,9 +414,11 @@ The repair pins `@evolution-sdk/evolution` exactly to 0.5.14 (`^0.5.9` →
 overrides are unchanged. Without that entry, resolving 0.5.14 re-resolved
 `effect` to 3.22.4 inside the SDK's `^3.21.1` range once the Effect platform
 packages that held it at 3.21.2 left the graph. Upstream Evolution 0.5.14's own
-lockfile resolves `effect` 3.21.2, so the override keeps the combination the SDK
-was built and tested with. Remove it only as part of a deliberate, reviewed
-Effect upgrade.
+lockfile resolves `effect` 3.21.2, so the override keeps the combination recorded
+in the upstream lockfile (a resolution, not evidence that upstream ran its tests
+on it). Re-evaluate it on every SDK upgrade, not only in a deliberate, reviewed
+Effect upgrade: recheck the new SDK's declared Effect range, because this
+override would otherwise force a newer SDK onto 3.21.2.
 
 The lock goes from 552 to 508 entries. The removed closure is the Effect
 platform family (`cluster`, `experimental`, `platform`, `platform-node`,
@@ -475,6 +477,7 @@ checkout with no Blockfrost configuration:
 node scripts/check-runtime-security.cjs --lock-only
 npm ci --ignore-scripts
 node scripts/check-runtime-security.cjs
+node scripts/check-runtime-security-controls.cjs
 node scripts/check-framework-security.cjs
 node scripts/check-tooling-security.cjs
 node scripts/check-stake-builder.cjs
@@ -484,12 +487,22 @@ npm audit --omit=dev --json
 npm audit --json
 ```
 
+`check-runtime-security-controls.cjs` runs a byte-identical copy of the
+unchanged runtime guard against small synthetic locks, with synthetic installed
+metadata where needed, and against the repository lock. It pins that an
+above-floor prerelease of an optional package (`@effect/platform` 0.98.0-rc.0)
+and an optional package whose installed version differs from the lock are both
+refused, while a lock without the optional packages, a later stable release,
+matching installed metadata and the repository lock pass. Applying the
+stable-release rule only to required packages, or skipping the installed check
+for optional ones, makes it fail.
+
 Observed on 2026-11-11 with Node 24.22.1, after the change: both raw audits
 exited 0 with **zero findings** (`metadata.vulnerabilities.total` 0). This is an
 observation at that time, not an all-clear; advisories published later need the
 release gate's re-run of both audits.
 
-Limits. The T-021 ledger proof and the browser-SDK proof receipt
+Limits. The independent funded-ledger proof and the browser-SDK proof receipt
 ([browser SDK](browser-sdk.md)) were produced with Evolution 0.5.9 and are not
 re-run here; both must be re-run on the final candidate's resolved SDK and lock
 before any release-ready claim. The literal vectors and golden bytes cover the

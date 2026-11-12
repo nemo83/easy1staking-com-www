@@ -145,9 +145,16 @@ or readiness decision while its healthy neighbor stays valid. Restore exact
 committed source and index after each, then rerun the complete source, wallet,
 builder and guard suites; a parser/import failure is not a deciding control.
 
-The source suite has 182 cases, including 21 named observed-tip traces with real
-source-produced prior contexts, distinct construction/current points, non-adjacent
-hash reuse, malformed prior copies and ignored extra prior heights. Healthy traces
+The source suite has 183 cases (182 before the mismatched-address test),
+including 21 named observed-tip traces with real source-produced prior contexts,
+distinct construction/current points, non-adjacent hash reuse, malformed prior
+copies and ignored extra prior heights. The mismatched-address test feeds
+valid-bech32 57-byte provider addresses with another header type or network, or
+another prefix, and requires each to be refused and never accepted: as observed
+with Evolution 0.5.14 the code is RESPONSE, and INPUT for the `addr_test`
+prefix. It pins those refusal codes and claims nothing more about which
+addresses are accepted; removing the site's `addr1` prefix check changes the
+`addr_test` code, which the test detects. Healthy traces
 reach actual builder review and pre-sign recognition; contradictory traces return
 fixed COHERENCE refusals without a context. Branch-specific correspondence controls remove
 only the non-null datum comparison or non-null reference-hash comparison, keeping

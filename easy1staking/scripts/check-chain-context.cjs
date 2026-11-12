@@ -290,7 +290,7 @@ refusal("explicit spent output", s => inputRows(s)[1].consumed_by_tx = id(123), 
 refusal("provider changed lovelace", s => inputRows(s).forEach(r => r.amount[0].quantity = "100000001"), "INPUT");
 refusal("provider changed output index", s => s.row.output_index = 1, "INPUT");
 refusal("provider changed address", s => s.row.address = raw.addressBech32("01" + fixture.otherHash + fixture.stakeKeyHash), "INPUT");
-// R-SEC-1 E2: since Evolution 0.5.10 a valid-bech32 57-byte provider address whose header or prefix does not match is refused by the SDK
+// Regression for the SDK address decoder: since Evolution 0.5.10 a valid-bech32 57-byte provider address whose header or prefix does not match is refused by the SDK
 // decoder (RESPONSE) before this site's round trip (INPUT) runs. It is refused either way and never accepted; the codes are those observed on 0.5.14.
 const BECH32 = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 function bech32Of(hrp, hex) {

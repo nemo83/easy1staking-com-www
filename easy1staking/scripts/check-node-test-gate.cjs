@@ -11,8 +11,14 @@
 // A list assigned from node:test or a namespace is also read flat, so a nested pattern with its own default, such as { k: { test: t } = nt }, is read too.
 // A node:test require may be wrapped in parentheses and whitespace, such as nt = ( (require(...)) ), wherever a node:test require is read;
 // closing parentheses are not paired, so f(require(...)).after also reads as a member (a false RED), and a parenthesised helper require is
-// not read as the helper. Also not detected: other alias chains (const h = nt, t = nt.test, (nt).after, { after } = (nt)), a require inside a
-// sequence, conditional or logical expression such as (0, require(...)), module.require, the second name of import d, * as ns, and import().
+// not read as the helper. Also not detected: other alias chains (const h = nt, t = nt.test, (nt).after, { after } = (nt)), a hook key
+// destructured under another name from a test or it alias in a separate statement (const { after: hook } = test), a node:test require
+// bound inside a sequence, conditional or logical expression such as nt = (0, require(...)) or bound through module.require, the second
+// name of import d, * as ns, and import(). A member taken directly on such a require, such as (0, require(...)).after or
+// module.require(...).after, still reads as a member, and a name bound from (require(...), other) is learned as a namespace although it
+// holds the other value (a false RED). Unsupported textual routes, also not detected: a namespace held in a container, such as
+// const [g] = [require(...)]; a namespace named outside ASCII (a namespace is read only when its name matches [A-Za-z_$][A-Za-z0-9_$]*);
+// and string literals that contain braces inside a binding list, such as { test: t = "}" }.
 const fs = require("node:fs"), path = require("node:path"), assert = require("node:assert/strict");
 const scripts = __dirname, self = path.join(scripts, "check-node-test-gate.cjs"), helper = path.join(scripts, "lib", "node-test-gate.cjs");
 // The module names are assembled, so this file's own source never matches its detectors.
