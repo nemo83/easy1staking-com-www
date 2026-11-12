@@ -166,7 +166,9 @@
     "status-same-id-storage",
     "confirm-then-review-other-tab",
     "dismiss-recheck-withdraws",
-    "dismiss-cross-id"
+    "dismiss-cross-id",
+    "dismiss-keep-hides-retry",
+    "retry-refresh-hold"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -751,6 +753,14 @@
     "dismiss-cross-id": {
       "submitDispatches": 1,
       "posts": 1
+    },
+    "dismiss-keep-hides-retry": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "retry-refresh-hold": {
+      "submitDispatches": 1,
+      "posts": 1
     }
   },
   "statusPlans": {
@@ -1016,6 +1026,12 @@
     "dismiss-cross-id": {
       "notFound": null,
       "otherTab": true
+    },
+    "dismiss-keep-hides-retry": {
+      "notFound": null
+    },
+    "retry-refresh-hold": {
+      "notFound": null
     }
   },
   "otherTabRecord": {

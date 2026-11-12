@@ -183,7 +183,8 @@ async function main(){
      // After a flagged reload every wallet method throws and is counted; status checking must never call one.
      let throwingWallet=false;try{throwingWallet=nativeGet.call(sessionStorage,"synthetic:throwingWallet")==="1";}catch{}
      state.throwingWalletCalls=0;const refuse=()=>{state.throwingWalletCalls++;throw Error("FORBIDDEN_WALLET_AFTER_RELOAD");};
-     window.cardano=mode==="no-wallet"?{}:throwingWallet?{synthetic:{enable:refuse,isEnabled:refuse,getNetworkId:refuse,getChangeAddress:refuse,getRewardAddresses:refuse,getUtxos:refuse,signTx:refuse,signData:refuse,submitTx:refuse}}:{synthetic:{enable:async()=>{state.enableCalls++;if(mode==="connect-denied")throw {code:-3,info:"SYNTHETIC_PRIVATE_CANARY"};return read(api);}}};
+     // retry-refresh-hold: once the harness sets holdEnable, the next enable() call waits for releaseEnable (browser test input).
+     window.cardano=mode==="no-wallet"?{}:throwingWallet?{synthetic:{enable:refuse,isEnabled:refuse,getNetworkId:refuse,getChangeAddress:refuse,getRewardAddresses:refuse,getUtxos:refuse,signTx:refuse,signData:refuse,submitTx:refuse}}:{synthetic:{enable:async()=>{state.enableCalls++;if(mode==="connect-denied")throw {code:-3,info:"SYNTHETIC_PRIVATE_CANARY"};if(mode==="retry-refresh-hold"&&state.holdEnable)await new Promise(r=>{state.releaseEnable=r;});return read(api);}}};
      state.controls=[];
      for(const probe of [()=>window.fetch('https://invalid.example'),()=>new XMLHttpRequest(),()=>new WebSocket('wss://invalid.example'),()=>new EventSource('https://invalid.example'),()=>navigator.sendBeacon('https://invalid.example'),()=>api.signData(),()=>api.submitTx(),()=>navigator.storage.persist(),()=>window.gtag()]){try{probe();}catch{}state.controls.push(state.tripwires.pop());}
      // 360 px layout sampler (browser test input only). A MutationObserver on the document records the status-line text and the rendered phase on every batch.
@@ -252,6 +253,8 @@ async function main(){
       if(name==="submit-400-bad-inputs")return route.fulfill({status:400,contentType:"application/json",body:fixture.reportReplies.badInputs,headers:{"access-control-allow-origin":"*"}});
       if(name==="submit-400-not-ledger")return route.fulfill({status:400,contentType:"application/json",body:fixture.reportReplies.notLedger,headers:{"access-control-allow-origin":"*"}});
       if(name==="submit-400-oversized")return route.fulfill({status:400,contentType:"application/json",body:OVERSIZED,headers:{"access-control-allow-origin":"*"}});
+      // dismiss-keep-hides-retry: after the dismiss- clock move above, the first POST answers 500, so the outcome is unknown and the page keeps the signed bytes.
+      if(name==="dismiss-keep-hides-retry")return route.fulfill({status:500,contentType:"application/json",body:'{"error":"SYNTHETIC_PRIVATE_CANARY"}'});
       if(name==="submit-bad-status")return route.fulfill({status:500,contentType:"application/json",body:'{"error":"SYNTHETIC_PRIVATE_CANARY"}'});
       if(name==="submit-missing-body")return route.fulfill({status:200,contentType:"application/json",body:""});
       if(name==="submit-malformed")return route.fulfill({status:200,contentType:"application/json",body:'{"raw":"SYNTHETIC_PRIVATE_CANARY"}'});
@@ -786,6 +789,20 @@ async function main(){
        const v=await viewOf();Object.assign(record.dismiss.crossId,{offers:await offerCount(),dismissal:v.dismissal,crossRows:st.rowsServed.filter(x=>x.crossId).length});
        assert(record.dismiss.crossId.offers===1&&v.dismissal?.txId===other.txId,"CROSS_ID_OFFERED");
        await cutoff();
+      }else if(name==="dismiss-keep-hides-retry"){
+       // The first POST answered 500: the outcome is unknown, this page keeps the signed bytes and offers the resend after the apology.
+       // A deliberate check past the TTL then finds the ID expired and unseen; after Keep this page does not offer the resend for that ID again.
+       const rc=fixture.retryCopy,resend=()=>page.getByRole("button",{name:rc.offer,exact:true}).count();
+       for(const t0=Date.now();Date.now()-t0<20000&&await statusText()!==apology;)await page.waitForTimeout(100);await page.waitForTimeout(500);
+       {const v=await viewOf();record.keepHidesRetry={before:{text:await statusText(),resend:await resend(),canRetry:v.canRetry}};
+        assert(record.keepHidesRetry.before.text===apology&&record.keepHidesRetry.before.resend===1&&v.canRetry===true,"RETRY_OFFERED_BEFORE_CHECK");}
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");assert.equal(await offerCount(),1,"DISMISS_OFFERED");
+       record.keepHidesRetry.withOffer={resend:await resend(),canRetry:(await viewOf()).canRetry};assert(record.keepHidesRetry.withOffer.resend===0&&record.keepHidesRetry.withOffer.canRetry===false,"NO_RETRY_WITH_OFFER");
+       await open();await page.getByRole("button",{name:copy.keep}).click();await page.waitForTimeout(300);
+       assert.equal(await statusText(),R.kept,"KEPT_COPY");
+       {const v=await viewOf();record.keepHidesRetry.afterKeep={resend:await resend(),canRetry:v.canRetry,notes:await page.getByText(rc.note,{exact:true}).count(),statusReason:v.statusReason,phase:v.phase};
+        assert(record.keepHidesRetry.afterKeep.resend===0&&v.canRetry===false&&record.keepHidesRetry.afterKeep.notes===0,"NO_RETRY_AFTER_EXPIRY");}
+       await retained("RECORD_RETAINED_ON_KEEP");await cutoff();
       }else if(name==="dismiss-expired"){
        await dismissAll(null);await cutoff();
        // Reconnect after the cutoff: a fresh review builds and is never approved.
@@ -1090,6 +1107,24 @@ async function main(){
        const locks=await page.evaluate(()=>navigator.locks.query());record.retry.locksAfter=locks;assert(v.retryReason==="UNKNOWN"&&c.seenAt!==null&&locks.held.length===0,"RETRY_400_PROMPT_UNKNOWN");
        const after=(await emitted()).slice(i0);assert(await statusText()!==fixture.submitCopy.reported&&!after.some(x=>x.message===fixture.submitCopy.reported),"NOT_REPORTED_ON_RESEND");
        await page.getByText(apology,{exact:true}).waitFor({timeout:20000}).catch(()=>{});await page.waitForTimeout(500);assert.equal(await offerCount(),1,"RETRY_OFFERED_AGAIN");
+       await finish();
+      }else if(name==="retry-refresh-hold"){
+       // A visible refresh of the same wallet with enable() held: while the wallet session is acquiring (no revision change) the resend is not offered,
+       // and it returns once the same wallet is observed again. The document is hidden again at once, so the visible-only 30 s refresh starts no other one.
+       const enables=await page.evaluate(()=>window.synthetic.enableCalls);await page.evaluate(()=>{window.synthetic.holdEnable=true;});
+       // A conservative runner-clock bound on the hold: from just before the refresh is triggered until the release evaluation has completed.
+       const boundFrom=Date.now();await page.evaluate(()=>{Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"visible"});document.dispatchEvent(new Event("visibilitychange"));window.dispatchEvent(new Event("focus"));Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});});
+       const holding=()=>page.evaluate(e=>window.synthetic.enableCalls>e&&typeof window.synthetic.releaseEnable==="function",enables);
+       for(const t0=Date.now();Date.now()-t0<15000&&!await holding();)await page.waitForTimeout(100);const heldAt=Date.now();await page.waitForTimeout(500);
+       {const v=await viewOf();record.refreshHold={enables,during:{holding:await holding(),resend:await offerCount(),canRetry:v.canRetry,phase:v.phase,text:await statusText()},duringBoundMs:Date.now()-boundFrom};
+        assert(record.refreshHold.during.holding,"REFRESH_HELD");assert(record.refreshHold.during.resend===0&&v.canRetry===false,"NO_RETRY_DURING_REFRESH");}
+       const releasedAt=Date.now();await page.evaluate(()=>{window.synthetic.holdEnable=false;window.synthetic.releaseEnable?.();});
+       record.refreshHold.boundMs=Date.now()-boundFrom;record.refreshHold.heldMs=releasedAt-heldAt;
+       // Past the wallet session's 10 s read deadline the session fails with a revision change and the offer cannot return: an instrument failure, never a product one.
+       assert(record.refreshHold.boundMs<8000,"REFRESH_HOLD_BOUND");
+       for(const t1=Date.now();Date.now()-t1<5000&&await offerCount()!==1;)await page.waitForTimeout(100);
+       {const v=await viewOf();record.refreshHold.after={resend:await offerCount(),canRetry:v.canRetry,phase:v.phase,enableCalls:await page.evaluate(()=>window.synthetic.enableCalls)};
+        assert(record.refreshHold.after.resend===1&&v.canRetry===true,"RETRY_OFFER_RETURNS");}
        await finish();
       }else throw Error("UNHANDLED_RETRY_CASE "+name);
      }else if(name==="check-status-after-reload"){

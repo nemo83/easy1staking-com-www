@@ -149,6 +149,9 @@ export function createDelegationController(projectId: string) {
   const spentIds = new Set<string>(), witnessedIds = new Set<string>();
   // Page-lifetime latch, never stored: IDs whose first attempt drew a Blockfrost validation-error report; any later attempt clears it.
   const reportedIds = new Set<string>();
+  // Page-lifetime latch, never stored: IDs a deliberate check found expired and unseen. Conservative page policy, not a proof of chain finality:
+  // a resend after this page observed the expiry would end EXPIRED without a POST, so it is not offered.
+  const expiredIds = new Set<string>();
   // W7 deliberate retry: the retained bytes (dropped on every invalidating event) and the last retry's ending.
   let retained: Retained | null = null, retryReason: RetryReason | null = null;
   const fail = (): never => { throw new FlowFailure(); };
@@ -443,6 +446,7 @@ export function createDelegationController(projectId: string) {
   function latch(result: StatusOutcome): void {
     if (result.witnessed) witnessedIds.add(result.txId);
     if (result.status === "inconsistent" && result.reason === "SPENT_BY_ID") spentIds.add(result.txId);
+    if (result.status === "not-found" && result.reason === "EXPIRED_UNSEEN") expiredIds.add(result.txId);
   }
   function dismissible(result: StatusOutcome): result is Unseen {
     return result.status === "not-found" && result.reason === "EXPIRED_UNSEEN" && !spentIds.has(result.txId) && !witnessedIds.has(result.txId);
@@ -569,7 +573,7 @@ export function createDelegationController(projectId: string) {
     if (disposed || retained === null || operation !== null || status !== null || offer !== null || (phase !== "unknown" && phase !== "check-later")) return false;
     const prior = recovery(), state = owner.getState();
     return prior.status === "pending" && prior.txId === retained.txId && state.phase === "observed" && state.revision === retained.revision &&
-      !spentIds.has(retained.txId) && !witnessedIds.has(retained.txId);
+      !spentIds.has(retained.txId) && !witnessedIds.has(retained.txId) && !expiredIds.has(retained.txId);
   }
   /** The retry's authority: an active lease whose stored record is exactly the one this page last wrote. */
   function authority(lease: DelegationLease, kept: Retained): void {
