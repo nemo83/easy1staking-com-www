@@ -78,7 +78,7 @@ test("exact currency, compact live stake and independent zero fee fields", () =>
     assert.equal(model.formatLovelace(input), expected);
     assert.equal(model.normalizePool({ ...raw(), fixed_cost: input }).fixedCost, expected);
   }
-  for (const [input, expected] of [["53000000000000", "~53M"], ["53500000000000", "~54M"], ["53499999999999", "~53M"], ["1000000000000", "~1M"], ["1499999999999", "~1M"], ["1500000000000", "~2M"], ["999999999999", "999,999.999999"], ["1", "0.000001"], ["0", "0"], ["9007199254740993123456", "~9007199255M"], ["0001000000000000", "~1M"], ["0001", "0.000001"]]) {
+  for (const [input, expected] of [["53000000000000", "~53M"], ["53500000000000", "~54M"], ["53499999999999", "~53M"], ["1000000000000", "~1M"], ["1499999999999", "~1M"], ["1500000000000", "~2M"], ["999999999999", "999,999.999999"], ["1", "0.000001"], ["0", "0"], ["9007199254740993123456", "~9007199255M"], ["9007499999999999", "~9007M"], ["9007500000000000", "~9008M"], ["0001000000000000", "~1M"], ["0001", "0.000001"]]) {
     assert.equal(model.normalizePool({ ...raw(), live_stake: input }).liveStake, expected, `live stake ${input}`);
     assert.equal(model.formatCompactLovelace(input), expected);
   }
