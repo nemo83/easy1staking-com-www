@@ -88,8 +88,8 @@ No new proxy/signing/coordination route is introduced. Existing Next server rend
 
 | Display | Provider field / normalization |
 |---|---|
-| Active stake | `active_stake`, lovelace to ADA; never substitute `live_stake` under this label. |
-| Saturation | `live_saturation`, ratio to percentage; show the true number above 100%, while a purely decorative bar can cap its width. |
+| Live stake | `live_stake`, lovelace to ADA; show amounts of at least one million ADA as approximate whole millions, rounded half up. Never substitute `active_stake` under this label. |
+| Saturation | `live_saturation`, ratio to percentage, then truncate the fractional part; remain uncapped above 100%, while a purely decorative bar can cap its width. |
 | Lifetime blocks | `blocks_minted`, validated nonnegative integer. |
 | Margin / fixed cost | `margin_cost` ratio to percent; `fixed_cost` lovelace to ADA. |
 

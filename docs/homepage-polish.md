@@ -181,3 +181,13 @@ This completes the homepage preview scope. It does not establish public release,
 live pool data, wallet/delegation readiness or dependency security clearance.
 Existing dependency audit findings require release review. No publication or
 deployment is implied by this guide.
+
+## Current pool metric format
+
+The homepage and Pool page label the provider's `live_stake` as Live stake.
+Amounts of at least one million ADA use approximate whole millions, rounded
+half up (for example, 53.5 million ADA appears as ~54M ADA); smaller amounts
+retain exact ADA precision. Missing live stake remains unavailable without
+substituting active stake. Saturation shows the percentage with its fractional
+part truncated and remains uncapped above 100%. Observation times, five-minute
+expiry and independent unavailable fields retain their existing behavior.

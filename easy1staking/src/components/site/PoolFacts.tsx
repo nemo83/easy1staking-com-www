@@ -34,7 +34,7 @@ export function PoolFacts({ snapshot, renderedAt }: { snapshot: PoolSnapshot; re
   return <div className="pool-data" aria-busy={refreshing}>
     <div className="pool-id"><Image src="/brand/assets/easy1-symbol-colour-dark.svg" alt="" width={38} height={38} /><div><span>Stake pool</span><strong>EASY1</strong></div></div>
     <dl>
-      <div style={{ minWidth: 0 }}><dt>Active stake</dt><dd style={{ overflowWrap: "anywhere" }}>{facts?.activeStake ?? unknown}<small style={{ whiteSpace: "nowrap" }}>ADA</small></dd></div>
+      <div style={{ minWidth: 0 }}><dt>Live stake</dt><dd style={{ overflowWrap: "anywhere" }}>{facts?.liveStake ?? unknown}<small style={{ whiteSpace: "nowrap" }}>ADA</small></dd></div>
       <div style={{ minWidth: 0 }}><dt>Pool saturation</dt><dd style={{ overflowWrap: "anywhere" }}>{facts?.saturation ?? unknown}<small style={{ whiteSpace: "nowrap" }}>%</small></dd></div>
       <div style={{ minWidth: 0 }}><dt>Lifetime blocks</dt><dd style={{ overflowWrap: "anywhere" }}>{facts?.blocks ?? unknown}</dd></div>
       <div style={{ minWidth: 0 }}><dt>Margin / fixed cost</dt><dd style={{ overflowWrap: "anywhere" }}>{facts?.margin ?? unknown}<small style={{ whiteSpace: "nowrap" }}>% / </small>{facts?.fixedCost ?? unknown}<small style={{ whiteSpace: "nowrap" }}>ADA</small></dd></div>

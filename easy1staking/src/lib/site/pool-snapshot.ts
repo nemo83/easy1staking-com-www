@@ -83,18 +83,18 @@ export function createPoolSnapshotOwner(deps: Dependencies) {
 }
 
 // Route bundles can instantiate modules separately; share one owner across them.
-const shared = globalThis as typeof globalThis & { __easy1PoolSnapshotOwner?: ReturnType<typeof createPoolSnapshotOwner> };
-shared.__easy1PoolSnapshotOwner ??= createPoolSnapshotOwner({
+const shared = globalThis as typeof globalThis & { __easy1PoolSnapshotOwnerV2?: ReturnType<typeof createPoolSnapshotOwner> };
+shared.__easy1PoolSnapshotOwnerV2 ??= createPoolSnapshotOwner({
   projectId: blockfrostProjectId, fetch: (...args) => fetch(...args), now: () => Date.now(),
   readShared: (key, bucket, load) => unstable_cache(async () => {
     const snapshot = await load();
     // Throwing keeps failures out of the successful persistent cache.
     if (!isCurrentSnapshot(snapshot, Date.now())) throw new Error("Pool snapshot unavailable");
     return snapshot;
-  }, ["easy1-pool-snapshot-v1", key, String(bucket)], { revalidate: false })(),
+  }, ["easy1-pool-snapshot-v2", key, String(bucket)], { revalidate: false })(),
 });
 
 export async function getPoolSnapshot() {
-  const snapshot = await shared.__easy1PoolSnapshotOwner!();
+  const snapshot = await shared.__easy1PoolSnapshotOwnerV2!();
   return { snapshot, renderedAt: Date.now() };
 }

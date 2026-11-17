@@ -8,16 +8,26 @@ const { test } = require("node:test");
 const ts = require("typescript");
 const app = path.resolve(__dirname, "..");
 const modules = new Map();
+let unexpectedFetches = 0;
+globalThis.fetch = async () => {
+  unexpectedFetches++;
+  throw new Error("Unexpected global fetch; this suite permits synthetic transport only");
+};
+const React = require("react");
+const { renderToStaticMarkup } = require("react-dom/server");
 function load(file) {
   if (modules.has(file)) return modules.get(file).exports;
   const module = { exports: {} };
   modules.set(file, module);
   const js = ts.transpileModule(fs.readFileSync(file, "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const localRequire = (id) => {
     // This import is Next's build-time boundary marker, with no runtime logic.
     if (id === "server-only") return {};
+    if (id === "@/lib/site/pool-facts") return load(path.join(app, "src/lib/site/pool-facts.ts"));
+    if (id === "next/image") return { __esModule: true, default: (props) => React.createElement("img", props) };
+    if (id === "next/navigation") return { useRouter: () => ({ refresh() {} }) };
     if (id.startsWith(".")) return load(path.resolve(path.dirname(file), id + ".ts"));
     return require(id);
   };
@@ -26,7 +36,8 @@ function load(file) {
 }
 const model = load(path.join(app, "src/lib/site/pool-facts.ts"));
 const { createPoolSnapshotOwner } = load(path.join(app, "src/lib/site/pool-snapshot.ts"));
-const raw = () => ({ pool_id: model.EASY1_POOL_ID, hex: model.EASY1_POOL_HEX, active_stake: "1000001", live_stake: "990000000000", live_saturation: 1.234, blocks_minted: 0, margin_cost: 0, fixed_cost: "1" });
+const { PoolFacts } = load(path.join(app, "src/components/site/PoolFacts.tsx"));
+const raw = () => ({ pool_id: model.EASY1_POOL_ID, hex: model.EASY1_POOL_HEX, active_stake: "1000001", live_stake: "53000000000000", live_saturation: 0.6882565387199768, blocks_minted: 0, margin_cost: 0, fixed_cost: "1" });
 const response = (body, status = 200) => ({ ok: status === 200, status, json: async () => body });
 function harness(fetcher, readShared) {
   let now = 900_000;
@@ -62,13 +73,18 @@ test("fixed EASY1 bech32 checksum and 28-byte payload independently match hex", 
   assert(!/1/.test(bits.slice(224)));
 });
 
-test("exact currency, active versus live stake and independent zero fee fields", () => {
+test("exact currency, compact live stake and independent zero fee fields", () => {
   for (const [input, expected] of [["0", "0"], ["1", "0.000001"], ["1000001", "1.000001"], ["9007199254740993123456", "9,007,199,254,740,993.123456"]]) {
     assert.equal(model.formatLovelace(input), expected);
-    assert.equal(model.normalizePool({ ...raw(), active_stake: input, fixed_cost: input }).activeStake, expected);
     assert.equal(model.normalizePool({ ...raw(), fixed_cost: input }).fixedCost, expected);
   }
-  assert.deepEqual(model.normalizePool(raw()), { activeStake: "1.000001", saturation: "123.4", blocks: "0", margin: "0", fixedCost: "0.000001" });
+  for (const [input, expected] of [["53000000000000", "~53M"], ["53500000000000", "~54M"], ["53499999999999", "~53M"], ["1000000000000", "~1M"], ["1499999999999", "~1M"], ["1500000000000", "~2M"], ["999999999999", "999,999.999999"], ["1", "0.000001"], ["0", "0"], ["9007199254740993123456", "~9007199255M"], ["0001000000000000", "~1M"], ["0001", "0.000001"]]) {
+    assert.equal(model.normalizePool({ ...raw(), live_stake: input }).liveStake, expected, `live stake ${input}`);
+    assert.equal(model.formatCompactLovelace(input), expected);
+  }
+  assert.deepEqual(model.normalizePool(raw()), { liveStake: "~53M", saturation: "68", blocks: "0", margin: "0", fixedCost: "0.000001" });
+  assert.equal(model.normalizePool({ ...raw(), margin_cost: 0.01234 }).margin, "1.234");
+  assert.equal(model.normalizePool({ ...raw(), active_stake: "999999999999999" }).liveStake, "~53M");
   assert.equal(model.normalizePool({ ...raw(), margin_cost: null }).fixedCost, "0.000001");
   assert.equal(model.normalizePool({ ...raw(), fixed_cost: null }).margin, "0");
 });
@@ -77,16 +93,19 @@ test("invalid identity invalidates everything; malformed and missing fields rema
   for (const value of [null, undefined, [], {}, "error", { error: "missing" }, { ...raw(), pool_id: "other" }, { ...raw(), hex: "other" }]) assert.equal(model.normalizePool(value), null);
   const badCurrency = [undefined, null, -1, 1, NaN, Infinity, {}, [], "", "-1", "1.1", "1e6", " 1", "0x01"];
   for (const value of badCurrency) {
-    assert.equal(model.normalizePool({ ...raw(), active_stake: value }).activeStake, null);
+    assert.equal(model.normalizePool({ ...raw(), live_stake: value }).liveStake, null);
     assert.equal(model.normalizePool({ ...raw(), fixed_cost: value }).fixedCost, null);
-    assert.equal(model.normalizePool({ ...raw(), active_stake: value }).blocks, "0");
+    assert.equal(model.normalizePool({ ...raw(), live_stake: value }).blocks, "0");
+    assert.equal(model.normalizePool({ ...raw(), live_stake: value }).fixedCost, "0.000001");
+    assert.equal(model.formatCompactLovelace(value), null);
   }
   for (const value of [null, undefined, -1, NaN, Infinity, "0", {}, []]) {
     assert.equal(model.normalizePool({ ...raw(), live_saturation: value }).saturation, null);
     assert.equal(model.normalizePool({ ...raw(), margin_cost: value }).margin, null);
   }
   for (const value of [null, undefined, -1, 0.1, NaN, Infinity, "0", Number.MAX_SAFE_INTEGER + 1]) assert.equal(model.normalizePool({ ...raw(), blocks_minted: value }).blocks, null);
-  for (const [value, expected] of [[0, "0"], [1, "100"], [1.234, "123.4"], [0.00001, "0.001"], [1e21, "100000000000000000000000"]]) assert.equal(model.normalizePool({ ...raw(), live_saturation: value }).saturation, expected);
+  for (const [value, expected] of [[0, "0"], [0.6882565387199768, "68"], [0.7, "70"], [0.99999, "99"], [1, "100"], [1.234, "123"], [0.00001, "0"], [1e21, "100000000000000000000000"]]) assert.equal(model.normalizePool({ ...raw(), live_saturation: value }).saturation, expected);
+  assert.equal(model.normalizePool({ ...raw(), live_stake: undefined, active_stake: "53000000000000" }).liveStake, null);
   assert.equal(model.normalizePool({ ...raw(), margin_cost: 1 }).margin, "100");
   assert.equal(model.normalizePool({ ...raw(), margin_cost: 1.001 }).margin, null);
   for (const value of [null, [], {}, { epoch: "0" }, { epoch: -1 }, { epoch: 0.1 }, { epoch: Infinity }, { epoch: Number.MAX_SAFE_INTEGER + 1 }]) assert.equal(model.normalizeEpoch(value), null);
@@ -99,6 +118,19 @@ test("age boundary, future timestamps, reversal and invalid clocks never present
   assert.equal(model.isCurrentSnapshot(snapshot, 1_199_999), true);
   for (const now of [1_200_000, 1_200_001, 899_999, NaN, Infinity, 900_000.5, 9e15]) assert.equal(model.isCurrentSnapshot(snapshot, now), false);
   for (const fetchedAt of [null, NaN, Infinity, 900_001, 899_999.5]) assert.equal(model.isCurrentSnapshot({ ...snapshot, fetchedAt }, 900_000), false);
+  const render = (value, renderedAt) => renderToStaticMarkup(React.createElement(PoolFacts, { snapshot: value, renderedAt }));
+  const current = render(snapshot, 900_000);
+  assert.match(current, /<dt>Live stake<\/dt>/);
+  assert.doesNotMatch(current, /Active stake/);
+  assert.match(current, /<dt>Live stake<\/dt><dd[^>]*>~53M<small[^>]*>ADA<\/small><\/dd>/);
+  assert.match(current, /<dt>Pool saturation<\/dt><dd[^>]*>68<small[^>]*>%<\/small><\/dd>/);
+  for (const value of [render(snapshot, 1_200_000), render(snapshot, 1_200_001), render({ facts: null, fetchedAt: null, epoch: null }, 900_000)]) {
+    const fields = [...value.matchAll(/<dd[^>]*>(.*?)<\/dd>/g)].map((match) => match[1]);
+    assert.equal(fields.length, 4);
+    assert(fields.every((field) => field.includes("Unavailable")));
+    assert(fields.every((field) => !/~53M|68/.test(field)));
+    assert.match(value, /Live pool data is unavailable/);
+  }
 });
 
 test("shared concurrent cache calls fixed GET endpoints once, retains actual pool observation time", async () => {
@@ -165,6 +197,12 @@ test("slow epoch does not restamp pool completion or accept an expired pool resp
 });
 
 test("persistent adapter entries must pass age, clock and bucket checks on every read", async () => {
+  // This is a source namespace assertion, not a behavioral persistent-cache test.
+  const source = fs.readFileSync(path.join(app, "src/lib/site/pool-snapshot.ts"), "utf8");
+  assert.match(source, /"easy1-pool-snapshot-v2"/);
+  assert.match(source, /\b__easy1PoolSnapshotOwnerV2\b/);
+  assert.doesNotMatch(source, /"easy1-pool-snapshot-v1"/);
+  assert.doesNotMatch(source, /\b__easy1PoolSnapshotOwner\b/);
   const valid = { facts: model.normalizePool(raw()), fetchedAt: 900_000, epoch: 0 };
   for (const fetchedAt of [600_000, 899_999, 900_001, NaN, Infinity]) {
     const h = harness(null, async () => ({ ...valid, fetchedAt }));
@@ -188,4 +226,5 @@ test("transport including response body has a ten-second ceiling even if fetch i
   assert.equal((await h.get()).fetchedAt, null);
   assert(performance.now() - started < 11_500);
   assert(h.calls.every((c) => c.options.signal.aborted));
+  assert.equal(unexpectedFetches, 0, "No global fetch attempts during the awaited suite");
 });

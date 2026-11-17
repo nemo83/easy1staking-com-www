@@ -3,7 +3,7 @@ export const EASY1_POOL_HEX = "20df8645abddf09403ba2656cda7da2cd163973a5e439c6e4
 export const POOL_MAX_AGE_MS = 300_000;
 
 export type PoolFacts = {
-  activeStake: string | null;
+  liveStake: string | null;
   saturation: string | null;
   blocks: string | null;
   margin: string | null;
@@ -35,6 +35,14 @@ export function formatLovelace(raw: unknown): string | null {
   return fraction ? `${whole}.${fraction}` : whole;
 }
 
+/** Round millions of ADA exactly; retain full precision for smaller amounts. */
+export function formatCompactLovelace(raw: unknown): string | null {
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) return null;
+  const value = BigInt(raw);
+  const millionAda = BigInt(1_000_000_000_000);
+  return value >= millionAda ? `~${(value + millionAda / BigInt(2)) / millionAda}M` : formatLovelace(raw);
+}
+
 function percent(raw: unknown, maximum = Infinity): string | null {
   if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0 || raw > maximum) return null;
   // Decimal shifting avoids overflow and floating point multiplication artefacts.
@@ -51,8 +59,8 @@ function percent(raw: unknown, maximum = Infinity): string | null {
 export function normalizePool(raw: unknown): PoolFacts | null {
   if (!record(raw) || raw.pool_id !== EASY1_POOL_ID || raw.hex !== EASY1_POOL_HEX) return null;
   return {
-    activeStake: formatLovelace(raw.active_stake),
-    saturation: percent(raw.live_saturation),
+    liveStake: formatCompactLovelace(raw.live_stake),
+    saturation: percent(raw.live_saturation)?.split(".")[0] ?? null,
     blocks: typeof raw.blocks_minted === "number" && Number.isSafeInteger(raw.blocks_minted) && raw.blocks_minted >= 0
       ? raw.blocks_minted.toLocaleString("en-US") : null,
     margin: percent(raw.margin_cost, 1),
