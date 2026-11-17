@@ -172,7 +172,8 @@
     "provider-malformed",
     "dismiss-focus-keep",
     "dismiss-focus-confirm",
-    "dismiss-focus-confirmed"
+    "dismiss-focus-confirmed",
+    "public-copy"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -781,6 +782,10 @@
     "dismiss-focus-confirmed": {
       "submitDispatches": 1,
       "posts": 1
+    },
+    "public-copy": {
+      "submitDispatches": 0,
+      "posts": 0
     }
   },
   "statusPlans": {
@@ -1200,6 +1205,21 @@
     "notLedger": "{\"status_code\":400,\"error\":\"Bad Request\",\"message\":\"Backend did not understand your request. SYNTHETIC_PRIVATE_CANARY\"}"
   },
   "insufficientFundsLovelace": "500000",
+  "publicCopy": {
+    "title": "EASY1 stake pool | EASY1",
+    "description": "EASY1 stake pool facts with their observation time, and stake-only delegation to EASY1 from your Cardano wallet. Your voting delegation stays unchanged.",
+    "eyebrow": "Stake-only delegation",
+    "recovery": "Recovery is saved only in this browser while its storage is retained. Browser coordination cannot prevent actions in other apps, origins or devices.",
+    "stale": [
+      "staged",
+      "public activation",
+      "information preview",
+      "release checks",
+      "on mobile, open this exact page",
+      "do not share connections or recovery state",
+      "recovery is saved only in this browser"
+    ]
+  },
   "statusTexts": [
     "An earlier chain-data response reported this transaction, but verification is still unresolved. Nothing was cleared. Check again later, or check it in your wallet or a chain explorer.",
     "Another delegation from this browser is pending. Keep its transaction ID and check its status.",

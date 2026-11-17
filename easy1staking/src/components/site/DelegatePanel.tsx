@@ -58,14 +58,10 @@ export function DelegatePanel() {
     else if (lost && closed) statusLine.current?.focus();
   }, [dialog]);
   return <section id="delegate" className={`wrap section ${styles.authored}`} aria-labelledby="delegate-title">
-    <div className="eyebrow">Stake-only delegation / staged candidate</div>
+    <div className="eyebrow">Stake-only delegation</div>
     <h2 id="delegate-title">Stake with <em>EASY1.</em></h2>
-    <p>Your wallet signs an independently checked mainnet stake delegation. Your voting delegation stays unchanged. Public activation awaits recovery and release checks.</p>
-    <div className={styles.notice}>
-      <p>On mobile, open this exact page in your wallet’s built-in dApp browser, then select and connect that wallet. A regular browser may have no wallet bridge.</p>
-      <p>Wallet browsers, deployments, profiles and devices do not share connections or recovery state. Check an unresolved operation in its originating browser before starting elsewhere.</p>
-      {view?.walletBrowseHref && <a className="text-link" href={view.walletBrowseHref}>Open this page in a compatible wallet browser</a>}
-    </div>
+    <p>Your wallet signs an independently checked mainnet stake delegation. Your voting delegation stays unchanged.</p>
+    {view?.walletBrowseHref && <p><a className="text-link" href={view.walletBrowseHref}>Open this page in a compatible wallet browser</a></p>}
     <div className={styles.facts}>
       {!view && <p role="status">Preparing wallet controls…</p>}
       {view && <>
@@ -119,6 +115,7 @@ export function DelegatePanel() {
           <p>Separate registration deposit: {ada(view.review.deposit)}</p>
           <p>Review expires: <time dateTime={new Date(view.review.expiresAt).toISOString()}>{new Date(view.review.expiresAt).toISOString()}</time></p>
           <p>This transaction changes only stake delegation to EASY1.</p>
+          <p>Recovery is saved only in this browser while its storage is retained. Browser coordination cannot prevent actions in other apps, origins or devices.</p>
           <button type="button" className="btn btn-primary mt-4" onClick={() => { if (view.review) controller.current?.approve(view.review); }}>Approve and sign in wallet</button>
         </div>}
         <div className="mt-6 flex flex-wrap gap-4">
@@ -127,6 +124,5 @@ export function DelegatePanel() {
         </div>
       </>}
     </div>
-    <p>Recovery is saved only in this browser while its storage is retained. Browser coordination cannot prevent actions in other apps, origins or devices. If storage or Web Locks are unavailable, use your wallet directly.</p>
   </section>;
 }

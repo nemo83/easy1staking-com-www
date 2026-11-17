@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ExternalLink } from "@/components/site/EditorialSections";
-import { type EditorialProject, poolPreviewNotice, projectOverviews } from "@/lib/site/editorial";
+import { type EditorialProject, projectOverviews } from "@/lib/site/editorial";
 import styles from "./EditorialPages.module.css";
 
 export function OverviewPage({ project }: { project: EditorialProject }) {
@@ -21,6 +21,6 @@ export function OverviewPage({ project }: { project: EditorialProject }) {
     </section>
     <section className="wrap section" aria-labelledby="features-title"><div className="eyebrow">What it does</div><h2 id="features-title">A closer look<br /><em>at {project.name}.</em></h2><div className={styles.features}>{overview.features.map((feature, index) => <article key={feature.title}><span className={styles.number}>{String(index + 1).padStart(2, "0")}</span><h3>{feature.title}</h3><p>{feature.body}</p></article>)}</div></section>
     <section className={`wrap section ${styles.authored}`} aria-labelledby="connection-title"><div className="eyebrow">The EASY1 connection</div><h2 id="connection-title">{shared ? "Started here." : "One of the things"}<br /><em>{shared ? "Shared with Cardano." : "I build."}</em></h2><p>{overview.connection}</p><Link className="text-link" href="/about">Meet Giovanni <span aria-hidden="true">↗</span></Link></section>
-    <aside className={`wrap ${styles.quiet}`}><div><p>Where EASY1 started: the stake pool.<br />{poolPreviewNotice}</p></div><Link href="/pool">Explore the EASY1 pool <span aria-hidden="true">↗</span></Link></aside>
+    <aside className={`wrap ${styles.quiet}`}><div><p>Where EASY1 started: the stake pool.</p></div><Link href="/pool">Explore the EASY1 pool <span aria-hidden="true">↗</span></Link></aside>
   </main>;
 }

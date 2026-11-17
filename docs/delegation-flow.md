@@ -3,8 +3,9 @@
 The `/pool` page mounts a private stake-only controller. A visitor explicitly
 chooses a CIP-30 wallet, connects, obtains independently reconciled mainnet
 observations and builds an inline review. The review shows the stake credential,
-fixed EASY1 pool ID, exact fee, separate registration deposit and absolute expiry.
-Only its original display object can authorize approval. No voting action is
+fixed EASY1 pool ID, exact fee, separate registration deposit and absolute expiry,
+and notes that recovery is saved only in this browser while its storage is
+retained. Only its original display object can authorize approval. No voting action is
 available. The legacy combined staking/voting helper has been removed.
 
 This is a local candidate. Public activation still requires the remaining
@@ -474,12 +475,14 @@ copy.
 
 ## Mobile entry
 
-Before connection the page explains how to open its exact URL in a compatible
-wallet's dApp browser. An optional CIP-158 browse URI contains only the exact
-current approved origin plus `/pool`: production stays production and preview
-stays preview. Query parameters cannot choose a destination. Local origins give
-instructions. Connection, active work, recovery or unavailable coordination
-suppress the link. Nothing transfers a wallet session, address, ID or transaction
+Before connection, on the two approved origins only, the page shows a link that
+opens it in a compatible wallet's dApp browser through a CIP-158 browse URI. The
+URI contains only the exact current approved origin plus `/pool`: production
+stays production and preview stays preview. Query parameters cannot choose a
+destination. Local origins show no link. Connection, active work, recovery or
+unavailable coordination suppress the link. When no CIP-30 wallet is detected,
+the wallet chooser asks the visitor to open the wallet's browser or install a
+compatible extension. Nothing transfers a wallet session, address, ID or transaction
 between browser contexts.
 
 Synthetic Chromium viewport/keyboard tests do not establish physical wallet
@@ -547,13 +550,13 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 150 cases (146 before the copy and accessibility
-cases, 139 before the gate-hardening cases, 128
+`--cases all` now executes 151 cases (150 before the public-copy case, 146
+before the copy and accessibility cases, 139 before the gate-hardening cases, 128
 before the reported-validation-error cases, 105 before the deliberate-resend cases,
 86 before the manual-dismissal cases and 81 before the failure-message cases
 were added) and `--cases first` executes
 six. Selectors
-are strict: `--case` must name one registered case (the 150 plus
+are strict: `--case` must name one registered case (the 151 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
 
@@ -767,6 +770,17 @@ status line and the confirmation by role and name. Each records its
 observations before asserting them. `provider-malformed` has no dispatch or
 POST; the other three have one of each. These checks read the browser's
 accessibility roles and names; no physical screen reader was used.
+
+`public-copy` checks the public copy after the staged-release wording was
+removed. Before connecting, `/pool` must have its stake-pool title, description
+and Open Graph title and description, the panel eyebrow "Stake-only delegation",
+no element with `aria-describedby`, and none of the removed staging, mobile or
+recovery boilerplate phrases in its visible text. With the review open, the
+recovery note "Recovery is saved only in this browser while its storage is
+retained. Browser coordination cannot prevent actions in other apps, origins or
+devices." must appear once, inside the review. The homepage and the AdaWatch
+overview are then read the same way. Every observation is recorded before it is
+asserted. The case has no dispatch or POST.
 
 Every case samples the page at its 360 px viewport on each DOM mutation batch,
 in every tab of its browser context and across its navigations and reloads. Each

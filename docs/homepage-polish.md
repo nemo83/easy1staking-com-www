@@ -15,6 +15,12 @@ About, a Coming soon Blog and a read-only Pool destination. Composed browser,
 accessibility and visitor-journey verification is complete within the preview
 scope described below.
 
+Later work superseded parts of this stage record. `/pool` now reads pool facts
+from Blockfrost and has the stake delegation flow, and the header, homepage,
+project overviews and `/pool` no longer show a preview qualification; the
+`poolPreviewNotice` constant has been removed. The rest of this document
+describes the stage as it was verified.
+
 The reviewed product references are:
 
 - [SPEC.md](../SPEC.md) and [LAYOUT.md](../LAYOUT.md): the broader product

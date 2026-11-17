@@ -18,6 +18,35 @@ else assert(options.cases==="all"||options.cases==="first","Expected --cases all
 assert.match(process.version,/^v24\.22\.1$/);for(const key of ["evidence-dir"])assert(options[key]&&path.isAbsolute(options[key]),"Expected absolute --"+key);
 const output=options["evidence-dir"],app=path.resolve(__dirname,".."),root=path.dirname(app),sha=b=>crypto.createHash("sha256").update(b).digest("hex");
 assert(output.startsWith(process.env.TMPDIR+path.sep),"Evidence must be in exclusively owned scratch");fs.mkdirSync(output,{recursive:true,mode:0o700});
+// Served-chunk identity reads the file at the percent-decoded URL path: dynamic route segments such as [slug] are served encoded (%5Bslug%5D).
+// Containment is canonical: the realpath of the target must lie under the realpath of <app>/.next/static/, so a symlink or a symlinked directory that
+// leads outside is refused. A path that cannot be decoded, cannot be resolved (a missing file included) or leaves the root is an identity failure, never
+// skipped. The check holds when it runs; the tree is not locked against a change between the realpath and the read.
+function chunkCheck(pathname,bytes,root){
+ let decoded=null;try{decoded=decodeURIComponent(pathname);}catch{}
+ if(decoded===null)return{failure:{kind:"identity-error",path:pathname,failure:"CHUNK_PATH_UNDECODABLE"}};
+ const file=decoded.startsWith("/_next/static/")?path.resolve(root,decoded.slice("/_next/static/".length)):null;
+ if(file===null)return{failure:{kind:"identity-error",path:pathname,failure:"CHUNK_PATH_OUTSIDE_STATIC"}};
+ let real,base;try{real=fs.realpathSync(file);base=fs.realpathSync(root);}catch(error){return{failure:{kind:"identity-error",path:pathname,failure:failureText(error)}};}
+ if(!real.startsWith(base+path.sep))return{failure:{kind:"identity-error",path:pathname,failure:"CHUNK_PATH_OUTSIDE_STATIC"}};
+ const actual=sha(bytes);let expected;try{expected=sha(fs.readFileSync(real));}catch(error){return{failure:{kind:"identity-error",path:pathname,failure:failureText(error)}};}
+ return{actual,expected,failure:actual===expected?null:{kind:"mismatch",path:pathname,actual,expected}};
+}
+// The check responds, in a fresh planted tree under the evidence directory: an encoded dynamic-route chunk matches; the same path with tampered bytes is
+// a mismatch; encoded traversals (dot segments, encoded slashes, a sibling of the root), a symlink and a symlinked directory inside the root that lead
+// outside, and an undecodable path are identity failures, although a file with the served bytes exists at every target.
+const chunkSelfTest=(()=>{const base=fs.mkdtempSync(path.join(output,"chunk-identity-selftest-")),root=path.join(base,".next","static"),body=Buffer.from("// planted chunk\n");
+ for(const file of [path.join(root,"chunks/app/projects/[slug]/page-selftest.js"),path.join(base,"outside.js"),path.join(base,".next","outside.js"),path.join(base,".next","static-evil","x.js")]){fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,body);}
+ fs.symlinkSync(path.join(base,"outside.js"),path.join(root,"chunks","link.js"));fs.symlinkSync(base,path.join(root,"chunks","linkdir"));
+ const encoded="/_next/static/chunks/app/projects/%5Bslug%5D/page-selftest.js",label=r=>r.failure?r.failure.kind+":"+(r.failure.failure??"bytes"):"match";
+ return{encoded:label(chunkCheck(encoded,body,root)),tampered:label(chunkCheck(encoded,Buffer.from("// tampered chunk\n"),root)),
+  dots:label(chunkCheck("/_next/static/%2e%2e/%2e%2e/outside.js",body,root)),slashes:label(chunkCheck("/_next/static/chunks%2F..%2F..%2Foutside.js",body,root)),
+  sibling:label(chunkCheck("/_next/static/..%2Fstatic-evil%2Fx.js",body,root)),symlink:label(chunkCheck("/_next/static/chunks/link.js",body,root)),
+  symlinkDir:label(chunkCheck("/_next/static/chunks/linkdir/outside.js",body,root)),undecodable:label(chunkCheck("/_next/static/chunks/%E0%A4%A.js",body,root))};})();
+assert.deepEqual(chunkSelfTest,{encoded:"match",tampered:"mismatch:bytes",dots:"identity-error:CHUNK_PATH_OUTSIDE_STATIC",slashes:"identity-error:CHUNK_PATH_OUTSIDE_STATIC",
+ sibling:"identity-error:CHUNK_PATH_OUTSIDE_STATIC",symlink:"identity-error:CHUNK_PATH_OUTSIDE_STATIC",symlinkDir:"identity-error:CHUNK_PATH_OUTSIDE_STATIC",
+ undecodable:"identity-error:CHUNK_PATH_UNDECODABLE"},"CHUNK_IDENTITY_RESPONDS");
+console.log("CHUNK_IDENTITY_RESPONDS "+JSON.stringify(chunkSelfTest));
 if(!options.preload){options.preload=path.join(output,"ssr-preload.cjs");fs.writeFileSync(options.preload,`const fs=require('node:fs');global.fetch=async(input,init)=>{const url=String(typeof input==='string'?input:input.url||input);fs.appendFileSync(${JSON.stringify(path.join(output,"server-http.jsonl"))},JSON.stringify({url,method:init?.method||'GET',intercepted:true})+'\\n');if(url.startsWith('https://cardano-mainnet.blockfrost.io/api/v0/')&&(!init?.method||init.method==='GET'))return new Response('{}',{status:503,headers:{'content-type':'application/json'}});throw Error('FORBIDDEN_SERVER_HTTP');};for(const name of ['node:https','node:http','node:tls','node:net','node:dgram']){const m=require(name);for(const key of ['connect','createConnection','request','get','createSocket'])if(typeof m[key]==='function')m[key]=()=>{throw Error('FORBIDDEN_SERVER_SOCKET');};}`);}
 if(options["prepare-only"]==="yes"){console.log("PREPARED_SSR_TRIPWIRE "+options.preload);process.exit(0);}
 for(const name of ["playwright","chromium"])assert(typeof options[name]==="string"&&path.isAbsolute(options[name]),"Expected absolute --"+name);
@@ -53,6 +82,7 @@ async function freePort(port=0){const s=net.createServer();s.listen(port,"127.0.
 function failureText(error){return(error instanceof assert.AssertionError&&!error.generatedMessage?String(error.message):String(error?.name||"Error")+": "+String(error?.message??error)).split("\n")[0];}
 function descendants(pid){try{return fs.readFileSync(`/proc/${pid}/task/${pid}/children`,"utf8").trim().split(/\s+/).filter(Boolean).map(Number).flatMap(p=>[p,...descendants(p)]);}catch{return[];}}
 const report={runnerSha256:sha(fs.readFileSync(__filename)),fixtureSha256:sha(fs.readFileSync(path.join(__dirname,'fixtures/delegation-flow.json'))),node:process.version,source:{},cases:[],chunks:[],unexpected:[],errors:[],cleanup:{},buildId:fs.readFileSync(path.join(app,".next/BUILD_ID"),"utf8").trim()};
+report.chunkIdentitySelfTest=chunkSelfTest;
 for(const name of ["controller","wallet-session","coordination","recovery-verifier","builder","guard","crypto","chain-context","wallet-codec","source-cbor","blockfrost-reader","provider-json","cbor","types","messages","submit-reply"]){const file=path.join(app,"src/lib/site/delegation",name+".ts");report.source[name]=fs.existsSync(file)?sha(fs.readFileSync(file)):null;}
 report.source.DelegatePanel=(file=>fs.existsSync(file)?sha(fs.readFileSync(file)):null)(path.join(app,"src/components/site/DelegatePanel.tsx"));
 // A crash outside the case loop still terminates owned children and leaves a partial report.
@@ -337,10 +367,11 @@ async function main(){
     // Exact stop copy and machine reason for the listed pre-send stops, after a fixed settle; the text is asserted before the reason.
     const stopCopy=async()=>{const expect=fixture.stopCopies[name];if(!expect)return;await page.waitForTimeout(500);const text=await statusLine(),v=await currentView(),storedRecord=await page.evaluate(()=>localStorage.getItem("easy1staking:delegation-recovery")).catch(()=>"UNREADABLE");record.stop={text,phase:v.phase,failureReason:v.failureReason,storedRecord};assert.equal(text,expect.text,"STOP_COPY");assert.equal(v.failureReason,expect.reason,"STOP_REASON");};
     // Each served-chunk read is handled when created and settled in this case's finally: a mismatch or failed read while active disqualifies the case; one cut off by teardown is counted.
-    onResponse=response=>{const u=new URL(response.url());if(u.pathname.startsWith("/_next/static/")&&u.pathname.endsWith(".js")){const read=response.body().then(bytes=>{try{const file=path.join(app,".next",u.pathname.replace("/_next/","")),actual=sha(bytes),expected=sha(fs.readFileSync(file));report.chunks.push({path:u.pathname,sha256:actual,bytes:bytes.length});if(actual!==expected)record.chunkIdentityFailures.push({kind:"mismatch",path:u.pathname,actual,expected});}catch(error){record.chunkIdentityFailures.push({kind:"identity-error",path:u.pathname,failure:failureText(error)});}},error=>{if(closing)record.chunkReadsAbandonedAtClose++;else{record.chunkReadErrors.push(failureText(error));record.chunkIdentityFailures.push({kind:"read-error",path:u.pathname,failure:failureText(error)});}});read.catch(()=>{});caseReads.push(read);pending.push(read);}};page.on("response",onResponse);
+    onResponse=response=>{const u=new URL(response.url());if(u.pathname.startsWith("/_next/static/")&&u.pathname.endsWith(".js")){const read=response.body().then(bytes=>{try{const c=chunkCheck(u.pathname,bytes,path.join(app,".next","static"));if(c.actual!==undefined)report.chunks.push({path:u.pathname,sha256:c.actual,bytes:bytes.length});if(c.failure)record.chunkIdentityFailures.push(c.failure);}catch(error){record.chunkIdentityFailures.push({kind:"identity-error",path:u.pathname,failure:failureText(error)});}},error=>{if(closing)record.chunkReadsAbandonedAtClose++;else{record.chunkReadErrors.push(failureText(error));record.chunkIdentityFailures.push({kind:"read-error",path:u.pathname,failure:failureText(error)});}});read.catch(()=>{});caseReads.push(read);pending.push(read);}};page.on("response",onResponse);
     await page.goto(pageOrigin+"/pool?uri=https%3A%2F%2Finvalid.example");await page.locator('#delegate [role="status"]').waitFor();
     await page.getByLabel("Wallet",{exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.synthetic.enableCalls),0,"NO_AUTO_ENABLE");assert.equal(await page.evaluate(()=>window.synthetic.control),"beacon","TRIPWIRE_RESPONDS");assert.deepEqual(await page.evaluate(()=>window.synthetic.controls),['unexpected-fetch','xhr','socket','events','beacon','signData','wallet-submit','persist-prompt','analytics'],'ALL_TRIPWIRES_RESPOND');
-    assert(await page.getByText("On mobile, open this exact page",{exact:false}).isVisible());if(pageOrigin===origin)assert.equal(await page.locator('a[href^="web+cardano:"]').count(),0,"LOCAL_ORIGIN_NO_HOP");
+    // The always-visible mobile boilerplate was removed from the page; public-copy requires its absence.
+    if(pageOrigin===origin)assert.equal(await page.locator('a[href^="web+cardano:"]').count(),0,"LOCAL_ORIGIN_NO_HOP");
     else{await page.locator('a[href^="web+cardano:"]').waitFor();assert.equal(await page.locator('a[href^="web+cardano:"]').getAttribute("href"),"web+cardano://browse/v1?uri="+encodeURIComponent(pageOrigin+"/pool"),"EXACT_APPROVED_ORIGIN_HOP");}
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),"NO_360PX_OVERFLOW");
     // The page-side probes respond: a planted 400 px element and a planted unbroken 120-character text node in a 100 px block, then all three clear.
@@ -349,6 +380,13 @@ async function main(){
      const box=document.createElement("div");box.style.width="100px";box.style.whiteSpace="nowrap";box.style.wordBreak="normal";box.style.overflowWrap="normal";box.appendChild(document.createTextNode("x".repeat(120)));d.appendChild(box);const withText=n(probe());box.remove();
      return{withWide,withText,clean:n(probe())};});
     assert(record.layoutSelfTest.withWide.elements>0&&record.layoutSelfTest.withText.texts>0&&!record.layoutSelfTest.clean.page&&record.layoutSelfTest.clean.elements===0&&record.layoutSelfTest.clean.texts===0,"LAYOUT_PROBES_RESPOND");
+    // public-copy: the page metadata, the panel eyebrow, which removed staging or boilerplate phrases the visible page text still carries (text nodes outside
+    // script, style, template and noscript, lower-cased, whitespace collapsed) and every aria-describedby value. Recorded here, before connecting.
+    const pageCopy=()=>page.evaluate(stale=>{const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:n=>n.parentElement&&n.parentElement.closest("script,style,template,noscript")?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
+     let text="";for(let n=w.nextNode();n;n=w.nextNode())text+=n.data+" ";text=text.toLowerCase().replace(/\s+/g," ");const meta=s=>document.querySelector(s)?.getAttribute("content")??null;
+     return{title:document.title,description:meta('meta[name="description"]'),ogTitle:meta('meta[property="og:title"]'),ogDescription:meta('meta[property="og:description"]'),eyebrow:document.querySelector("#delegate .eyebrow")?.textContent??null,
+      found:stale.filter(s=>text.includes(s)),describedBy:[...document.querySelectorAll("[aria-describedby]")].map(e=>e.getAttribute("aria-describedby"))};},fixture.publicCopy.stale);
+    if(name==="public-copy")record.publicCopy={pool:await pageCopy()};
     if(name==="no-wallet"){assert.equal(await page.getByLabel("Wallet",{exact:true}).locator("option").count(),1);assert.equal(record.posts.length,0);record.passed=true;console.log("PASS actual /pool "+name);continue;}
     await page.getByLabel("Wallet",{exact:true}).selectOption("synthetic");if(name==="registered"){await page.getByLabel("Wallet",{exact:true}).focus();await page.keyboard.press("Tab");assert.equal(await page.getByRole("button",{name:"Connect selected wallet"}).evaluate(e=>document.activeElement===e),true,"KEYBOARD_CONNECT_FOCUS");await page.keyboard.press("Enter");}else await page.getByRole("button",{name:"Connect selected wallet"}).click();if(fixture.connectRefusals[name]){
      // Exact per-case copy: wait until the connect settles (rendered phase refused, already-EASY1 or ready), a fixed settle, then the text before the reason.
@@ -371,6 +409,23 @@ async function main(){
     assert(await page.getByText("Separate registration deposit:",{exact:false}).isVisible());assert(await page.getByText("Review expires:",{exact:false}).isVisible());assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0);
     // dismiss-focus-keep: whether the open review is exposed as a region named "Delegation review" (asserted in its branch).
     if(name==="dismiss-focus-keep")record.reviewRegion=await page.getByRole("region",{name:"Delegation review",exact:true}).count();
+    if(name==="public-copy"){
+     // The recovery note is inside the open review and appears once in the panel; the homepage and the AdaWatch overview are then read the same way.
+     // Every observation is recorded before any assertion, so a red case still shows each one.
+     const pc=record.publicCopy,want=fixture.publicCopy;
+     pc.review={inReview:await page.getByRole("region",{name:"Delegation review",exact:true}).getByText(want.recovery,{exact:true}).count(),inPanel:await page.locator("#delegate").getByText(want.recovery,{exact:true}).count(),signCalls:await page.evaluate(()=>window.synthetic.signCalls)};
+     await page.goto(origin+"/");await page.locator("#pool").waitFor();pc.home=await pageCopy();
+     await page.goto(origin+"/projects/adawatch");await page.locator("#project-title").waitFor();pc.overview=await pageCopy();
+     assert(pc.pool.title===want.title&&pc.pool.description===want.description&&pc.pool.ogTitle===want.title&&pc.pool.ogDescription===want.description,"PUBLIC_METADATA");
+     assert.deepEqual(pc.pool.found,[],"NO_STAGING_COPY_POOL");
+     assert.equal(pc.pool.eyebrow,want.eyebrow,"PANEL_EYEBROW");
+     assert(pc.pool.describedBy.length===0&&pc.home.describedBy.length===0&&pc.overview.describedBy.length===0,"NO_DESCRIBEDBY");
+     assert(pc.review.inReview===1&&pc.review.inPanel===1,"RECOVERY_IN_REVIEW");
+     assert.deepEqual(pc.home.found,[],"NO_STAGING_COPY_HOME");
+     assert.deepEqual(pc.overview.found,[],"NO_STAGING_COPY_OVERVIEW");
+     assert(pc.review.signCalls===0&&record.posts.length===0,"PUBLIC_COPY_NOTHING_SENT");
+     record.passed=true;console.log("PASS actual /pool "+name);continue;
+    }
     if(["cancel-review","disconnect-review","dispose-review"].includes(name)){
      if(name==="dispose-review")await page.goto(origin+"/");else await page.getByRole("button",{name:name==="cancel-review"?"Cancel here":"Disconnect wallet"}).click();
      await page.waitForTimeout(100);assert.equal(record.posts.length,0);assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0);
