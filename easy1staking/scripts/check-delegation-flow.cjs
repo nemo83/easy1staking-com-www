@@ -125,6 +125,8 @@ async function main(){
     s.routes.set("/accounts/"+account+"/delegations",[{...s.history(chain.registrationId),pool_id:chain.poolId,amount:"0",active_epoch:666}]);s.routes.get("/accounts/"+account).pool_id=chain.poolId;
    }
    if(name==="contradictory-account")s.routes.get("/accounts/"+account).registered=false;
+   // provider-malformed: the account answer carries a number where the stake address belongs, so the source refuses at connect with RESPONSE.
+   if(name==="provider-malformed")s.routes.get("/accounts/"+account).stake_address=5;
    if(name==="pool-ineligible")s.routes.set("/pools/retiring",[{pool_id:chain.poolId,epoch:666}]);
    // One input below fee plus minimum change, identical in the wallet CBOR and the provider rows.
    if(name==="insufficient-funds"){const amount=[{unit:"lovelace",quantity:fixture.insufficientFundsLovelace}];s.routes.get("/addresses/"+address+"/utxos")[0].amount=amount;s.routes.get(`/txs/${chain.fundingId}/utxos`).outputs[0].amount=clone(amount);}
@@ -367,6 +369,8 @@ async function main(){
     assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0,"NO_SIGN_BEFORE_REVIEW");await page.getByRole("button",{name:"Build delegation review"}).click();await page.getByRole("button",{name:"Approve and sign in wallet"}).waitFor();
     assert(await page.getByText("Exact fee: "+(BigInt(golden.fee)/1000000n)+"."+(BigInt(golden.fee)%1000000n).toString().padStart(6,"0")+" ADA",{exact:true}).isVisible(),"EXACT_FEE_VISIBLE");
     assert(await page.getByText("Separate registration deposit:",{exact:false}).isVisible());assert(await page.getByText("Review expires:",{exact:false}).isVisible());assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0);
+    // dismiss-focus-keep: whether the open review is exposed as a region named "Delegation review" (asserted in its branch).
+    if(name==="dismiss-focus-keep")record.reviewRegion=await page.getByRole("region",{name:"Delegation review",exact:true}).count();
     if(["cancel-review","disconnect-review","dispose-review"].includes(name)){
      if(name==="dispose-review")await page.goto(origin+"/");else await page.getByRole("button",{name:name==="cancel-review"?"Cancel here":"Disconnect wallet"}).click();
      await page.waitForTimeout(100);assert.equal(record.posts.length,0);assert.equal(await page.evaluate(()=>window.synthetic.signCalls),0);
@@ -736,6 +740,9 @@ async function main(){
        await page.waitForFunction(()=>["refused","already-EASY1","ready"].includes(window.synthetic.renderedPhase()),{},{timeout:20000,polling:100});await page.waitForTimeout(500);
        const v=await viewOf();record.dismiss.reconnect={text:await statusText(),phase:v.phase,failureReason:v.failureReason};return v;
       }
+      // Copy and accessibility cases: the focused element, whether it is the status line and has a box, and the status text when it is.
+      const focused=()=>page.evaluate(()=>{const e=document.activeElement,s=document.querySelector('#delegate [role="status"]'),own=!!e&&e!==document.body,r=own?e.getBoundingClientRect():null;
+       return{tag:e?e.tagName:null,id:own&&e.id?e.id:null,label:own?(e.textContent||"").trim().slice(0,80):null,statusLine:!!s&&e===s,visible:!!r&&r.width>0&&r.height>0,text:!!s&&e===s?s.textContent:null};});
       if(name==="dismiss-poll-after-expiry"){
        // The automatic poll runs past TTL within its budget; it never asks for eligibility, so no offer, no expired-unseen phase and no rows read until the apology.
        let offered=0;const started=Date.now();
@@ -803,6 +810,42 @@ async function main(){
        {const v=await viewOf();record.keepHidesRetry.afterKeep={resend:await resend(),canRetry:v.canRetry,notes:await page.getByText(rc.note,{exact:true}).count(),statusReason:v.statusReason,phase:v.phase};
         assert(record.keepHidesRetry.afterKeep.resend===0&&v.canRetry===false&&record.keepHidesRetry.afterKeep.notes===0,"NO_RETRY_AFTER_EXPIRY");}
        await retained("RECORD_RETAINED_ON_KEEP");await cutoff();
+      }else if(name==="dismiss-focus-keep"){
+       // The keyboard path: Enter on the offer, then Enter on Keep. Focus that falls to the body moves to the attestation input on open and to the
+       // status line on close; focus held elsewhere stays. Every observation is recorded before any assertion, so the record shows each one.
+       const a11y=record.a11y={reviewRegion:record.reviewRegion??null};
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");assert.equal(await offerCount(),1,"DISMISS_OFFERED");
+       await page.getByRole("button",{name:copy.offer}).focus();await page.keyboard.press("Enter");await region().waitFor({timeout:5000});await page.waitForTimeout(300);
+       a11y.open={focus:await focused(),region:await page.getByRole("region",{name:copy.region,exact:true}).count()};
+       await page.getByRole("button",{name:copy.keep}).focus();await page.keyboard.press("Enter");await page.waitForTimeout(300);
+       a11y.keep={focus:await focused(),text:await statusText(),region:await region().count()};
+       // A second offer, closed by the controller's Keep while focus rests on Check status: the page leaves that focus where it is.
+       await check("not-found:EXPIRED_UNSEEN");await page.getByRole("button",{name:copy.offer}).focus();await page.keyboard.press("Enter");await region().waitFor({timeout:5000});await page.waitForTimeout(300);
+       await page.getByRole("button",{name:"Check status"}).focus();await testController();await page.evaluate(()=>{const c=window.testController;c.closeDismissal(c.getView().dismissal);});await page.waitForTimeout(300);
+       a11y.elsewhere={focus:await focused(),text:await statusText(),region:await region().count()};
+       assert.equal(a11y.open.focus.id,"dismiss-attestation","DISMISS_OPEN_FOCUS");
+       assert.equal(a11y.open.region,1,"DISMISS_REGION_ROLE");
+       assert(a11y.keep.region===0&&a11y.keep.text===R.kept,"KEPT_COPY");
+       assert(a11y.keep.focus.statusLine&&a11y.keep.focus.visible&&a11y.keep.focus.text===R.kept,"DISMISS_KEEP_FOCUS");
+       assert(a11y.elsewhere.region===0&&a11y.elsewhere.text===R.kept&&a11y.elsewhere.focus.tag==="BUTTON"&&a11y.elsewhere.focus.label==="Check status","DISMISS_FOCUS_LEFT_ELSEWHERE");
+       assert.equal(a11y.reviewRegion,1,"REVIEW_REGION_ROLE");
+       await retained("RECORD_RETAINED_ON_KEEP");await cutoff();
+      }else if(name==="dismiss-focus-confirm"){
+       // Confirm removes the record: focus moves to the status line, which reads the dismissed text, and the dismissed record is a named region.
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");assert.equal(await offerCount(),1,"DISMISS_OFFERED");await open();await fill();await confirmClick();
+       const a11y=record.a11y={confirm:{focus:await focused(),text:await statusText(),stored:await stored(),dismissedRegion:await page.getByRole("region",{name:copy.dismissedRegion,exact:true}).count()}};
+       assert(a11y.confirm.stored===null&&a11y.confirm.text===R.dismissed,"DISMISSED_COPY");
+       assert(a11y.confirm.focus.statusLine&&a11y.confirm.focus.visible&&a11y.confirm.focus.text===R.dismissed,"DISMISS_CONFIRM_FOCUS");
+       assert.equal(a11y.confirm.dismissedRegion,1,"DISMISSED_REGION_ROLE");
+       await cutoff();
+      }else if(name==="dismiss-focus-confirmed"){
+       // The confirm recheck finds the transaction included: focus moves to the status line, which reads the confirmation, and the confirmation is a named region.
+       await follow(TTL+5n);await check("not-found:EXPIRED_UNSEEN");assert.equal(await offerCount(),1,"DISMISS_OFFERED");await open();await fill();
+       st.found=true;st.inclusionSlot=TTL-10n;await confirmClick();await confirmedState("This stake account currently delegates to EASY1.");
+       const a11y=record.a11y={confirmed:{focus:await focused(),text:await statusText(),region:await page.getByRole("region",{name:"Delegation confirmation",exact:true}).count()}};
+       assert(a11y.confirmed.focus.statusLine&&a11y.confirmed.focus.visible&&a11y.confirmed.focus.text===a11y.confirmed.text,"DISMISS_CONFIRMED_FOCUS");
+       assert.equal(a11y.confirmed.region,1,"CONFIRMATION_REGION_ROLE");
+       await cutoff();
       }else if(name==="dismiss-expired"){
        await dismissAll(null);await cutoff();
        // Reconnect after the cutoff: a fresh review builds and is never approved.

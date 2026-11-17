@@ -168,7 +168,11 @@
     "dismiss-recheck-withdraws",
     "dismiss-cross-id",
     "dismiss-keep-hides-retry",
-    "retry-refresh-hold"
+    "retry-refresh-hold",
+    "provider-malformed",
+    "dismiss-focus-keep",
+    "dismiss-focus-confirm",
+    "dismiss-focus-confirmed"
   ],
   "additionalCases": [
     "missing-configuration"
@@ -761,6 +765,22 @@
     "retry-refresh-hold": {
       "submitDispatches": 1,
       "posts": 1
+    },
+    "provider-malformed": {
+      "submitDispatches": 0,
+      "posts": 0
+    },
+    "dismiss-focus-keep": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-focus-confirm": {
+      "submitDispatches": 1,
+      "posts": 1
+    },
+    "dismiss-focus-confirmed": {
+      "submitDispatches": 1,
+      "posts": 1
     }
   },
   "statusPlans": {
@@ -1032,6 +1052,15 @@
     },
     "retry-refresh-hold": {
       "notFound": null
+    },
+    "dismiss-focus-keep": {
+      "notFound": null
+    },
+    "dismiss-focus-confirm": {
+      "notFound": null
+    },
+    "dismiss-focus-confirmed": {
+      "notFound": null
     }
   },
   "otherTabRecord": {
@@ -1089,6 +1118,10 @@
     "pool-ineligible": {
       "text": "EASY1 cannot accept new delegations right now: the pool is retiring, retired or not yet active. Nothing was built. Check back later.",
       "reason": "source:INELIGIBLE"
+    },
+    "provider-malformed": {
+      "text": "The chain data service's answer could not be checked, so nothing was built. Connect again in a few minutes. If this keeps happening, use your wallet directly.",
+      "reason": "source:RESPONSE"
     }
   },
   "stopCopies": {
@@ -1187,6 +1220,7 @@
     "Delegation stopped before sending. Chain data became unavailable. Try again in a few minutes.",
     "Delegation stopped before sending. EASY1 cannot accept new delegations right now. Check back later.",
     "Delegation stopped before sending. Information changed or a safety check failed. Reconnect to build a new review.",
+    "Delegation stopped before sending. The chain data service's answer could not be checked. Reconnect in a few minutes to build a new review. If this keeps happening, use your wallet directly.",
     "Delegation stopped before sending. The fee was higher than this page allows. Reconnect to build a new review.",
     "Delegation stopped before sending. The review expired before the transaction could be sent. Reconnect to build a new review.",
     "Delegation stopped before sending. The transaction could not be built or checked safely. Reconnect to build a new review, or use your wallet directly.",
@@ -1206,6 +1240,7 @@
     "Submission outcome is unknown. Keep this transaction ID and check from this browser.",
     "Submission outcome is unknown. Keep this transaction ID; do not build or send another delegation.",
     "Submitted to Blockfrost. Chain confirmation is still pending. Keep the ID for independent checking.",
+    "The chain data service's answer could not be checked, so nothing was built. Connect again in a few minutes. If this keeps happening, use your wallet directly.",
     "The record was kept in this browser. To dismiss it, check status again, or check the ID in your wallet or a chain explorer.",
     "The selected wallet is not available in this browser. Open this page in your wallet's browser or enable its extension, then choose it again.",
     "The signed transaction was not sent again: a check failed or information changed. Keep the ID and check its status, or check it in your wallet or a chain explorer.",

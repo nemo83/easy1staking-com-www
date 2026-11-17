@@ -181,8 +181,12 @@ ambiguous credential share this message, because the wallet session reports one
 code for both) and a wallet that changed while connecting. It also names a chain
 data service that is not set up correctly, chain data that is unavailable right
 now, an EASY1 pool that is retiring, retired or not yet active, and an account
-with no ADA. Every other chain-source failure keeps the existing "could not be
-verified" guidance.
+with no ADA. An answer from the chain data service that the page could not
+check, which includes a malformed provider address, has its own message: "The
+chain data service's answer could not be checked, so nothing was built. Connect
+again in a few minutes. If this keeps happening, use your wallet directly."
+Every other chain-source failure keeps the existing "could not be verified"
+guidance.
 
 Before anything is sent, each stop begins "Delegation stopped before sending."
 and names the cause and the next step: a declined signature, a wallet that could
@@ -191,7 +195,9 @@ the final remaining-slot and authentic-reply deadline checks and the post-reply
 timer), a changed wallet account, network or funds, too little ADA for the fee,
 any registration deposit and the minimum change, a fee above the page's bound, a
 transaction that could not be built or checked safely, a signature that does not
-match the reviewed transaction, and the chain-source refusals. No message
+match the reviewed transaction, and the chain-source refusals; for an answer that
+could not be checked, the stop asks the visitor to reconnect in a few minutes to
+build a new review, or to use the wallet directly if it keeps happening. No message
 promises an automatic clear, retry or rebuild. Once a transaction may have been
 sent, the existing unknown-outcome texts are unchanged: a rejected or uncertain
 submission is never proof that it was not included. A validation error that
@@ -343,6 +349,13 @@ transaction, the page shows the ordinary confirmation and no dismissed state.
 "Keep the record", also while the recheck runs, keeps the record and shows "The
 record was kept in this browser. To dismiss it, check status again, or check the
 ID in your wallet or a chain explorer."
+
+Opening the region moves keyboard focus to its attestation field. When the
+region closes (Keep, the end of a confirm attempt or a withdrawn offer) and
+focus would otherwise fall to the page body, focus moves to the status line,
+which then states the outcome; focus that rests on another control stays there.
+The dismissal region, the dismissed record, the confirmation and the review are
+exposed to assistive technology as regions named by their labels.
 
 Every interruption before removal leaves the record: Keep, a reload, leaving the
 page, a busy lock, a failed, lagging or rolled-back recheck, or a record that
@@ -534,12 +547,13 @@ transaction before 30 seconds. Both simulate `document.visibilityState = hidden`
 after the authentic synthetic wallet reply, recording that transition, reply and
 attempt times, enable/sign counts, construction/current tips and real elapsed time.
 The unchanged visible deadline regression remains among the original 54 cases;
-`--cases all` now executes 146 cases (139 before the gate-hardening cases, 128
+`--cases all` now executes 150 cases (146 before the copy and accessibility
+cases, 139 before the gate-hardening cases, 128
 before the reported-validation-error cases, 105 before the deliberate-resend cases,
 86 before the manual-dismissal cases and 81 before the failure-message cases
 were added) and `--cases first` executes
 six. Selectors
-are strict: `--case` must name one registered case (the 146 plus
+are strict: `--case` must name one registered case (the 150 plus
 `missing-configuration`) and `--cases` must be `all` or `first`; anything else
 exits before a server or browser starts.
 
@@ -736,6 +750,23 @@ check past the TTL finds the ID expired and unseen, and after Keep the resend is
 no longer offered. `retry-refresh-hold`: while a background wallet refresh holds
 the wallet's enable call, the resend offer is hidden, and it returns once the
 same wallet is observed again.
+
+Four cases were added with the copy and accessibility defaults.
+`provider-malformed` answers the account read with a number where the stake
+address belongs; the connection is refused with the reason `source:RESPONSE` and
+the message for an answer that could not be checked, and nothing is signed or
+sent. `dismiss-focus-keep` opens the dismissal with the keyboard and requires
+focus on the attestation field and the region by role and name; Enter on Keep
+must move focus to the status line, which reads the kept text; a second offer
+closed while focus rests on Check status must leave focus there; the case also
+requires the review region by role and name. `dismiss-focus-confirm` confirms a
+dismissal and requires focus on the status line, which reads the dismissed text,
+and the dismissed record by role and name. `dismiss-focus-confirmed` confirms
+while the recheck finds the transaction included and requires focus on the
+status line and the confirmation by role and name. Each records its
+observations before asserting them. `provider-malformed` has no dispatch or
+POST; the other three have one of each. These checks read the browser's
+accessibility roles and names; no physical screen reader was used.
 
 Every case samples the page at its 360 px viewport on each DOM mutation batch,
 in every tab of its browser context and across its navigations and reloads. Each

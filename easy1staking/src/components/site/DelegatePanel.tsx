@@ -47,6 +47,16 @@ export function DelegatePanel() {
   const dismissed = view?.dismissed && view.dismissed.txId === view.txId ? view.dismissed : null;
   const dialog = view?.dismissal?.stage === "open" || view?.dismissal?.stage === "confirming";
   useEffect(() => { if (!dialog) setAttestation(""); }, [dialog]);
+  // Keyboard focus around the dismissal region. When the control holding focus unmounts, focus falls to the page body; it then moves to the
+  // attestation input once the region opens, and to the status line once the region closes, whatever closed it. Focus held elsewhere stays.
+  const statusLine = useRef<HTMLParagraphElement | null>(null), attestationInput = useRef<HTMLInputElement | null>(null), dialogShown = useRef(false);
+  useEffect(() => {
+    const opened = dialog && !dialogShown.current, closed = !dialog && dialogShown.current;
+    dialogShown.current = dialog;
+    const lost = document.activeElement === null || document.activeElement === document.body;
+    if (lost && opened) attestationInput.current?.focus();
+    else if (lost && closed) statusLine.current?.focus();
+  }, [dialog]);
   return <section id="delegate" className={`wrap section ${styles.authored}`} aria-labelledby="delegate-title">
     <div className="eyebrow">Stake-only delegation / staged candidate</div>
     <h2 id="delegate-title">Stake with <em>EASY1.</em></h2>
@@ -59,18 +69,18 @@ export function DelegatePanel() {
     <div className={styles.facts}>
       {!view && <p role="status">Preparing wallet controls…</p>}
       {view && <>
-        <p role="status" aria-live="polite" aria-atomic="true">{view.message}</p>
+        <p role="status" aria-live="polite" aria-atomic="true" tabIndex={-1} ref={statusLine}>{view.message}</p>
         {view.walletDisconnected && <p className="mt-4">Wallet disconnected.</p>}
         {view.account && <div className={styles.poolIdentity}>Connected stake credential<code>{view.account}</code></div>}
         {prior && <p className="mt-4">{DISMISSAL_COPY.priorNotice}</p>}
         {view.txId && view.txId !== confirmed?.txId && view.txId !== dismissed?.txId && <div className={styles.poolIdentity}>Transaction ID — {view.reported ? SUBMIT_COPY.reportedCaption : view.phase === "submitted" ? "submitted, confirmation pending" : "outcome pending or unknown"}<code>{view.txId}</code></div>}
-        {confirmed && <div className="mt-4" aria-label="Delegation confirmation">
+        {confirmed && <div className="mt-4" role="region" aria-label="Delegation confirmation">
           <div className={styles.poolIdentity}>Transaction ID — confirmed on chain<code>{confirmed.txId}</code></div>
           {view.message !== confirmed.message && <p>{confirmed.message}</p>}
           <div className={styles.poolIdentity}>Stake credential in this transaction<code>{confirmed.credential}</code></div>
           <p>{accountCopy[confirmed.account]}</p>
         </div>}
-        {dismissed && <div className="mt-4" aria-label={DISMISSAL_COPY.dismissedRegion}>
+        {dismissed && <div className="mt-4" role="region" aria-label={DISMISSAL_COPY.dismissedRegion}>
           <div className={styles.poolIdentity}>{DISMISSAL_COPY.dismissedCaption}<code>{dismissed.txId}</code></div>
         </div>}
         {view.statusRunning && <p className="mt-4">Checking the chain for this transaction. This uses read-only chain data, never your wallet.</p>}
@@ -80,12 +90,12 @@ export function DelegatePanel() {
           <button type="button" className="btn btn-primary mt-6 whitespace-normal" onClick={() => { void controller.current?.retry(); }}>{RETRY_COPY.offer}</button>
         </>}
         {view.dismissal?.stage === "offered" && <button type="button" className="btn btn-primary mt-6" onClick={() => { if (view.dismissal) controller.current?.openDismissal(view.dismissal); }}>{DISMISSAL_COPY.offer}</button>}
-        {view.dismissal && dialog && <div className="mt-6" aria-label={DISMISSAL_COPY.region}>
+        {view.dismissal && dialog && <div className="mt-6" role="region" aria-label={DISMISSAL_COPY.region}>
           <p>{DISMISSAL_COPY.disclosure}</p>
           {view.dismissal.spentElsewhere && <p>{DISMISSAL_COPY.spentElsewhere}</p>}
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <label htmlFor="dismiss-attestation">{DISMISSAL_COPY.attestationLabel}</label>
-            <input id="dismiss-attestation" type="text" autoComplete="off" value={attestation} onChange={event => setAttestation(event.target.value)} className="max-w-full rounded border border-line bg-bg p-3" />
+            <input id="dismiss-attestation" ref={attestationInput} type="text" autoComplete="off" value={attestation} onChange={event => setAttestation(event.target.value)} className="max-w-full rounded border border-line bg-bg p-3" />
           </div>
           <div className="mt-4 flex flex-wrap gap-4">
             <button type="button" className="btn btn-primary" disabled={attestation !== DISMISSAL_COPY.attestationPhrase || view.dismissal.stage !== "open"}
@@ -102,7 +112,7 @@ export function DelegatePanel() {
           {wallets.length === 0 && <p>No CIP-30 wallet detected. Open your wallet browser or install a compatible extension, then return here.</p>}
         </div>}
         {view.phase === "ready" && !prior && <button type="button" className="btn btn-primary mt-6" onClick={() => { void controller.current?.prepare(); }}>Build delegation review</button>}
-        {view.review && <div className="mt-6" aria-label="Delegation review">
+        {view.review && <div className="mt-6" role="region" aria-label="Delegation review">
           <h3>Review stake delegation</h3>
           <div className={styles.poolIdentity}>Account<code>{view.review.account}</code>EASY1 pool ID<code>{view.review.poolId}</code></div>
           <p>Exact fee: {ada(view.review.fee)}</p>

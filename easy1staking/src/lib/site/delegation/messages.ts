@@ -27,6 +27,10 @@ const WITNESS = "Delegation stopped before sending. The wallet's signature did n
 const POOL_STOP = "Delegation stopped before sending. EASY1 cannot accept new delegations right now. Check back later.";
 const PROVIDER_CONFIG_STOP = "Delegation stopped before sending. This page's chain data service is not set up correctly. Use your wallet directly.";
 const PROVIDER_DOWN_STOP = "Delegation stopped before sending. Chain data became unavailable. Try again in a few minutes.";
+// The source's RESPONSE refusal: an answer that failed this page's checks (a malformed provider address included), or an unexpected failure while
+// checking it. The texts say the answer could not be checked, never that the data was wrong, and give a retry step and a fallback.
+const PROVIDER_RESPONSE = "The chain data service's answer could not be checked, so nothing was built. Connect again in a few minutes. If this keeps happening, use your wallet directly.";
+const PROVIDER_RESPONSE_STOP = "Delegation stopped before sending. The chain data service's answer could not be checked. Reconnect in a few minutes to build a new review. If this keeps happening, use your wallet directly.";
 const COORDINATION = "Browser coordination or the operation is unavailable. Check any prior operation from its originating browser.";
 const DISMISS_KEPT = "The record was kept in this browser. To dismiss it, check status again, or check the ID in your wallet or a chain explorer.";
 const wallet: Record<SessionError, string> = {
@@ -38,12 +42,12 @@ const wallet: Record<SessionError, string> = {
 };
 const source: Record<SourceCode, string> = {
   CONFIGURATION: PROVIDER_CONFIG, AUTHORIZATION: PROVIDER_CONFIG, TRANSPORT: PROVIDER_DOWN, QUOTA: PROVIDER_DOWN, TIMEOUT: PROVIDER_DOWN,
-  INELIGIBLE: POOL, NO_FUNDS: NO_FUNDS, NOT_FOUND: SOURCE_FALLBACK, RESPONSE: SOURCE_FALLBACK, JSON: SOURCE_FALLBACK, LIMIT: SOURCE_FALLBACK,
+  INELIGIBLE: POOL, NO_FUNDS: NO_FUNDS, NOT_FOUND: SOURCE_FALLBACK, RESPONSE: PROVIDER_RESPONSE, JSON: SOURCE_FALLBACK, LIMIT: SOURCE_FALLBACK,
   CANCELLED: SOURCE_FALLBACK, WALLET: SOURCE_FALLBACK, STALE: SOURCE_FALLBACK, COHERENCE: SOURCE_FALLBACK, PARAMETERS: SOURCE_FALLBACK, INPUT: SOURCE_FALLBACK,
 };
 const sourceStop: Record<SourceCode, string> = {
   CONFIGURATION: PROVIDER_CONFIG_STOP, AUTHORIZATION: PROVIDER_CONFIG_STOP, TRANSPORT: PROVIDER_DOWN_STOP, QUOTA: PROVIDER_DOWN_STOP, TIMEOUT: PROVIDER_DOWN_STOP,
-  INELIGIBLE: POOL_STOP, NO_FUNDS: FUNDS, NOT_FOUND: STOP_FALLBACK, RESPONSE: STOP_FALLBACK, JSON: STOP_FALLBACK, LIMIT: STOP_FALLBACK,
+  INELIGIBLE: POOL_STOP, NO_FUNDS: FUNDS, NOT_FOUND: STOP_FALLBACK, RESPONSE: PROVIDER_RESPONSE_STOP, JSON: STOP_FALLBACK, LIMIT: STOP_FALLBACK,
   CANCELLED: STOP_FALLBACK, WALLET: STOP_FALLBACK, STALE: STOP_FALLBACK, COHERENCE: STOP_FALLBACK, PARAMETERS: STOP_FALLBACK, INPUT: STOP_FALLBACK,
 };
 const signature: Record<SignatureCode, string> = {
